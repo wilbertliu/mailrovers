@@ -1,0 +1,1 @@
+import type { ListConversationsInput, ConversationPage } from '@mailrovers/mail-contracts'; export const desktopBridge = { listConversations: (input: ListConversationsInput): Promise<ConversationPage> => window.mailrovers.v1.listConversations(input) };

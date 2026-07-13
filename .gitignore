@@ -1,0 +1,10 @@
+node_modules/
+dist/
+out/
+.vite/
+artifacts/
+.pi-subagents/
+.DS_Store
+*.log
+*.sqlite
+*.sqlite-*

@@ -1,0 +1,23 @@
+{
+  "name": "mailrovers",
+  "private": true,
+  "packageManager": "pnpm@10.12.1",
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "fixture:seed": "pnpm --filter @mailrovers/desktop fixture:seed",
+    "package:mac": "pnpm --filter @mailrovers/desktop package:mac",
+    "smoke:packaged": "pnpm --filter @mailrovers/desktop smoke:packaged",
+    "performance:packaged": "pnpm --filter @mailrovers/desktop performance:packaged"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "typescript": "5.8.3",
+    "vitest": "3.1.3"
+  }
+}
