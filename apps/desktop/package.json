@@ -8,7 +8,6 @@
     "build": "electron-forge package",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
-    "lint": "tsc -p tsconfig.json --noEmit",
     "fixture:seed": "tsx perf/seed.ts",
     "perf": "tsx perf/query.ts",
     "package:mac": "electron-forge package --platform=darwin && codesign --force --deep --sign - out/MailRovers-darwin-$(uname -m)/MailRovers.app",
@@ -38,7 +37,6 @@
     "@types/react-dom": "19.1.2",
     "@vitejs/plugin-react": "4.4.1",
     "electron": "43.1.0",
-    "ts-node": "10.9.2",
     "tsx": "4.19.3",
     "vite": "6.3.4",
     "vitest": "3.1.3"

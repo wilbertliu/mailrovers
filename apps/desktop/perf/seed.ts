@@ -1,1 +1,11 @@
-import { mkdirSync } from 'node:fs'; import { join } from 'node:path'; import { migrate, openDatabase } from '@mailrovers/mail-store-sqlite'; import { seedMailboxFixture } from '@mailrovers/test-support'; const dir=join(process.cwd(),'artifacts');mkdirSync(dir,{recursive:true});const path=join(dir,'m1-fixture.sqlite');const db=openDatabase(path);migrate(db);console.log(JSON.stringify({path,...seedMailboxFixture(db)}));db.close();
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { migrate, openDatabase } from '@mailrovers/mail-store-sqlite'
+import { seedMailboxFixture } from '@mailrovers/test-support'
+const dir = join(process.cwd(), 'artifacts')
+mkdirSync(dir, { recursive: true })
+const path = join(dir, 'm1-fixture.sqlite')
+const db = openDatabase(path)
+migrate(db)
+console.log(JSON.stringify({ path, ...seedMailboxFixture(db) }))
+db.close()

@@ -22,20 +22,21 @@ The architecture must keep the first release small enough for a solo full-stack 
 
 ## 2. Confirmed decisions
 
-| Decision | Choice |
-|---|---|
-| Desktop framework | Electron with a React renderer |
-| Application topology | Local desktop application with no MailRovers server |
-| Canonical application database | Local SQLite database |
-| Initial provider | Gmail API only |
-| Synchronization | Full import followed by Gmail history polling while the app runs |
-| AI | User-provided OpenAI-compatible API key |
-| Secret storage | OS-protected encryption through Electron `safeStorage` |
-| Initial platform | macOS |
-| Later platforms | Windows, then Linux |
-| Web application | Not part of the first release |
-| Mobile application | Deferred; expected to use Expo and shared non-UI packages |
-| Rinhelp relationship | MailRovers packages remain independent and product-neutral |
+| Decision                       | Choice                                                           |
+| ------------------------------ | ---------------------------------------------------------------- |
+| Desktop framework              | Electron with a React renderer                                   |
+| Language toolchain             | TypeScript 7, Oxlint, and Oxfmt                                  |
+| Application topology           | Local desktop application with no MailRovers server              |
+| Canonical application database | Local SQLite database                                            |
+| Initial provider               | Gmail API only                                                   |
+| Synchronization                | Full import followed by Gmail history polling while the app runs |
+| AI                             | User-provided OpenAI-compatible API key                          |
+| Secret storage                 | OS-protected encryption through Electron `safeStorage`           |
+| Initial platform               | macOS                                                            |
+| Later platforms                | Windows, then Linux                                              |
+| Web application                | Not part of the first release                                    |
+| Mobile application             | Deferred; expected to use Expo and shared non-UI packages        |
+| Rinhelp relationship           | MailRovers packages remain independent and product-neutral       |
 
 ## 3. Goals
 
@@ -74,16 +75,16 @@ The first release will not include:
 
 The application will target the following values on a supported Mac with a warm local database:
 
-| Operation | Target |
-|---|---:|
-| First window visible | Under 1 second |
-| Inbox usable from local data | Under 1.5 seconds |
-| Cached inbox query | Under 50 ms at p95 |
-| Cached thread open | Under 100 ms at p95 |
-| Navigation and typing response | Under 100 ms |
-| Thread-list scrolling | 60 frames per second under normal load |
-| Background synchronization | No renderer stalls over 100 ms |
-| Idle memory | Target below 250 MB |
+| Operation                      |                                 Target |
+| ------------------------------ | -------------------------------------: |
+| First window visible           |                         Under 1 second |
+| Inbox usable from local data   |                      Under 1.5 seconds |
+| Cached inbox query             |                     Under 50 ms at p95 |
+| Cached thread open             |                    Under 100 ms at p95 |
+| Navigation and typing response |                           Under 100 ms |
+| Thread-list scrolling          | 60 frames per second under normal load |
+| Background synchronization     |         No renderer stalls over 100 ms |
+| Idle memory                    |                    Target below 250 MB |
 
 Performance tests must cover synthetic mailboxes containing 10,000 and 100,000 messages. The architecture must not require loading an entire mailbox or thread list into memory.
 
@@ -228,21 +229,39 @@ Package rules:
 - The renderer imports transport-neutral contracts and its desktop bridge, not concrete provider or database adapters.
 - No reusable package imports from `@rinhelp/*`.
 
+### 8.1 TypeScript quality toolchain
+
+The repository uses pinned TypeScript 7, Oxlint, `oxlint-tsgolint`, and Oxfmt versions. Oxlint performs repository-wide and type-aware linting; TypeScript remains the authoritative compiler and type checker. Oxfmt formats JavaScript, TypeScript, JSON, CSS, HTML, Markdown, and other supported project files with semicolons disabled and single quotes enabled.
+
+ESLint and Prettier are not part of the toolchain and must not be added as direct dependencies, configuration files, editor defaults, or CI steps. A tool that requires either one for repository linting or formatting must justify that dependency through a later architecture decision. Electron Forge currently brings Prettier into the lockfile transitively through `@electron/packager`; MailRovers does not configure or invoke it.
+
+Oxfmt is intentionally adopted while its upstream release is beta. Its version remains exact-pinned, formatting changes are reviewed during upgrades, and `pnpm format:check` protects CI from unreviewed output changes.
+
+The root commands are:
+
+- `pnpm format` to write canonical formatting.
+- `pnpm format:check` to verify formatting without writing.
+- `pnpm lint` to run type-aware Oxlint and reject warnings.
+- `pnpm typecheck` to run TypeScript 7 directly across all workspaces.
+- `pnpm check` to run formatting, linting, type checking, tests, and builds.
+
+The Electron Forge configuration remains CommonJS because TypeScript 7.0 does not expose the programmatic compiler API required by TypeScript runtime loaders. Vite continues to load its TypeScript configuration files through its own transformer.
+
 ## 9. Domain language
 
-| Term | Meaning |
-|---|---|
-| Workspace | The ownership scope for MailRovers data. The desktop release creates one local personal workspace. |
-| Mailbox | One connected Gmail account within a workspace. |
-| Provider | An external mail system. Gmail is the only first-release provider. |
-| Conversation | MailRovers' local grouping of related messages. It retains the provider thread identifier. |
-| Message | A received or sent RFC-style mail item with provider identity, headers, body parts, and state. |
-| Draft | A mutable reply or new message that has not been sent. |
-| Label | A Gmail label represented without erasing provider-specific semantics. |
-| Sync checkpoint | The last durable Gmail history position applied to the local database. |
-| Mail command | A requested mutation such as archive, mark read, apply label, save draft, or send. |
-| Command outbox | Durable local records of mail commands awaiting or undergoing provider execution. |
-| AI artifact | A generated summary or draft suggestion tied to exact source-message versions. |
+| Term            | Meaning                                                                                            |
+| --------------- | -------------------------------------------------------------------------------------------------- |
+| Workspace       | The ownership scope for MailRovers data. The desktop release creates one local personal workspace. |
+| Mailbox         | One connected Gmail account within a workspace.                                                    |
+| Provider        | An external mail system. Gmail is the only first-release provider.                                 |
+| Conversation    | MailRovers' local grouping of related messages. It retains the provider thread identifier.         |
+| Message         | A received or sent RFC-style mail item with provider identity, headers, body parts, and state.     |
+| Draft           | A mutable reply or new message that has not been sent.                                             |
+| Label           | A Gmail label represented without erasing provider-specific semantics.                             |
+| Sync checkpoint | The last durable Gmail history position applied to the local database.                             |
+| Mail command    | A requested mutation such as archive, mark read, apply label, save draft, or send.                 |
+| Command outbox  | Durable local records of mail commands awaiting or undergoing provider execution.                  |
+| AI artifact     | A generated summary or draft suggestion tied to exact source-message versions.                     |
 
 `Workspace` is included now so the domain can later map to Rinhelp's organization scope. The first desktop release does not expose team behavior.
 
@@ -1101,18 +1120,18 @@ Exit criteria:
 
 ## 26. Risks and mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Gmail OAuth verification delays release | Start consent and restricted-scope review during the Gmail spike. |
-| History notifications are unavailable without a server | Poll while running, refresh on focus, and reconcile periodically. |
-| SQLite or MIME work blocks Electron's main loop | Keep a process-independent mail-engine interface and move measured hotspots to a worker or utility process. |
-| Large mailboxes degrade startup | Render local paginated data first, bound caches, and run sync after first paint. |
-| Duplicate sends after ambiguous failure | Reconcile provider state before retrying send commands. |
-| Email HTML compromises the renderer | Sanitize, sandbox, disable scripts, block navigation, and block remote content by default. |
-| AI prompt injection influences application behavior | Give AI no tools, delimit email as untrusted data, and require explicit send confirmation. |
-| Open-source builds expose secrets | Use installed-app OAuth, user-provided AI keys, and OS-backed encrypted storage. |
-| Electron memory exceeds expectations | Set an idle budget, measure packaged builds, limit renderer caches, and avoid unnecessary windows and preload code. |
-| Future Rinhelp integration requires a rewrite | Keep domain, application, provider, and sync packages independent of Electron and SQLite. |
+| Risk                                                   | Mitigation                                                                                                          |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| Gmail OAuth verification delays release                | Start consent and restricted-scope review during the Gmail spike.                                                   |
+| History notifications are unavailable without a server | Poll while running, refresh on focus, and reconcile periodically.                                                   |
+| SQLite or MIME work blocks Electron's main loop        | Keep a process-independent mail-engine interface and move measured hotspots to a worker or utility process.         |
+| Large mailboxes degrade startup                        | Render local paginated data first, bound caches, and run sync after first paint.                                    |
+| Duplicate sends after ambiguous failure                | Reconcile provider state before retrying send commands.                                                             |
+| Email HTML compromises the renderer                    | Sanitize, sandbox, disable scripts, block navigation, and block remote content by default.                          |
+| AI prompt injection influences application behavior    | Give AI no tools, delimit email as untrusted data, and require explicit send confirmation.                          |
+| Open-source builds expose secrets                      | Use installed-app OAuth, user-provided AI keys, and OS-backed encrypted storage.                                    |
+| Electron memory exceeds expectations                   | Set an idle budget, measure packaged builds, limit renderer caches, and avoid unnecessary windows and preload code. |
+| Future Rinhelp integration requires a rewrite          | Keep domain, application, provider, and sync packages independent of Electron and SQLite.                           |
 
 ## 27. Explicitly deferred decisions
 

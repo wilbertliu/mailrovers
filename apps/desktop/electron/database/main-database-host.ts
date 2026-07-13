@@ -1,1 +1,6 @@
-import { composeApplication } from '../composition-root.js'; import type { DatabaseHost } from './database-host.js'; export function createMainDatabaseHost(path: string): DatabaseHost { const composed=composeApplication(path); return { application:composed.app, close:async()=>composed.close() }; }
+import { composeApplication } from '../composition-root.js'
+import type { DatabaseHost } from './database-host.js'
+export function createMainDatabaseHost(path: string): DatabaseHost {
+  const composed = composeApplication(path)
+  return { application: composed.app, close: async () => composed.close() }
+}

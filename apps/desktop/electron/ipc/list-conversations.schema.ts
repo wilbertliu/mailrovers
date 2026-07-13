@@ -1,25 +1,31 @@
-import { conversationId, mailboxId, utcTimestamp } from '@mailrovers/mail-domain';
-import { z } from 'zod';
+import { conversationId, mailboxId, utcTimestamp } from '@mailrovers/mail-domain'
+import { z } from 'zod'
 
-const cursor = z.string().min(1).max(512);
-export const listConversationsInputSchema = z.object({
-  mailboxId: z.string().min(1).max(200).transform(mailboxId),
-  cursor: cursor.optional(),
-  limit: z.number().int().min(1).max(200).default(50),
-}).strict();
-export const conversationPageSchema = z.object({
-  items: z.array(z.object({
-    id: z.string().transform(conversationId),
-    mailboxId: z.string().transform(mailboxId),
-    subject: z.string(),
-    snippet: z.string(),
-    lastMessageAt: z.string().datetime().transform(utcTimestamp),
-    messageCount: z.number().int().nonnegative(),
-    unreadCount: z.number().int().nonnegative(),
-    hasAttachments: z.boolean(),
-    version: z.number().int().positive(),
-  })),
-  nextCursor: cursor.optional(),
-}).strict();
-export type ListConversationsIpcInput = z.input<typeof listConversationsInputSchema>;
-export type ConversationPageIpcOutput = z.output<typeof conversationPageSchema>;
+const cursor = z.string().min(1).max(512)
+export const listConversationsInputSchema = z
+  .object({
+    mailboxId: z.string().min(1).max(200).transform(mailboxId),
+    cursor: cursor.optional(),
+    limit: z.number().int().min(1).max(200).default(50),
+  })
+  .strict()
+export const conversationPageSchema = z
+  .object({
+    items: z.array(
+      z.object({
+        id: z.string().transform(conversationId),
+        mailboxId: z.string().transform(mailboxId),
+        subject: z.string(),
+        snippet: z.string(),
+        lastMessageAt: z.string().datetime().transform(utcTimestamp),
+        messageCount: z.number().int().nonnegative(),
+        unreadCount: z.number().int().nonnegative(),
+        hasAttachments: z.boolean(),
+        version: z.number().int().positive(),
+      }),
+    ),
+    nextCursor: cursor.optional(),
+  })
+  .strict()
+export type ListConversationsIpcInput = z.input<typeof listConversationsInputSchema>
+export type ConversationPageIpcOutput = z.output<typeof conversationPageSchema>

@@ -43,13 +43,13 @@ Electron Forge completed the arm64 package at `apps/desktop/out/MailRovers-darwi
 
 Both modes passed from the packaged `.app`:
 
-| Stage | Main-process database | Worker database |
-|---|---:|---:|
-| Main entry | 279 ms | 85 ms |
-| Database ready | 533 ms | 201 ms |
-| Window created | 840 ms | 303 ms |
-| Window loaded | 1,103 ms | 417 ms |
-| Inbox usable | 1,184 ms | 488 ms |
+| Stage          | Main-process database | Worker database |
+| -------------- | --------------------: | --------------: |
+| Main entry     |                279 ms |           85 ms |
+| Database ready |                533 ms |          201 ms |
+| Window created |                840 ms |          303 ms |
+| Window loaded  |              1,103 ms |          417 ms |
+| Inbox usable   |              1,184 ms |          488 ms |
 
 Each renderer probe found 19 virtualized DOM rows, reported `process` and `require` as `undefined`, and exposed only `listConversations` through `window.mailrovers.v1`. The packaged main and worker paths both loaded the unpacked native SQLite binding and queried the fixture.
 

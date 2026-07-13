@@ -1,15 +1,15 @@
 {
   "name": "mailrovers",
   "private": true,
-  "packageManager": "pnpm@10.12.1",
-  "engines": {
-    "node": ">=22.14.0"
-  },
   "scripts": {
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "lint": "pnpm -r lint",
+    "lint": "oxlint --type-aware --deny-warnings .",
+    "lint:fix": "oxlint --type-aware --deny-warnings --fix .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "fixture:seed": "pnpm --filter @mailrovers/desktop fixture:seed",
     "package:mac": "pnpm --filter @mailrovers/desktop package:mac",
     "smoke:packaged": "pnpm --filter @mailrovers/desktop smoke:packaged",
@@ -17,7 +17,14 @@
   },
   "devDependencies": {
     "@types/node": "22.15.3",
-    "typescript": "5.8.3",
+    "oxfmt": "0.58.0",
+    "oxlint": "1.73.0",
+    "oxlint-tsgolint": "0.24.0",
+    "typescript": "7.0.2",
     "vitest": "3.1.3"
-  }
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  },
+  "packageManager": "pnpm@10.12.1"
 }

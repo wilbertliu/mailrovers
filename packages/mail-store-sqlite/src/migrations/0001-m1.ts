@@ -5,4 +5,4 @@ CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, workspace_id TEXT
 CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id), mailbox_id TEXT NOT NULL REFERENCES mailboxes(id), conversation_id TEXT NOT NULL REFERENCES conversations(id), provider_message_id TEXT NOT NULL, internet_message_id TEXT, provider_history_id TEXT, sender_json TEXT NOT NULL, recipients_json TEXT NOT NULL, subject TEXT NOT NULL, sent_at TEXT, received_at TEXT, snippet TEXT NOT NULL, text_body TEXT, sanitized_html_body TEXT, size_bytes INTEGER NOT NULL, is_draft INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(mailbox_id, provider_message_id));
 CREATE INDEX IF NOT EXISTS conversations_mailbox_chronology ON conversations(mailbox_id, last_message_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS messages_conversation_order ON messages(conversation_id, received_at DESC, id DESC);
-`;
+`

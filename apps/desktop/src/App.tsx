@@ -1,1 +1,4 @@
-import { InboxPage } from './features/inbox/InboxPage.js'; export function App(){return <InboxPage/>;}
+import { InboxPage } from './features/inbox/InboxPage.js'
+export function App() {
+  return <InboxPage />
+}

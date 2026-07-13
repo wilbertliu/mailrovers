@@ -1,1 +1,1 @@
-export * from './mailbox-fixture.js';
+export * from './mailbox-fixture.js'
