@@ -2,6 +2,7 @@ import type { LabelSummary, MailCommand } from '@mailrovers/mail-contracts'
 import type { ConversationId, MailboxId, MessageId } from '@mailrovers/mail-domain'
 import { useQuery } from '@tanstack/react-query'
 import { desktopBridge } from '../../desktop-bridge.js'
+import { ConversationSummary } from '../ai/ConversationSummary.js'
 import { EmailFrame } from './EmailFrame.js'
 
 function addressLabel(address: { name?: string | undefined; address: string }): string {
@@ -22,6 +23,7 @@ export function ConversationReader({
   onReply: (input: {
     conversationId: ConversationId
     messageId: MessageId
+    sourceVersion: number
     to: string
     subject: string
   }) => void
@@ -61,6 +63,7 @@ export function ConversationReader({
                 onReply({
                   conversationId,
                   messageId: latestMessage.id,
+                  sourceVersion: conversation.version,
                   to: latestMessage.sender.address,
                   subject: conversation.subject.startsWith('Re:')
                     ? conversation.subject
@@ -128,6 +131,11 @@ export function ConversationReader({
           </select>
         </div>
       </header>
+      <ConversationSummary
+        mailboxId={mailboxId}
+        conversationId={conversationId}
+        sourceVersion={conversation.version}
+      />
       <div className="message-stack">
         {conversation.messages.map((message, index) => {
           const latest = index === conversation.messages.length - 1

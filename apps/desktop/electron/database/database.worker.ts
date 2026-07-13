@@ -46,6 +46,30 @@ async function execute(message: Request): Promise<unknown> {
       return store.getEncryptedRefreshToken(
         message.input as Parameters<MailStore['getEncryptedRefreshToken']>[0],
       )
+    case 'getAiConfiguration':
+      return store.getAiConfiguration(
+        message.input as Parameters<MailStore['getAiConfiguration']>[0],
+      )
+    case 'saveAiConfiguration':
+      return store.saveAiConfiguration(
+        message.input as Parameters<MailStore['saveAiConfiguration']>[0],
+      )
+    case 'clearAiConfiguration':
+      return store.clearAiConfiguration(
+        message.input as Parameters<MailStore['clearAiConfiguration']>[0],
+      )
+    case 'setAiConfigurationValidated':
+      return store.setAiConfigurationValidated(
+        message.input as Parameters<MailStore['setAiConfigurationValidated']>[0],
+      )
+    case 'findAiArtifact':
+      return store.findAiArtifact(message.input as Parameters<MailStore['findAiArtifact']>[0])
+    case 'getAiArtifact':
+      return store.getAiArtifact(message.input as Parameters<MailStore['getAiArtifact']>[0])
+    case 'saveAiArtifact':
+      return store.saveAiArtifact(message.input as Parameters<MailStore['saveAiArtifact']>[0])
+    case 'reviewAiArtifact':
+      return store.reviewAiArtifact(message.input as Parameters<MailStore['reviewAiArtifact']>[0])
     case 'getSyncCheckpoint':
       return store.getSyncCheckpoint(message.input as Parameters<MailStore['getSyncCheckpoint']>[0])
     case 'enqueueCommand':

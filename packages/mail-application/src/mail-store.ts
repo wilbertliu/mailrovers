@@ -1,4 +1,6 @@
 import type {
+  AiArtifact,
+  AiArtifactType,
   CommandReceipt,
   CommandState,
   ConversationDetail,
@@ -15,7 +17,9 @@ import type {
   SearchPage,
 } from '@mailrovers/mail-contracts'
 import type {
+  AiArtifactId,
   CommandId,
+  ConversationId,
   DraftId,
   ImportState,
   Mailbox,
@@ -42,6 +46,14 @@ export type ImportPageCommit =
       nextState?: ImportState | undefined
     }
 
+export type StoredAiConfiguration = {
+  mailboxId: MailboxId
+  baseUrl: string
+  model: string
+  encryptedApiKey?: Uint8Array | undefined
+  lastValidatedAt?: UtcTimestamp | undefined
+}
+
 export type StoredCommand = CommandReceipt & {
   idempotencyKey: string
   entityKey: string
@@ -67,6 +79,39 @@ export interface MailStore {
   }): Promise<void>
   removeMailbox(input: { mailboxId: MailboxId; removeLocalData: boolean }): Promise<void>
   getEncryptedRefreshToken(mailboxId: MailboxId): Promise<Uint8Array | undefined>
+  getAiConfiguration(mailboxId: MailboxId): Promise<StoredAiConfiguration | undefined>
+  saveAiConfiguration(input: {
+    mailboxId: MailboxId
+    baseUrl: string
+    model: string
+    encryptedApiKey?: Uint8Array | undefined
+    updatedAt: UtcTimestamp
+  }): Promise<void>
+  clearAiConfiguration(input: { mailboxId: MailboxId }): Promise<void>
+  setAiConfigurationValidated(input: {
+    mailboxId: MailboxId
+    validatedAt: UtcTimestamp
+  }): Promise<void>
+  findAiArtifact(input: {
+    mailboxId: MailboxId
+    conversationId: ConversationId
+    artifactType: AiArtifactType
+    sourceVersion: number
+    model: string
+    policyVersion: string
+  }): Promise<AiArtifact | undefined>
+  getAiArtifact(input: {
+    mailboxId: MailboxId
+    artifactId: AiArtifactId
+  }): Promise<AiArtifact | undefined>
+  saveAiArtifact(artifact: AiArtifact): Promise<void>
+  reviewAiArtifact(input: {
+    mailboxId: MailboxId
+    artifactId: AiArtifactId
+    decision: 'accepted' | 'rejected'
+    reviewedAt: UtcTimestamp
+    expectedDraftVersion?: number | undefined
+  }): Promise<void>
   getSyncCheckpoint(mailboxId: MailboxId): Promise<SyncCheckpoint | undefined>
   enqueueCommand(input: {
     id: CommandId

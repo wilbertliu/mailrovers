@@ -3,6 +3,7 @@ import type { ConversationId, LabelId, MailboxId, MessageId } from '@mailrovers/
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { desktopBridge } from '../../desktop-bridge.js'
+import { AiSettings } from '../ai/AiSettings.js'
 import { Composer } from '../composer/Composer.js'
 import { ConversationReader } from '../conversation/ConversationReader.js'
 import { InboxPage } from '../inbox/InboxPage.js'
@@ -14,10 +15,12 @@ export function MailWorkspace({ mailboxId }: { mailboxId: MailboxId }) {
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [showDrafts, setShowDrafts] = useState(false)
+  const [showAiSettings, setShowAiSettings] = useState(false)
   const [composer, setComposer] = useState<{
     draft?: Draft | undefined
     conversationId?: ConversationId | undefined
     replyToMessageId?: MessageId | undefined
+    sourceVersion?: number | undefined
     to?: string | undefined
     subject?: string | undefined
   }>()
@@ -82,6 +85,7 @@ export function MailWorkspace({ mailboxId }: { mailboxId: MailboxId }) {
           className={showDrafts ? 'label-button active' : 'label-button'}
           onClick={() => {
             setShowDrafts(true)
+            setShowAiSettings(false)
             setSearchInput('')
             setSearchQuery('')
             setSelectedConversation(undefined)
@@ -90,12 +94,26 @@ export function MailWorkspace({ mailboxId }: { mailboxId: MailboxId }) {
           <span>Local drafts</span>
           {drafts.data?.length ? <small>{drafts.data.length}</small> : null}
         </button>
+        <button
+          type="button"
+          className={showAiSettings ? 'label-button active' : 'label-button'}
+          onClick={() => {
+            setShowAiSettings(true)
+            setShowDrafts(false)
+            setSearchInput('')
+            setSearchQuery('')
+            setSelectedConversation(undefined)
+          }}
+        >
+          <span>AI provider</span>
+        </button>
         <form
           className="mail-search"
           aria-label="Search mail"
           onSubmit={(event) => {
             event.preventDefault()
             setShowDrafts(false)
+            setShowAiSettings(false)
             setSearchQuery(searchInput.trim())
             setSelectedConversation(undefined)
           }}
@@ -120,6 +138,7 @@ export function MailWorkspace({ mailboxId }: { mailboxId: MailboxId }) {
               onClick={() => {
                 setLabelId(label.id)
                 setShowDrafts(false)
+                setShowAiSettings(false)
                 setSearchQuery('')
                 setSearchInput('')
                 setSelectedConversation(undefined)
@@ -132,7 +151,9 @@ export function MailWorkspace({ mailboxId }: { mailboxId: MailboxId }) {
         </nav>
       </aside>
 
-      {showDrafts ? (
+      {showAiSettings ? (
+        <AiSettings mailboxId={mailboxId} onClose={() => setShowAiSettings(false)} />
+      ) : showDrafts ? (
         <section className="conversation-list-panel" aria-label="Local drafts">
           <header className="list-header">
             <div>
@@ -146,7 +167,23 @@ export function MailWorkspace({ mailboxId }: { mailboxId: MailboxId }) {
                 type="button"
                 className="search-result"
                 key={draft.id}
-                onClick={() => setComposer({ draft })}
+                onClick={() => {
+                  void (async () => {
+                    const conversation =
+                      draft.conversationId === undefined
+                        ? undefined
+                        : await desktopBridge.getConversation({
+                            mailboxId,
+                            conversationId: draft.conversationId,
+                          })
+                    setComposer({
+                      draft,
+                      ...(conversation === undefined
+                        ? {}
+                        : { sourceVersion: conversation.version }),
+                    })
+                  })()
+                }}
               >
                 <strong>{draft.subject || '(No subject)'}</strong>
                 <span>{draft.textBody || 'Empty draft'}</span>
@@ -214,6 +251,7 @@ export function MailWorkspace({ mailboxId }: { mailboxId: MailboxId }) {
             setComposer({
               conversationId: input.conversationId,
               replyToMessageId: input.messageId,
+              sourceVersion: input.sourceVersion,
               to: input.to,
               subject: input.subject,
             })

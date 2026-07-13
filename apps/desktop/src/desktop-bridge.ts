@@ -1,4 +1,8 @@
 import type {
+  AiArtifact,
+  AiConfigurationStatus,
+  AiStreamEvent,
+  AiStreamReceipt,
   ApplicationError,
   CommandReceipt,
   ConnectGmailResult,
@@ -11,6 +15,7 @@ import type {
   ListConversationsInput,
   MailCommand,
   MailboxSummary,
+  SaveAiConfigurationInput,
   SaveDraftInput,
   SearchMailInput,
   SearchPage,
@@ -118,6 +123,94 @@ export const desktopBridge = {
       await window.mailrovers.v1.sendDraft({ requestId: this.createRequestId(), ...input }),
     )
   },
+  async getAiConfiguration(mailboxId: MailboxId): Promise<AiConfigurationStatus> {
+    return unwrap(
+      await window.mailrovers.v1.getAiConfiguration({
+        requestId: this.createRequestId(),
+        mailboxId,
+      }),
+    )
+  },
+  async saveAiConfiguration(
+    input: Omit<SaveAiConfigurationInput, 'requestId'>,
+  ): Promise<AiConfigurationStatus> {
+    return unwrap(
+      await window.mailrovers.v1.saveAiConfiguration({
+        requestId: this.createRequestId(),
+        ...input,
+      }),
+    )
+  },
+  async clearAiConfiguration(mailboxId: MailboxId): Promise<void> {
+    unwrap(
+      await window.mailrovers.v1.clearAiConfiguration({
+        requestId: this.createRequestId(),
+        mailboxId,
+      }),
+    )
+  },
+  async validateAiConfiguration(mailboxId: MailboxId): Promise<AiConfigurationStatus> {
+    return unwrap(
+      await window.mailrovers.v1.validateAiConfiguration({
+        requestId: this.createRequestId(),
+        mailboxId,
+      }),
+    )
+  },
+  async startConversationSummary(input: {
+    mailboxId: MailboxId
+    conversationId: ConversationDetail['id']
+    sourceVersion: number
+    force?: boolean | undefined
+    userInstructions?: string | undefined
+  }): Promise<AiStreamReceipt> {
+    return unwrap(
+      await window.mailrovers.v1.startConversationSummary({
+        requestId: this.createRequestId(),
+        ...input,
+      }),
+    )
+  },
+  async startReplyDraft(input: {
+    mailboxId: MailboxId
+    conversationId: ConversationDetail['id']
+    sourceVersion: number
+    draftId: Draft['id']
+    draftVersion: number
+    userInstructions?: string | undefined
+  }): Promise<AiStreamReceipt> {
+    return unwrap(
+      await window.mailrovers.v1.startReplyDraft({
+        requestId: this.createRequestId(),
+        ...input,
+      }),
+    )
+  },
+  async acceptAiReply(input: {
+    mailboxId: MailboxId
+    artifactId: AiArtifact['id']
+    expectedDraftVersion: number
+    idempotencyKey: string
+  }): Promise<Draft> {
+    return unwrap(
+      await window.mailrovers.v1.acceptAiReply({
+        requestId: this.createRequestId(),
+        ...input,
+      }),
+    )
+  },
+  async rejectAiArtifact(input: {
+    mailboxId: MailboxId
+    artifactId: AiArtifact['id']
+  }): Promise<void> {
+    unwrap(
+      await window.mailrovers.v1.reviewAiArtifact({
+        requestId: this.createRequestId(),
+        decision: 'rejected',
+        ...input,
+      }),
+    )
+  },
   async listMailboxes(requestId: OperationId): Promise<MailboxSummary[]> {
     return unwrap(await window.mailrovers.v1.listMailboxes({ requestId }))
   },
@@ -151,5 +244,22 @@ export const desktopBridge = {
   },
   subscribe(requestId: OperationId, callback: (event: DesktopEvent) => void): () => void {
     return window.mailrovers.v1.subscribe(requestId, callback)
+  },
+  subscribeOperation(
+    requestId: OperationId,
+    mailboxId: MailboxId,
+    callback: (event: AiStreamEvent) => void,
+  ): () => void {
+    return window.mailrovers.v1.subscribeOperation(requestId, mailboxId, (event) => {
+      switch (event.kind) {
+        case 'ai-started':
+        case 'ai-delta':
+        case 'ai-completed':
+        case 'ai-failed':
+        case 'ai-cancelled':
+          callback(event)
+          break
+      }
+    })
   },
 }

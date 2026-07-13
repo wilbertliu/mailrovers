@@ -149,6 +149,14 @@ async function runMode(input: {
       'getDraft',
       'listDrafts',
       'sendDraft',
+      'getAiConfiguration',
+      'saveAiConfiguration',
+      'clearAiConfiguration',
+      'validateAiConfiguration',
+      'startConversationSummary',
+      'startReplyDraft',
+      'acceptAiReply',
+      'reviewAiArtifact',
       'listMailboxes',
       'connectGmail',
       'disconnectMailbox',
@@ -156,6 +164,7 @@ async function runMode(input: {
       'getSyncStatus',
       'cancelOperation',
       'subscribe',
+      'subscribeOperation',
     ]
     if (JSON.stringify(result.rendererProbe.bridgeKeys) !== JSON.stringify(expectedBridgeKeys))
       throw new Error(`${input.mode} renderer bridge exposed unexpected methods`)

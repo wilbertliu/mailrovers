@@ -1,7 +1,7 @@
 import type { DesktopEvent } from '@mailrovers/mail-contracts'
 import type { WebContents } from 'electron'
 import { channels } from './channels.js'
-import { desktopEventSchema } from './mailboxes.schema.js'
+import { desktopEventSchema } from './desktop-events.schema.js'
 
 export class DesktopEventBus {
   private target?: WebContents | undefined

@@ -15,6 +15,7 @@
     "performance:packaged": "tsx perf/smoke-packaged.ts --performance --idle-ms=60000 --mode=main"
   },
   "dependencies": {
+    "@mailrovers/mail-ai": "workspace:*",
     "@mailrovers/mail-application": "workspace:*",
     "@mailrovers/mail-contracts": "workspace:*",
     "@mailrovers/mail-domain": "workspace:*",

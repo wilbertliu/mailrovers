@@ -29,6 +29,14 @@ button:disabled {
   opacity: 0.65;
 }
 
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid #4d735b;
+  outline-offset: 2px;
+}
+
 button.secondary {
   color: #243028;
   background: #e5e8e2;
@@ -679,6 +687,131 @@ button.search-result small {
 
 .composer footer output {
   color: #667169;
+  font-size: 12px;
+}
+
+.ai-settings form {
+  padding: 20px 18px;
+  overflow-y: auto;
+}
+
+.ai-settings form > label {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #4e5951;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ai-settings input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #cbd1cb;
+  border-radius: 8px;
+  color: #202722;
+  background: #fff;
+  font: inherit;
+  font-weight: 400;
+}
+
+.ai-settings-note {
+  max-width: 48ch;
+  color: #657068;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.ai-settings .error-message,
+.ai-reply-suggestion .error-message,
+.conversation-summary .error-message {
+  margin-top: 12px;
+  color: #a1382c;
+}
+
+.ai-settings-status {
+  min-height: 18px;
+  margin-top: 12px;
+  display: block;
+  color: #42664d;
+  font-size: 12px;
+}
+
+button.remove-ai-settings {
+  margin-top: 18px;
+  padding-inline: 0;
+  color: #8b3c33;
+}
+
+.summary-entry {
+  padding: 12px 14px 0;
+}
+
+.summary-entry button {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.conversation-summary {
+  margin: 14px 14px 0;
+  border: 1px solid #ccd8cf;
+  border-radius: 10px;
+  background: #eef4ef;
+}
+
+.conversation-summary header,
+.ai-reply-suggestion header {
+  height: auto;
+  min-height: 42px;
+  padding: 9px 12px;
+  border-bottom: 1px solid #d9e3dc;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+}
+
+.conversation-summary header button {
+  padding: 5px 7px;
+  font-size: 12px;
+}
+
+.conversation-summary > p {
+  padding: 12px;
+  color: #29362d;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.ai-reply-suggestion {
+  max-height: 230px;
+  overflow-y: auto;
+  border-top: 1px solid #d7e0d9;
+  background: #f0f5f1;
+}
+
+.ai-reply-suggestion header span {
+  color: #647068;
+  font-size: 12px;
+}
+
+.ai-reply-suggestion > p {
+  padding: 11px 14px;
+  color: #29362d;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.ai-reply-suggestion .button-row {
+  margin: 0;
+  padding: 0 14px 12px;
+}
+
+.ai-reply-suggestion button {
+  padding: 7px 10px;
   font-size: 12px;
 }
 

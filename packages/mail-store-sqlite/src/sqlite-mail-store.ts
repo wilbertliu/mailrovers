@@ -1,5 +1,6 @@
 import type { MailStore } from '@mailrovers/mail-application'
 import type {
+  AiArtifact,
   CommandReceipt,
   ConversationDetail,
   ConversationPage,
@@ -16,6 +17,7 @@ import type {
   SearchPage,
 } from '@mailrovers/mail-contracts'
 import {
+  aiArtifactId,
   attachmentId,
   commandId,
   conversationId,
@@ -177,6 +179,37 @@ function parseMailCommand(value: unknown): DurableCommand {
       applied: Boolean(value.applied),
     }
   throw new Error('Invalid stored command')
+}
+
+function mapAiArtifact(value: unknown): AiArtifact {
+  const result = row(value)
+  const draft = optionalString(result.draft_id)
+  const recipientFingerprint = optionalString(result.recipient_fingerprint)
+  const acceptedAt = optionalString(result.accepted_at)
+  const rejectedAt = optionalString(result.rejected_at)
+  return {
+    id: aiArtifactId(String(result.id)),
+    mailboxId: mailboxId(String(result.mailbox_id)),
+    conversationId: conversationId(String(result.conversation_id)),
+    artifactType:
+      String(result.artifact_type) === 'reply_draft' ? 'reply_draft' : 'conversation_summary',
+    sourceVersion: Number(result.source_version),
+    model: String(result.model),
+    policyVersion: String(result.policy_version),
+    content: String(result.content),
+    ...(draft === undefined ? {} : { draftId: draftId(draft) }),
+    ...(result.draft_version === null || result.draft_version === undefined
+      ? {}
+      : { draftVersion: Number(result.draft_version) }),
+    ...(recipientFingerprint === undefined ? {} : { recipientFingerprint }),
+    ...(acceptedAt === undefined ? {} : { acceptedAt: utcTimestamp(acceptedAt) }),
+    ...(rejectedAt === undefined ? {} : { rejectedAt: utcTimestamp(rejectedAt) }),
+    createdAt: utcTimestamp(String(result.created_at)),
+  }
+}
+
+function aiConfigurationKey(mailbox: MailboxId): string {
+  return `ai.configuration.${mailbox}`
 }
 
 function mapDraft(value: unknown): Draft {
@@ -884,13 +917,22 @@ export class SqliteMailStore implements MailStore {
 
   async removeMailbox(input: { mailboxId: MailboxId; removeLocalData: boolean }): Promise<void> {
     this.db.transaction(() => {
-      this.db.prepare('DELETE FROM encrypted_secrets WHERE mailbox_id=?').run(input.mailboxId)
       if (!input.removeLocalData) {
+        this.db
+          .prepare(
+            "DELETE FROM encrypted_secrets WHERE mailbox_id=? AND kind='gmail_refresh_token'",
+          )
+          .run(input.mailboxId)
         this.db
           .prepare("UPDATE mailboxes SET sync_state='auth_required' WHERE id=?")
           .run(input.mailboxId)
         return
       }
+      this.db.prepare('DELETE FROM encrypted_secrets WHERE mailbox_id=?').run(input.mailboxId)
+      this.db
+        .prepare('DELETE FROM app_settings WHERE key=?')
+        .run(aiConfigurationKey(input.mailboxId))
+      this.db.prepare('DELETE FROM ai_artifacts WHERE mailbox_id=?').run(input.mailboxId)
       this.db
         .prepare(
           'DELETE FROM attachments WHERE message_id IN (SELECT id FROM messages WHERE mailbox_id=?)',
@@ -927,6 +969,177 @@ export class SqliteMailStore implements MailStore {
     const cipher = row(value).ciphertext
     if (!(cipher instanceof Uint8Array)) throw new Error('Invalid encrypted secret')
     return new Uint8Array(cipher)
+  }
+
+  async getAiConfiguration(
+    id: MailboxId,
+  ): Promise<Awaited<ReturnType<MailStore['getAiConfiguration']>>> {
+    const setting = this.db
+      .prepare('SELECT value_json FROM app_settings WHERE key=?')
+      .get(aiConfigurationKey(id))
+    if (setting === undefined) return undefined
+    const parsed: unknown = JSON.parse(String(row(setting).value_json))
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      !('baseUrl' in parsed) ||
+      typeof parsed.baseUrl !== 'string' ||
+      !('model' in parsed) ||
+      typeof parsed.model !== 'string'
+    )
+      throw new Error('Invalid stored AI configuration')
+    const secret = this.db
+      .prepare("SELECT ciphertext FROM encrypted_secrets WHERE mailbox_id=? AND kind='ai_api_key'")
+      .get(id)
+    const cipher = secret === undefined ? undefined : row(secret).ciphertext
+    if (cipher !== undefined && !(cipher instanceof Uint8Array))
+      throw new Error('Invalid encrypted AI key')
+    const lastValidatedAt =
+      'lastValidatedAt' in parsed && typeof parsed.lastValidatedAt === 'string'
+        ? utcTimestamp(parsed.lastValidatedAt)
+        : undefined
+    return {
+      mailboxId: id,
+      baseUrl: parsed.baseUrl,
+      model: parsed.model,
+      ...(cipher === undefined ? {} : { encryptedApiKey: new Uint8Array(cipher) }),
+      ...(lastValidatedAt === undefined ? {} : { lastValidatedAt }),
+    }
+  }
+
+  async saveAiConfiguration(input: Parameters<MailStore['saveAiConfiguration']>[0]): Promise<void> {
+    this.db.transaction(() => {
+      const mailboxExists = this.db
+        .prepare('SELECT 1 FROM mailboxes WHERE id=?')
+        .get(input.mailboxId)
+      if (mailboxExists === undefined) throw new Error('Mailbox not found')
+      this.db
+        .prepare(`INSERT INTO app_settings(key,value_json,updated_at) VALUES (?,?,?)
+          ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at`)
+        .run(
+          aiConfigurationKey(input.mailboxId),
+          JSON.stringify({ baseUrl: input.baseUrl, model: input.model }),
+          input.updatedAt,
+        )
+      if (input.encryptedApiKey !== undefined)
+        this.db
+          .prepare(`INSERT INTO encrypted_secrets(mailbox_id,kind,ciphertext,created_at,updated_at)
+            VALUES (?,'ai_api_key',?,?,?) ON CONFLICT(mailbox_id,kind) DO UPDATE SET
+            ciphertext=excluded.ciphertext,updated_at=excluded.updated_at`)
+          .run(
+            input.mailboxId,
+            Buffer.from(input.encryptedApiKey),
+            input.updatedAt,
+            input.updatedAt,
+          )
+    })()
+  }
+
+  async clearAiConfiguration(input: { mailboxId: MailboxId }): Promise<void> {
+    this.db.transaction(() => {
+      this.db
+        .prepare('DELETE FROM app_settings WHERE key=?')
+        .run(aiConfigurationKey(input.mailboxId))
+      this.db
+        .prepare("DELETE FROM encrypted_secrets WHERE mailbox_id=? AND kind='ai_api_key'")
+        .run(input.mailboxId)
+    })()
+  }
+
+  async setAiConfigurationValidated(
+    input: Parameters<MailStore['setAiConfigurationValidated']>[0],
+  ): Promise<void> {
+    const result = this.db
+      .prepare(`UPDATE app_settings SET
+        value_json=json_set(value_json,'$.lastValidatedAt',?),updated_at=? WHERE key=?`)
+      .run(input.validatedAt, input.validatedAt, aiConfigurationKey(input.mailboxId))
+    if (result.changes !== 1) throw new Error('AI configuration not found')
+  }
+
+  async findAiArtifact(
+    input: Parameters<MailStore['findAiArtifact']>[0],
+  ): Promise<AiArtifact | undefined> {
+    const value = this.db
+      .prepare(`SELECT * FROM ai_artifacts WHERE mailbox_id=? AND conversation_id=?
+        AND artifact_type=? AND source_version=? AND model=? AND policy_version=?
+        ORDER BY created_at DESC,id DESC LIMIT 1`)
+      .get(
+        input.mailboxId,
+        input.conversationId,
+        input.artifactType,
+        input.sourceVersion,
+        input.model,
+        input.policyVersion,
+      )
+    return value === undefined ? undefined : mapAiArtifact(value)
+  }
+
+  async getAiArtifact(
+    input: Parameters<MailStore['getAiArtifact']>[0],
+  ): Promise<AiArtifact | undefined> {
+    const value = this.db
+      .prepare('SELECT * FROM ai_artifacts WHERE id=? AND mailbox_id=?')
+      .get(input.artifactId, input.mailboxId)
+    return value === undefined ? undefined : mapAiArtifact(value)
+  }
+
+  async saveAiArtifact(artifact: AiArtifact): Promise<void> {
+    const mailboxValue = this.db
+      .prepare('SELECT workspace_id FROM mailboxes WHERE id=?')
+      .get(artifact.mailboxId)
+    if (mailboxValue === undefined) throw new Error('Mailbox not found')
+    this.db
+      .prepare(`INSERT INTO ai_artifacts
+        (id,workspace_id,mailbox_id,conversation_id,artifact_type,source_version,model,
+        policy_version,content,draft_id,draft_version,recipient_fingerprint,accepted_at,
+        rejected_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(
+        artifact.id,
+        row(mailboxValue).workspace_id,
+        artifact.mailboxId,
+        artifact.conversationId,
+        artifact.artifactType,
+        artifact.sourceVersion,
+        artifact.model,
+        artifact.policyVersion,
+        artifact.content,
+        artifact.draftId ?? null,
+        artifact.draftVersion ?? null,
+        artifact.recipientFingerprint ?? null,
+        artifact.acceptedAt ?? null,
+        artifact.rejectedAt ?? null,
+        artifact.createdAt,
+      )
+  }
+
+  async reviewAiArtifact(input: Parameters<MailStore['reviewAiArtifact']>[0]): Promise<void> {
+    this.db.transaction(() => {
+      const artifactValue = this.db
+        .prepare('SELECT draft_id,draft_version FROM ai_artifacts WHERE id=? AND mailbox_id=?')
+        .get(input.artifactId, input.mailboxId)
+      if (artifactValue === undefined) throw new Error('AI artifact not found')
+      const artifact = row(artifactValue)
+      if (input.expectedDraftVersion !== undefined) {
+        if (Number(artifact.draft_version) !== input.expectedDraftVersion)
+          throw new Error('AI_ARTIFACT_STALE')
+        const draftValue = this.db
+          .prepare('SELECT version FROM drafts WHERE id=? AND mailbox_id=?')
+          .get(artifact.draft_id, input.mailboxId)
+        if (
+          draftValue === undefined ||
+          Number(row(draftValue).version) !== input.expectedDraftVersion
+        )
+          throw new Error('AI_ARTIFACT_STALE')
+      }
+      this.db
+        .prepare(`UPDATE ai_artifacts SET accepted_at=?,rejected_at=? WHERE id=? AND mailbox_id=?`)
+        .run(
+          input.decision === 'accepted' ? input.reviewedAt : null,
+          input.decision === 'rejected' ? input.reviewedAt : null,
+          input.artifactId,
+          input.mailboxId,
+        )
+    })()
   }
 
   async getSyncCheckpoint(id: MailboxId): Promise<SyncCheckpoint | undefined> {
@@ -1569,6 +1782,7 @@ export class SqliteMailStore implements MailStore {
         )
         .run(input.mailboxId)
       this.db.prepare('DELETE FROM draft_reconciliation WHERE mailbox_id=?').run(input.mailboxId)
+      this.db.prepare('DELETE FROM ai_artifacts WHERE mailbox_id=?').run(input.mailboxId)
       this.db
         .prepare("DELETE FROM drafts WHERE mailbox_id=? AND sync_state='synced'")
         .run(input.mailboxId)

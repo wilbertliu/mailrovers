@@ -1,3 +1,4 @@
+import type { AiStreamEvent } from './ai.js'
 import type {
   MailboxId,
   MailboxSyncState,
@@ -95,7 +96,7 @@ export type SyncTerminalEvent =
       status: SyncStatus
     }
 
-export type DesktopEvent = SyncProgressEvent | SyncTerminalEvent
+export type DesktopEvent = SyncProgressEvent | SyncTerminalEvent | AiStreamEvent
 
 export type ApplicationError = {
   code: string

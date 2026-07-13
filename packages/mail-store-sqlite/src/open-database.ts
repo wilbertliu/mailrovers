@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { migration0001 } from './migrations/0001-m1.js'
 import { migration0002 } from './migrations/0002-m2.js'
 import { migration0003 } from './migrations/0003-m3.js'
+import { migration0004 } from './migrations/0004-m4.js'
 export type SqliteDatabase = Database.Database
 export function openDatabase(path: string): SqliteDatabase {
   const db = new Database(path)
@@ -17,6 +18,7 @@ const migrations = [
   { version: 1, sql: migration0001 },
   { version: 2, sql: migration0002 },
   { version: 3, sql: migration0003 },
+  { version: 4, sql: migration0004 },
 ] as const
 
 function backupBeforeDestructiveMigration(db: SqliteDatabase, version: number): void {

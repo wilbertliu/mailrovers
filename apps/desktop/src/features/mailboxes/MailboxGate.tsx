@@ -135,13 +135,20 @@ function ImportPage({
 
   const handleEvent = useCallback(
     (event: DesktopEvent) => {
-      if (event.kind === 'sync-failed') {
-        setError(event.error.message)
-        void onChanged()
-        return
+      switch (event.kind) {
+        case 'sync-failed':
+          setError(event.error.message)
+          void onChanged()
+          break
+        case 'sync-progress':
+          setStatus(event.status)
+          break
+        case 'sync-completed':
+        case 'sync-cancelled':
+          setStatus(event.status)
+          void onChanged()
+          break
       }
-      setStatus(event.status)
-      if (event.kind === 'sync-completed' || event.kind === 'sync-cancelled') void onChanged()
     },
     [onChanged],
   )

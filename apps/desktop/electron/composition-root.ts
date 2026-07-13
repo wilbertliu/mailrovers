@@ -1,8 +1,15 @@
 import {
+  AiApplicationError,
   createMailApplication,
+  type AiProviderConfiguration,
+  type AiRequest,
+  type AiRuntime,
+  type AiRuntimeEvent,
+  type AiRuntimeFactory,
   type CommandDispatcher,
   type GmailConnector,
   type MailApplication,
+  type MailApplicationOperations,
   type MailProviderFactory,
   type MailStore,
   type SyncEngine,
@@ -17,6 +24,48 @@ export function composeStore(dbPath: string): { store: MailStore; close(): void 
   const db = openDatabase(dbPath)
   migrate(db)
   return { store: new SqliteMailStore(db), close: () => db.close() }
+}
+
+function assertAiConfiguration(configuration: AiProviderConfiguration): void {
+  let url: URL
+  try {
+    url = new URL(configuration.baseUrl)
+  } catch {
+    throw new AiApplicationError('AI_CONFIGURATION_INVALID', 'AI base URL is invalid')
+  }
+  const loopback =
+    url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]'
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback))
+    throw new AiApplicationError(
+      'AI_CONFIGURATION_INVALID',
+      'AI base URL must use HTTPS or loopback HTTP',
+    )
+  if (url.username || url.password || url.search || url.hash)
+    throw new AiApplicationError('AI_CONFIGURATION_INVALID', 'AI base URL is invalid')
+  if (!configuration.model || !configuration.apiKey)
+    throw new AiApplicationError('AI_CONFIGURATION_INVALID', 'AI model and API key are required')
+}
+
+class LazyAiRuntime implements AiRuntime {
+  constructor(private readonly configuration: AiProviderConfiguration) {}
+
+  async *stream(input: AiRequest, signal: AbortSignal): AsyncIterable<AiRuntimeEvent> {
+    const { OpenAiCompatibleRuntime } = await import('@mailrovers/mail-ai')
+    const runtime = new OpenAiCompatibleRuntime(this.configuration)
+    for await (const event of runtime.stream(input, signal)) yield event
+  }
+
+  async validateConfiguration(signal: AbortSignal): Promise<void> {
+    const { OpenAiCompatibleRuntime } = await import('@mailrovers/mail-ai')
+    await new OpenAiCompatibleRuntime(this.configuration).validateConfiguration(signal)
+  }
+}
+
+class LazyAiRuntimeFactory implements AiRuntimeFactory {
+  create(configuration: AiProviderConfiguration): AiRuntime {
+    assertAiConfiguration(configuration)
+    return new LazyAiRuntime(configuration)
+  }
 }
 
 function unavailableConnector(): GmailConnector {
@@ -39,7 +88,7 @@ export function composeDesktopApplication(input: {
   store: MailStore
   publish(event: DesktopEvent): void
 }): {
-  application: MailApplication
+  application: MailApplication & MailApplicationOperations
   syncEngine: SyncEngine
   commandDispatcher: CommandDispatcher
 } {
@@ -91,6 +140,8 @@ export function composeDesktopApplication(input: {
       secretSealer,
       syncEngine,
       commandDispatcher,
+      aiRuntimeFactory: new LazyAiRuntimeFactory(),
+      publishAiEvent: (event) => input.publish(event),
     }),
     syncEngine,
     commandDispatcher,

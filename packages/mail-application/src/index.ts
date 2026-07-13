@@ -1,3 +1,6 @@
+export * from './ai-context.js'
+export * from './ai-operations.js'
+export * from './ai-runtime.js'
 export * from './mail-store.js'
 export * from './mail-provider.js'
 export * from './sync-engine.js'

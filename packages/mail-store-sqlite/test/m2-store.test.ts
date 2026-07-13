@@ -101,6 +101,7 @@ describe('SQLite mail store', () => {
       { version: 1 },
       { version: 2 },
       { version: 3 },
+      { version: 4 },
     ])
     const backup: unknown = db
       .prepare('SELECT path,version,status,integrity_result FROM migration_backups')

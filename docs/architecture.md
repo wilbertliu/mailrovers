@@ -1163,6 +1163,15 @@ Deferred library choices must preserve the interfaces and constraints in this do
 - Sanitized HTML is presented in an opaque sandboxed `srcdoc` frame with a document-specific CSP. Remote resources, scripts, forms, popups, same-origin access, and top navigation are unavailable. Credential-free HTTP and HTTPS links are intercepted in the main process.
 - Ambiguous draft creation and send outcomes are searched by RFC `Message-ID`. An unresolved result enters `needs_review`; it is never resent automatically.
 
+### 27.2 Decisions resolved for Milestone 4
+
+- AI configuration is mailbox-scoped. Public base URL and model settings use `app_settings`; the API key uses the mailbox-scoped `encrypted_secrets` row with kind `ai_api_key`.
+- The initial compatibility profile uses `POST {baseUrl}/chat/completions` with native `fetch` and server-sent events. MailRovers does not depend on a provider SDK. HTTPS is required except for loopback HTTP endpoints. The desktop composition root lazy-loads `mail-ai` only when configuration validation or generation starts so AI stays off the cached-inbox startup path.
+- The application layer loads and bounds source messages, checks conversation and draft versions, owns artifact caching, and creates dormant operations. `mail-ai` receives only an explicit request and decrypted provider configuration.
+- AI operations start only after the preload bridge registers its callback and sends the authorized `operation:subscribe` request. Text deltas are batched for at most 16 ms or 8 KB with a 256 KB per-request buffer limit.
+- Summary cache lookup requires matching conversation version, policy version, and model. Reply suggestions record draft version and a canonical recipient fingerprint and are never reused silently.
+- Accepting a reply suggestion saves a new optimistic draft version and records artifact acceptance. It does not call the send path; sending still requires the existing explicit `sendDraft` action.
+
 ## 28. Primary references
 
 - Electron process model: <https://www.electronjs.org/docs/latest/tutorial/process-model>

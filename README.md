@@ -53,6 +53,8 @@ MAILROVERS_GOOGLE_OAUTH_CLIENT_ID="your-client-id.apps.googleusercontent.com" \
 
 Without `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID`, the application still opens local mail, but Gmail connection returns a configuration error. OAuth refresh tokens are encrypted through Electron `safeStorage` before SQLite persistence. They are never available through the renderer bridge.
 
+Configure AI separately for each mailbox from **AI provider** in the desktop sidebar. The default base URL is `https://api.openai.com/v1`; the model identifier and API key are required. MailRovers uses the OpenAI-compatible Chat Completions streaming endpoint. HTTPS is required except for loopback HTTP providers such as `http://localhost:11434/v1`. The API key is encrypted through `safeStorage`, cannot be read back, and is sent only to the configured provider origin.
+
 ### Check the project
 
 ```sh
@@ -81,6 +83,7 @@ packages/mail-application/    Application facade and use cases
 packages/mail-store-sqlite/   Local SQLite storage
 packages/provider-gmail/      Gmail OAuth, REST access, and payload translation
 packages/mail-sync/           Resumable sync, reconciliation, and durable command execution
+packages/mail-ai/             AI request policy and OpenAI-compatible streaming runtime
 packages/platform-electron/   Electron safeStorage adapter
 packages/test-support/        Fixtures and test helpers
 docs/                         Architecture and engineering notes
@@ -101,6 +104,6 @@ The initial release synchronizes only while the desktop application is running.
 
 ## Status
 
-Milestones 1 through 3 are implemented. The desktop application supports Gmail connection, resumable local synchronization, cached label and conversation browsing, local FTS5 search, durable mailbox commands, compose and reply, local draft persistence, and conservative send reconciliation.
+Milestones 1 through 4 are implemented. The desktop application supports Gmail connection, resumable local synchronization, cached label and conversation browsing, local FTS5 search, durable mailbox commands, compose and reply, local draft persistence, conservative send reconciliation, conversation summaries, and streamed AI reply suggestions with explicit review.
 
-The Gmail write workflows still require the controlled-account release gate in [`docs/m3-verification.md`](docs/m3-verification.md). AI features, release signing, notarization, and automatic updates remain under development.
+The Gmail write workflows still require the controlled-account release gate in [`docs/m3-verification.md`](docs/m3-verification.md). AI provider compatibility and security checks are documented in [`docs/m4-verification.md`](docs/m4-verification.md). Release signing, notarization, and automatic updates remain under development.

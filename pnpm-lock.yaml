@@ -29,6 +29,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@mailrovers/mail-ai':
+        specifier: workspace:*
+        version: link:../../packages/mail-ai
       '@mailrovers/mail-application':
         specifier: workspace:*
         version: link:../../packages/mail-application
@@ -108,6 +111,22 @@ importers:
       vitest:
         specifier: 3.1.3
         version: 3.1.3(@types/node@24.13.3)(tsx@4.19.3)
+
+  packages/mail-ai:
+    dependencies:
+      '@mailrovers/mail-application':
+        specifier: workspace:*
+        version: link:../mail-application
+    devDependencies:
+      '@mailrovers/mail-domain':
+        specifier: workspace:*
+        version: link:../mail-domain
+      '@types/node':
+        specifier: 22.15.3
+        version: 22.15.3
+      vitest:
+        specifier: 3.1.3
+        version: 3.1.3(@types/node@22.15.3)(tsx@4.19.3)
 
   packages/mail-application:
     dependencies:
