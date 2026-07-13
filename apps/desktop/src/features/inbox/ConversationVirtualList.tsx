@@ -23,7 +23,7 @@ export function ConversationVirtualList({
         const el = event.currentTarget
         if (el.scrollTop + el.clientHeight >= el.scrollHeight - 256) onEnd()
       }}
-      style={{ height: 'calc(100vh - 80px)', overflow: 'auto' }}
+      style={{ height: 'calc(100vh - 136px)', overflow: 'auto' }}
       aria-label="Inbox"
     >
       <div style={{ height: virtual.getTotalSize(), position: 'relative' }}>

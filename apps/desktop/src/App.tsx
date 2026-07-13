@@ -1,4 +1,5 @@
-import { InboxPage } from './features/inbox/InboxPage.js'
+import { MailboxGate } from './features/mailboxes/MailboxGate.js'
+
 export function App() {
-  return <InboxPage />
+  return <MailboxGate />
 }

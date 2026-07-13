@@ -1,5 +1,6 @@
-import type { MailApplication } from '@mailrovers/mail-application'
+import type { MailStore } from '@mailrovers/mail-application'
+
 export interface DatabaseHost {
-  readonly application: MailApplication
+  readonly store: MailStore
   close(): Promise<void>
 }

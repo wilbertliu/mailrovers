@@ -16,10 +16,3 @@ export type ConversationSummary = {
   version: number
 }
 export type ConversationPage = { items: ConversationSummary[]; nextCursor?: string | undefined }
-export type ApplicationError = {
-  code: string
-  message: string
-  retryable: boolean
-  requestId: string
-  userAction?: 'reauthenticate' | 'checkNetwork' | 'reviewSettings' | 'retry'
-}

@@ -525,7 +525,17 @@ A cached artifact is valid only when its source version matches the conversation
 - `value_json`
 - `updated_at`
 
-Secrets do not belong in this table unless their values are encrypted through `safeStorage` before persistence.
+Secrets do not belong in this table.
+
+#### `encrypted_secrets`
+
+- `mailbox_id`
+- `kind`
+- `ciphertext`
+- `created_at`
+- `updated_at`
+
+The desktop adapter encrypts secret values through Electron `safeStorage` before the store transaction writes the ciphertext. The table never contains plaintext. A unique constraint covers mailbox and secret kind.
 
 ### 11.2 Search index
 
@@ -564,9 +574,9 @@ MailRovers uses Google's OAuth installed-application flow:
 5. The refresh token is encrypted using Electron `safeStorage` before persistence.
 6. The decrypted token exists only for the duration required to refresh or call Gmail.
 
-No OAuth client secret is treated as confidential inside the distributed desktop application.
+No OAuth client secret is treated as confidential inside the distributed desktop application. Development and custom builds provide the public Desktop app client ID through `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID`; there is no client-secret setting.
 
-The Gmail scope is `https://www.googleapis.com/auth/gmail.modify`. Google's scope definition covers reading, composing, sending, labels, archive, and drafts while excluding immediate permanent deletion. MailRovers does not request the broader `https://mail.google.com/` scope.
+The Gmail scope is `https://www.googleapis.com/auth/gmail.modify`. Google's scope definition covers reading, composing, sending, labels, archive, and drafts while excluding immediate permanent deletion. MailRovers does not request the broader `https://mail.google.com/` scope. The authorization request also uses the OpenID Connect `openid` and `email` identity scopes. MailRovers stores the stable Google `sub` claim as `provider_account_id` and verifies that the identity email matches `users.getProfile`.
 
 OAuth verification and Google's restricted-scope requirements are release dependencies, not post-launch cleanup.
 
@@ -772,7 +782,7 @@ Electron `safeStorage` encrypts:
 - AI API keys.
 - Any future local database encryption key.
 
-Encrypted values may live in SQLite, but plaintext values must not.
+Encrypted values may live in SQLite, but plaintext values must not. The desktop adapter uses Electron's asynchronous `safeStorage` interface so Keychain access does not block the main event loop.
 
 On macOS, release validation must confirm that secrets use Keychain-backed encryption. Windows validation must confirm the expected DPAPI behavior. Linux support must explicitly detect whether a secure secret store is available and must not silently claim strong encryption when Electron reports a weaker backend.
 

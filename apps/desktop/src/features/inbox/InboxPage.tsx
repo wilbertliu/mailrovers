@@ -1,8 +1,9 @@
+import type { MailboxId } from '@mailrovers/mail-domain'
 import { ConversationVirtualList } from './ConversationVirtualList.js'
 import { useConversationPages } from './useConversationPages.js'
-import { mailboxId } from '@mailrovers/mail-domain'
-export function InboxPage() {
-  const query = useConversationPages(mailboxId('mailbox-fixture'))
+
+export function InboxPage({ mailbox }: { mailbox: MailboxId }) {
+  const query = useConversationPages(mailbox)
   const items = query.data?.pages.flatMap((page) => page.items) ?? []
   return (
     <main>

@@ -19,7 +19,7 @@ export function seedMailboxFixture(db: SqliteDatabase): FixtureManifest {
     db.prepare('INSERT OR IGNORE INTO mailboxes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
       FIXTURE_MAILBOX,
       FIXTURE_WORKSPACE,
-      'fixture',
+      'gmail',
       'fixture-account',
       'fixture@mailrovers.local',
       'Fixture',

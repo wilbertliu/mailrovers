@@ -5,34 +5,14 @@ import {
   conversationPageSchema,
   listConversationsInputSchema,
 } from './list-conversations.schema.js'
+import {
+  isAllowedRendererUrl,
+  isAuthorizedRequest,
+  type AuthorizedWebContents,
+} from './authorization.js'
 
-type AuthorizedWebContents = { mainFrame: unknown }
-type AuthorizationEvent = { sender: AuthorizedWebContents; senderFrame: { url: string } | null }
-
-export function isAllowedRendererUrl(actualUrl: string, expectedRendererUrl: string): boolean {
-  try {
-    const actual = new URL(actualUrl)
-    const expected = new URL(expectedRendererUrl)
-    return expected.protocol === 'file:'
-      ? actual.href === expected.href
-      : actual.origin === expected.origin
-  } catch {
-    return false
-  }
-}
-
-export function isAuthorizedListConversationsRequest(
-  event: AuthorizationEvent,
-  expectedWebContents: AuthorizedWebContents,
-  expectedRendererUrl: string,
-): boolean {
-  return (
-    event.sender === expectedWebContents &&
-    event.senderFrame !== null &&
-    event.senderFrame === event.sender.mainFrame &&
-    isAllowedRendererUrl(event.senderFrame.url, expectedRendererUrl)
-  )
-}
+export { isAllowedRendererUrl }
+export const isAuthorizedListConversationsRequest = isAuthorizedRequest
 
 export function registerListConversations(input: {
   application: MailApplication

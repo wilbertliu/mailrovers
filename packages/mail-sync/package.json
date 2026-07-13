@@ -1,0 +1,21 @@
+{
+  "name": "@mailrovers/mail-sync",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@mailrovers/mail-application": "workspace:*",
+    "@mailrovers/mail-contracts": "workspace:*",
+    "@mailrovers/mail-domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@mailrovers/mail-store-sqlite": "workspace:*",
+    "@types/node": "22.15.3",
+    "vitest": "3.1.3"
+  }
+}

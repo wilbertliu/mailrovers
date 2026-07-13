@@ -1,0 +1,21 @@
+{
+  "name": "@mailrovers/provider-gmail",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@mailrovers/mail-application": "workspace:*",
+    "@mailrovers/mail-domain": "workspace:*",
+    "sanitize-html": "2.17.6",
+    "zod": "3.24.3"
+  },
+  "devDependencies": {
+    "@types/sanitize-html": "2.16.1",
+    "vitest": "3.1.3"
+  }
+}

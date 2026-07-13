@@ -1,0 +1,142 @@
+import { setTimeout as delay } from 'node:timers/promises'
+import { tokenResponseSchema } from './schemas.js'
+import { defaultGmailOAuthEndpoints, type GmailOAuthEndpoints } from './oauth.js'
+
+export class GmailApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly reason?: string,
+  ) {
+    super(message)
+    this.name = 'GmailApiError'
+  }
+}
+
+export interface AccessTokenSource {
+  get(signal: AbortSignal): Promise<string>
+  invalidate(): void
+}
+
+export class RefreshTokenAccessTokenSource implements AccessTokenSource {
+  private cached?: { token: string; expiresAt: number } | undefined
+  private readonly fetchImplementation: typeof fetch
+  private readonly endpoints: GmailOAuthEndpoints
+
+  constructor(
+    private readonly input: {
+      clientId: string
+      getRefreshToken(): Promise<string>
+      fetch?: typeof fetch | undefined
+      endpoints?: GmailOAuthEndpoints | undefined
+      now?: (() => number) | undefined
+    },
+  ) {
+    this.fetchImplementation = input.fetch ?? fetch
+    this.endpoints = input.endpoints ?? defaultGmailOAuthEndpoints
+  }
+
+  async get(signal: AbortSignal): Promise<string> {
+    const now = this.input.now?.() ?? Date.now()
+    if (this.cached && this.cached.expiresAt - 60_000 > now) return this.cached.token
+    const refreshToken = await this.input.getRefreshToken()
+    const response = await this.fetchImplementation(this.endpoints.token, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: this.input.clientId,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+      signal,
+    })
+    if (!response.ok) throw new GmailApiError('Google token refresh failed', response.status)
+    const unknownBody: unknown = await response.json()
+    const token = tokenResponseSchema.parse(unknownBody)
+    this.cached = { token: token.access_token, expiresAt: now + token.expires_in * 1000 }
+    return token.access_token
+  }
+
+  invalidate(): void {
+    this.cached = undefined
+  }
+}
+
+type ErrorPayload = { error?: { errors?: Array<{ reason?: string }> } }
+
+async function errorReason(response: Response): Promise<string | undefined> {
+  try {
+    const value: unknown = await response.json()
+    if (typeof value !== 'object' || value === null || !('error' in value)) return undefined
+    const error = (value as ErrorPayload).error
+    return error?.errors?.[0]?.reason
+  } catch {
+    return undefined
+  }
+}
+
+function retryable(status: number, reason?: string): boolean {
+  return (
+    status === 429 ||
+    status >= 500 ||
+    (status === 403 && (reason === 'rateLimitExceeded' || reason === 'userRateLimitExceeded'))
+  )
+}
+
+export class GmailHttpClient {
+  private readonly fetchImplementation: typeof fetch
+  private readonly gmailApi: string
+
+  constructor(
+    private readonly input: {
+      accessTokens: AccessTokenSource
+      fetch?: typeof fetch | undefined
+      endpoints?: GmailOAuthEndpoints | undefined
+      random?: (() => number) | undefined
+      wait?: ((milliseconds: number, signal: AbortSignal) => Promise<void>) | undefined
+    },
+  ) {
+    this.fetchImplementation = input.fetch ?? fetch
+    this.gmailApi = (input.endpoints ?? defaultGmailOAuthEndpoints).gmailApi
+  }
+
+  async request(
+    path: string,
+    input: { signal: AbortSignal; allowNotFound?: boolean | undefined },
+  ): Promise<unknown> {
+    let refreshed = false
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      input.signal.throwIfAborted()
+      try {
+        const token = await this.input.accessTokens.get(input.signal)
+        const response = await this.fetchImplementation(`${this.gmailApi}${path}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: input.signal,
+        })
+        if (response.ok) return await response.json()
+        if (response.status === 404 && input.allowNotFound) return undefined
+        if (response.status === 401 && !refreshed) {
+          refreshed = true
+          this.input.accessTokens.invalidate()
+          continue
+        }
+        const reason = await errorReason(response)
+        if (!retryable(response.status, reason) || attempt === 4)
+          throw new GmailApiError(
+            `Gmail request failed with HTTP ${response.status}`,
+            response.status,
+            reason,
+          )
+      } catch (error) {
+        if (input.signal.aborted) throw error
+        if (error instanceof GmailApiError && !retryable(error.status, error.reason)) throw error
+        if (attempt === 4) throw error
+      }
+      const jitter = Math.floor((this.input.random?.() ?? Math.random()) * 1000)
+      const milliseconds = Math.min(2 ** attempt * 1000 + jitter, 32_000)
+      if (this.input.wait) await this.input.wait(milliseconds, input.signal)
+      else await delay(milliseconds, undefined, { signal: input.signal })
+    }
+    throw new Error('Gmail request retry loop ended unexpectedly')
+  }
+}

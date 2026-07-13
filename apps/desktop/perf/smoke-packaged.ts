@@ -31,6 +31,10 @@ type SmokeResult = {
       framesOver20Ms?: number
     }
   }
+  secretStorageProbe?: {
+    roundTrip?: boolean
+    ciphertextContainsPlaintext?: boolean
+  }
   packagedPerformance?: {
     idleDelayMs?: number
     workingSetMb?: number
@@ -133,8 +137,23 @@ async function runMode(input: {
       result.rendererProbe.requireType !== 'undefined'
     )
       throw new Error(`${input.mode} renderer exposed Node globals`)
-    if (JSON.stringify(result.rendererProbe.bridgeKeys) !== JSON.stringify(['listConversations']))
+    const expectedBridgeKeys = [
+      'listConversations',
+      'listMailboxes',
+      'connectGmail',
+      'disconnectMailbox',
+      'startSync',
+      'getSyncStatus',
+      'cancelOperation',
+      'subscribe',
+    ]
+    if (JSON.stringify(result.rendererProbe.bridgeKeys) !== JSON.stringify(expectedBridgeKeys))
       throw new Error(`${input.mode} renderer bridge exposed unexpected methods`)
+    if (
+      result.secretStorageProbe?.roundTrip !== true ||
+      result.secretStorageProbe.ciphertextContainsPlaintext !== false
+    )
+      throw new Error(`${input.mode} packaged safeStorage probe failed`)
     return result
   } catch (error) {
     const checkpoints = readCheckpoints(checkpointPath)

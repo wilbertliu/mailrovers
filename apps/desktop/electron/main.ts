@@ -1,12 +1,17 @@
+import type { SyncEngine } from '@mailrovers/mail-application'
+import { ElectronSafeStorageSecretSealer } from '@mailrovers/platform-electron'
 import { app, BrowserWindow, shell } from 'electron'
 import { appendFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { pathToFileURL } from 'node:url'
 import { performance } from 'node:perf_hooks'
+import { composeDesktopApplication } from './composition-root.js'
 import type { DatabaseHost } from './database/database-host.js'
 import { createMainDatabaseHost } from './database/main-database-host.js'
 import { createWorkerDatabaseHost } from './database/worker-database-host.js'
+import { DesktopEventBus } from './ipc/desktop-event-bus.js'
+import { registerMailApplication } from './ipc/register-mail-application.js'
 import {
   isAllowedRendererUrl,
   registerListConversations,
@@ -17,6 +22,8 @@ const smokeResultPath = process.env.MAILROVERS_SMOKE_RESULT_PATH
 const checkpointPath = process.env.MAILROVERS_SMOKE_CHECKPOINT_PATH
 const databaseHost = process.env.MAILROVERS_DATABASE_HOST === 'worker' ? 'worker' : 'main'
 let host: DatabaseHost | undefined
+let syncEngine: SyncEngine | undefined
+let shuttingDown = false
 
 function checkpoint(stage: string, detail?: string): void {
   stages[stage] = performance.now()
@@ -54,6 +61,13 @@ async function createWindow(): Promise<void> {
       ? await createWorkerDatabaseHost(dbPath)
       : createMainDatabaseHost(dbPath)
   checkpoint('databaseReady')
+  const eventBus = new DesktopEventBus()
+  const composed = composeDesktopApplication({
+    store: host.store,
+    publish: (event) => eventBus.publish(event),
+  })
+  const application = composed.application
+  syncEngine = composed.syncEngine
 
   const packagedRendererPath = path.join(
     __dirname,
@@ -72,6 +86,9 @@ async function createWindow(): Promise<void> {
     },
   })
   checkpoint('windowCreated')
+  const windowContents = window.webContents
+  eventBus.attach(windowContents)
+  windowContents.once('destroyed', () => eventBus.detach(windowContents))
 
   let initialNavigationPending = true
   window.webContents.on('will-navigate', (event, navigationUrl) => {
@@ -96,7 +113,12 @@ async function createWindow(): Promise<void> {
     return { action: 'deny' }
   })
   registerListConversations({
-    application: host.application,
+    application,
+    webContents: window.webContents,
+    rendererUrl,
+  })
+  registerMailApplication({
+    application,
     webContents: window.webContents,
     rendererUrl,
   })
@@ -105,9 +127,15 @@ async function createWindow(): Promise<void> {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) await window.loadURL(rendererUrl)
   else await window.loadFile(packagedRendererPath)
   checkpoint('windowLoaded')
+  await syncEngine.resumeInterrupted()
 
   if (!smokeResultPath) return
   const performanceRequested = process.env.MAILROVERS_PERFORMANCE === '1'
+  if (performanceRequested) {
+    app.focus({ steal: true })
+    window.show()
+    window.focus()
+  }
   checkpoint('beforeProbe')
   const rendererProbe: unknown = await window.webContents
     .executeJavaScript(`new Promise((resolve, reject) => {
@@ -143,9 +171,21 @@ async function createWindow(): Promise<void> {
   })`)
   checkpoint('inboxUsable')
 
+  const secretSealer = new ElectronSafeStorageSecretSealer()
+  const secretProbeValue = `mailrovers-smoke-${crypto.randomUUID()}`
+  const encryptedProbe = await secretSealer.seal(secretProbeValue)
+  const decryptedProbe = await secretSealer.unseal(encryptedProbe)
+  const secretStorageProbe = {
+    roundTrip: decryptedProbe === secretProbeValue,
+    ciphertextContainsPlaintext: Buffer.from(encryptedProbe).includes(secretProbeValue),
+  }
+  if (!secretStorageProbe.roundTrip || secretStorageProbe.ciphertextContainsPlaintext)
+    throw new Error('safeStorage packaged probe failed')
+
   let packagedPerformance: unknown
   if (performanceRequested) {
     checkpoint('scrollComplete')
+    app.hide()
     const idleDelayMs = Number.parseInt(process.env.MAILROVERS_IDLE_DELAY_MS ?? '60000', 10)
     if (!Number.isFinite(idleDelayMs) || idleDelayMs < 0)
       throw new Error('Invalid performance idle delay')
@@ -169,6 +209,7 @@ async function createWindow(): Promise<void> {
         databaseHost,
         stages,
         rendererProbe,
+        secretStorageProbe,
         ...(packagedPerformance ? { packagedPerformance } : {}),
       },
       null,
@@ -188,6 +229,9 @@ app
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
-app.on('before-quit', () => {
-  void host?.close()
+app.on('before-quit', (event) => {
+  if (shuttingDown) return
+  event.preventDefault()
+  shuttingDown = true
+  void Promise.all([syncEngine?.shutdown(), host?.close()]).finally(() => app.exit())
 })

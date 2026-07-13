@@ -43,10 +43,15 @@ There is no MailRovers application server in the initial release. See [`docs/arc
 
 ### Run locally
 
+Create a Google Cloud Desktop app OAuth client with the Gmail API enabled, then provide its public client ID. Desktop OAuth clients cannot keep a client secret, and MailRovers does not use one.
+
 ```sh
 pnpm install
-pnpm --filter @mailrovers/desktop dev
+MAILROVERS_GOOGLE_OAUTH_CLIENT_ID="your-client-id.apps.googleusercontent.com" \
+  pnpm --filter @mailrovers/desktop dev
 ```
+
+Without `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID`, the application still opens local mail, but Gmail connection returns a configuration error. OAuth refresh tokens are encrypted through Electron `safeStorage` before SQLite persistence. They are never available through the renderer bridge.
 
 ### Check the project
 
@@ -74,6 +79,9 @@ packages/mail-domain/         Provider-neutral mail domain
 packages/mail-contracts/      Transport-neutral contracts
 packages/mail-application/    Application facade and use cases
 packages/mail-store-sqlite/   Local SQLite storage
+packages/provider-gmail/      Gmail OAuth, REST access, and payload translation
+packages/mail-sync/           Resumable import and history reconciliation
+packages/platform-electron/   Electron safeStorage adapter
 packages/test-support/        Fixtures and test helpers
 docs/                         Architecture and engineering notes
 ```
@@ -93,4 +101,4 @@ The initial release synchronizes only while the desktop application is running.
 
 ## Status
 
-The project is currently implementing its first production milestones. Gmail connection, synchronization, and AI workflows are still under development.
+The project has an implementation of Gmail connection and resumable local import. It still requires testing with the production OAuth client and packaged macOS release validation. Mailbox commands, ongoing polling, full email workflows, and AI remain under development.
