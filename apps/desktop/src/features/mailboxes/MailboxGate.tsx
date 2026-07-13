@@ -3,7 +3,7 @@ import type { MailboxId, OperationId } from '@mailrovers/mail-domain'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
 import { desktopBridge } from '../../desktop-bridge.js'
-import { InboxPage } from '../inbox/InboxPage.js'
+import { MailWorkspace } from './MailWorkspace.js'
 
 function LoadingPage({ message }: { message: string }) {
   return (
@@ -95,6 +95,7 @@ function progressLabel(status: SyncStatus | undefined, mailbox: MailboxSummary):
     case 'importing_drafts':
       return 'Importing drafts'
     case 'reconciling_history':
+    case 'full_reconciliation':
     case 'reconciling':
       return 'Checking for changes during import'
     case 'paused':
@@ -309,7 +310,7 @@ export function MailboxGate() {
           Add Gmail account
         </button>
       </nav>
-      <InboxPage mailbox={mailbox.id} />
+      <MailWorkspace mailboxId={mailbox.id} />
     </>
   )
 }

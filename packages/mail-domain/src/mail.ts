@@ -23,6 +23,7 @@ export type ImportState =
   | 'importing_messages'
   | 'importing_drafts'
   | 'reconciling_history'
+  | 'full_reconciliation'
   | 'paused'
   | 'complete'
   | 'failed'
@@ -129,5 +130,10 @@ export type SyncCheckpoint = {
   importedDraftCount: number
   importTotalEstimate?: number | undefined
   lastReconciledAt?: UtcTimestamp | undefined
+  retryAt?: UtcTimestamp | undefined
+  lastErrorCode?: string | undefined
+  fullReconciliationGeneration?: string | undefined
+  fullReconciliationPageToken?: string | undefined
+  syncFailureCount?: number | undefined
   updatedAt: UtcTimestamp
 }

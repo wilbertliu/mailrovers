@@ -72,6 +72,14 @@ export function parseGmailMessage(value: unknown): GmailMessage {
   }
 }
 
+export const gmailThreadSchema = z
+  .object({
+    id: z.string().min(1),
+    historyId: z.string().optional(),
+    messages: z.array(gmailMessageSchema).default([]),
+  })
+  .passthrough()
+
 export const listMessagesSchema = z
   .object({
     messages: z.array(z.object({ id: z.string(), threadId: z.string() }).passthrough()).default([]),

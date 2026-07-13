@@ -1,16 +1,32 @@
 import type { MailStore } from '@mailrovers/mail-application'
 import type {
+  CommandReceipt,
+  ConversationDetail,
   ConversationPage,
   ConversationSummary,
+  Draft,
+  DraftCommand,
+  DurableCommand,
+  GetConversationInput,
+  LabelSummary,
   ListConversationsInput,
   MailboxSummary,
+  SearchHit,
+  SearchMailInput,
+  SearchPage,
 } from '@mailrovers/mail-contracts'
 import {
+  attachmentId,
+  commandId,
   conversationId,
+  draftId,
+  labelId,
   mailboxId,
+  messageId,
   utcTimestamp,
   workspaceId,
   type ImportState,
+  type MailAddress,
   type Mailbox,
   type MailboxId,
   type ProviderChangeBatch,
@@ -18,7 +34,8 @@ import {
 } from '@mailrovers/mail-domain'
 import type { SqliteDatabase } from './open-database.js'
 
-type Cursor = { v: 1; t: string; id: string }
+type Cursor = { v: 1; t: string; id: string; f?: string | undefined }
+type SearchCursor = { v: 1; r: number; rowid: number; f: string }
 
 type Row = Record<string, unknown>
 
@@ -42,15 +59,171 @@ function decodeCursor(value: string): Cursor {
       'id' in decoded &&
       decoded.v === 1 &&
       typeof decoded.t === 'string' &&
-      typeof decoded.id === 'string'
+      typeof decoded.id === 'string' &&
+      (!('f' in decoded) || typeof decoded.f === 'string')
     )
-      return { v: 1, t: decoded.t, id: decoded.id }
+      return {
+        v: 1,
+        t: decoded.t,
+        id: decoded.id,
+        ...('f' in decoded && typeof decoded.f === 'string' ? { f: decoded.f } : {}),
+      }
   } catch {}
   throw new Error('Invalid conversation cursor')
 }
 
 function encodeCursor(value: Cursor): string {
   return Buffer.from(JSON.stringify(value)).toString('base64url')
+}
+
+function decodeSearchCursor(value: string): SearchCursor {
+  try {
+    const decoded: unknown = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'))
+    if (
+      typeof decoded === 'object' &&
+      decoded !== null &&
+      'v' in decoded &&
+      'r' in decoded &&
+      'rowid' in decoded &&
+      'f' in decoded &&
+      decoded.v === 1 &&
+      typeof decoded.r === 'number' &&
+      typeof decoded.rowid === 'number' &&
+      typeof decoded.f === 'string'
+    )
+      return { v: 1, r: decoded.r, rowid: decoded.rowid, f: decoded.f }
+  } catch {}
+  throw new Error('Invalid search cursor')
+}
+
+function encodeSearchCursor(value: SearchCursor): string {
+  return Buffer.from(JSON.stringify(value)).toString('base64url')
+}
+
+function parseAddresses(value: unknown): MailAddress[] {
+  if (typeof value !== 'string') return []
+  const parsed: unknown = JSON.parse(value)
+  if (!Array.isArray(parsed)) return []
+  return parsed.flatMap((entry): MailAddress[] => {
+    if (typeof entry !== 'object' || entry === null || !('address' in entry)) return []
+    if (typeof entry.address !== 'string') return []
+    return [
+      {
+        address: entry.address,
+        ...('name' in entry && typeof entry.name === 'string' ? { name: entry.name } : {}),
+      },
+    ]
+  })
+}
+
+function parseAddress(value: unknown): MailAddress {
+  if (typeof value !== 'string') return { address: 'unknown@invalid' }
+  const parsed: unknown = JSON.parse(value)
+  if (typeof parsed !== 'object' || parsed === null || !('address' in parsed))
+    return { address: 'unknown@invalid' }
+  if (typeof parsed.address !== 'string') return { address: 'unknown@invalid' }
+  return {
+    address: parsed.address,
+    ...('name' in parsed && typeof parsed.name === 'string' ? { name: parsed.name } : {}),
+  }
+}
+
+function commandEntity(command: DurableCommand): string {
+  switch (command.kind) {
+    case 'set-thread-archived':
+    case 'set-thread-read':
+    case 'set-thread-label':
+      return `conversation:${command.conversationId}`
+    case 'set-message-starred':
+      return `message:${command.messageId}`
+    case 'sync-draft':
+    case 'send-draft':
+      return `draft:${command.draftId}`
+  }
+}
+
+function parseMailCommand(value: unknown): DurableCommand {
+  if (typeof value !== 'object' || value === null || !('kind' in value))
+    throw new Error('Invalid stored command')
+  const kind = value.kind
+  if (kind === 'set-thread-archived' && 'conversationId' in value && 'archived' in value)
+    return {
+      kind,
+      conversationId: conversationId(String(value.conversationId)),
+      archived: Boolean(value.archived),
+    }
+  if (kind === 'set-thread-read' && 'conversationId' in value && 'read' in value)
+    return {
+      kind,
+      conversationId: conversationId(String(value.conversationId)),
+      read: Boolean(value.read),
+    }
+  if (kind === 'set-message-starred' && 'messageId' in value && 'starred' in value)
+    return { kind, messageId: messageId(String(value.messageId)), starred: Boolean(value.starred) }
+  if (kind === 'sync-draft' && 'draftId' in value && 'version' in value)
+    return { kind, draftId: draftId(String(value.draftId)), version: Number(value.version) }
+  if (kind === 'send-draft' && 'draftId' in value && 'version' in value)
+    return { kind, draftId: draftId(String(value.draftId)), version: Number(value.version) }
+  if (
+    kind === 'set-thread-label' &&
+    'conversationId' in value &&
+    'labelId' in value &&
+    'applied' in value
+  )
+    return {
+      kind,
+      conversationId: conversationId(String(value.conversationId)),
+      labelId: labelId(String(value.labelId)),
+      applied: Boolean(value.applied),
+    }
+  throw new Error('Invalid stored command')
+}
+
+function mapDraft(value: unknown): Draft {
+  const result = row(value)
+  const providerDraftId = optionalString(result.provider_draft_id)
+  const conversation = optionalString(result.conversation_id)
+  const replyTo = optionalString(result.reply_to_message_id)
+  const htmlBody = optionalString(result.html_body)
+  return {
+    id: draftId(String(result.id)),
+    mailboxId: mailboxId(String(result.mailbox_id)),
+    ...(conversation === undefined ? {} : { conversationId: conversationId(conversation) }),
+    ...(replyTo === undefined ? {} : { replyToMessageId: messageId(replyTo) }),
+    ...(providerDraftId === undefined ? {} : { providerDraftId }),
+    to: parseAddresses(result.to_json),
+    cc: parseAddresses(result.cc_json),
+    bcc: parseAddresses(result.bcc_json),
+    subject: String(result.subject),
+    textBody: String(result.text_body),
+    ...(htmlBody === undefined ? {} : { htmlBody }),
+    version: Number(result.version),
+    syncState: String(result.sync_state) as Draft['syncState'],
+    updatedAt: utcTimestamp(String(result.updated_at)),
+  }
+}
+
+function ftsQuery(value: string): string {
+  return value
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part.length > 0)
+    .map((part) => `"${part.replaceAll('"', '""')}"`)
+    .join(' AND ')
+}
+
+function mapCommand(value: unknown): CommandReceipt {
+  const result = row(value)
+  const command: unknown = JSON.parse(String(result.payload_json))
+  const nextAttemptAt = optionalString(result.next_attempt_at)
+  return {
+    id: commandId(String(result.id)),
+    mailboxId: mailboxId(String(result.mailbox_id)),
+    state: String(result.state) as CommandReceipt['state'],
+    command: parseMailCommand(command),
+    createdAt: utcTimestamp(String(result.created_at)),
+    ...(nextAttemptAt === undefined ? {} : { nextAttemptAt: utcTimestamp(nextAttemptAt) }),
+  }
 }
 
 function mapMailbox(value: unknown): Mailbox {
@@ -112,12 +285,49 @@ function mapCheckpoint(value: unknown): SyncCheckpoint {
     ...(optionalTimestamp('last_reconciled_at') === undefined
       ? {}
       : { lastReconciledAt: optionalTimestamp('last_reconciled_at') }),
+    ...(optionalTimestamp('retry_at') === undefined
+      ? {}
+      : { retryAt: optionalTimestamp('retry_at') }),
+    ...(optionalString(result.last_error_code) === undefined
+      ? {}
+      : { lastErrorCode: String(result.last_error_code) }),
+    ...(optionalString(result.full_reconciliation_generation) === undefined
+      ? {}
+      : { fullReconciliationGeneration: String(result.full_reconciliation_generation) }),
+    ...(optionalString(result.full_reconciliation_page_token) === undefined
+      ? {}
+      : { fullReconciliationPageToken: String(result.full_reconciliation_page_token) }),
+    syncFailureCount: Number(result.sync_failure_count ?? 0),
     updatedAt: utcTimestamp(String(result.updated_at)),
   }
 }
 
 function placeholderLabelId(mailbox: MailboxId, providerLabelId: string): string {
   return `gmail:${mailbox}:label:${providerLabelId}`
+}
+
+function indexMessage(db: SqliteDatabase, id: string): void {
+  const value = db
+    .prepare(`SELECT m.rowid AS source_rowid,m.id,m.mailbox_id,m.conversation_id,m.subject,m.sender_json,m.recipients_json,
+      COALESCE(m.text_body,'') AS body,
+      COALESCE(group_concat(a.filename,' '),'') AS attachment_names
+      FROM messages m LEFT JOIN attachments a ON a.message_id=m.id WHERE m.id=? GROUP BY m.id`)
+    .get(id)
+  if (value === undefined) return
+  const result = row(value)
+  db.prepare('DELETE FROM mail_fts WHERE rowid=?').run(result.source_rowid)
+  db.prepare(`INSERT INTO mail_fts
+    (rowid,message_id,mailbox_id,conversation_id,subject,participants,body,attachment_names)
+    VALUES (?,?,?,?,?,?,?,?)`).run(
+    result.source_rowid,
+    result.id,
+    result.mailbox_id,
+    result.conversation_id,
+    result.subject,
+    `${String(result.sender_json)} ${String(result.recipients_json)}`,
+    result.body,
+    result.attachment_names,
+  )
 }
 
 function applyChanges(db: SqliteDatabase, mailbox: MailboxId, batch: ProviderChangeBatch): void {
@@ -224,11 +434,12 @@ function applyChanges(db: SqliteDatabase, mailbox: MailboxId, batch: ProviderCha
         attachment.contentId ?? null,
         attachment.disposition ?? null,
       )
+    indexMessage(db, message.id)
     affectedConversations.add(message.conversationId)
   }
 
   const findMessage = db.prepare(
-    'SELECT id,conversation_id FROM messages WHERE mailbox_id=? AND provider_message_id=?',
+    'SELECT rowid,id,conversation_id FROM messages WHERE mailbox_id=? AND provider_message_id=?',
   )
   for (const providerMessageId of batch.deletedProviderMessageIds ?? []) {
     const found = findMessage.get(mailbox, providerMessageId)
@@ -242,12 +453,13 @@ function applyChanges(db: SqliteDatabase, mailbox: MailboxId, batch: ProviderCha
     )
     deleteAttachments.run(id)
     deleteMessageLabels.run(id)
+    db.prepare('DELETE FROM mail_fts WHERE rowid=?').run(message.rowid)
     db.prepare('DELETE FROM messages WHERE id=?').run(id)
   }
 
   const upsertDraft = db.prepare(`INSERT INTO drafts
-    (id,workspace_id,mailbox_id,conversation_id,provider_draft_id,provider_message_id,to_json,cc_json,bcc_json,subject,text_body,html_body,version,sync_state,created_at,updated_at)
-    VALUES (@id,@workspaceId,@mailboxId,@conversationId,@providerDraftId,@providerMessageId,@toJson,@ccJson,@bccJson,@subject,@textBody,@htmlBody,1,'imported',@updatedAt,@updatedAt)
+    (id,workspace_id,mailbox_id,conversation_id,provider_draft_id,provider_message_id,internet_message_id,to_json,cc_json,bcc_json,subject,text_body,html_body,version,sync_state,created_at,updated_at)
+    VALUES (@id,@workspaceId,@mailboxId,@conversationId,@providerDraftId,@providerMessageId,@internetMessageId,@toJson,@ccJson,@bccJson,@subject,@textBody,@htmlBody,1,'synced',@updatedAt,@updatedAt)
     ON CONFLICT(mailbox_id,provider_draft_id) DO UPDATE SET
       conversation_id=excluded.conversation_id,provider_message_id=excluded.provider_message_id,
       to_json=excluded.to_json,cc_json=excluded.cc_json,bcc_json=excluded.bcc_json,
@@ -261,6 +473,7 @@ function applyChanges(db: SqliteDatabase, mailbox: MailboxId, batch: ProviderCha
       conversationId: draft.conversationId ?? null,
       providerDraftId: draft.providerDraftId,
       providerMessageId: draft.providerMessageId,
+      internetMessageId: `<${draft.id}@mailrovers.local>`,
       toJson: JSON.stringify(draft.to),
       ccJson: JSON.stringify(draft.cc),
       bccJson: JSON.stringify(draft.bcc),
@@ -324,19 +537,27 @@ export class SqliteMailStore implements MailStore {
     const limit = input.limit ?? 50
     if (!Number.isInteger(limit) || limit < 1 || limit > 200)
       throw new Error('limit must be 1 through 200')
+    const filter = `${input.mailboxId}|${input.labelId ?? ''}|${input.unreadOnly === true ? '1' : '0'}`
     const cursor = input.cursor === undefined ? undefined : decodeCursor(input.cursor)
-    const rows =
-      cursor === undefined
-        ? this.db
-            .prepare(
-              'SELECT * FROM conversations WHERE mailbox_id = ? ORDER BY last_message_at DESC, id DESC LIMIT ?',
-            )
-            .all(input.mailboxId, limit + 1)
-        : this.db
-            .prepare(
-              'SELECT * FROM conversations WHERE mailbox_id = ? AND (last_message_at < ? OR (last_message_at = ? AND id < ?)) ORDER BY last_message_at DESC, id DESC LIMIT ?',
-            )
-            .all(input.mailboxId, cursor.t, cursor.t, cursor.id, limit + 1)
+    if (cursor?.f !== undefined && cursor.f !== filter)
+      throw new Error('Conversation cursor does not match the current filter')
+    const conditions = ['c.mailbox_id=?']
+    const parameters: Array<string | number> = [input.mailboxId]
+    if (input.labelId !== undefined) {
+      conditions.push(`EXISTS (SELECT 1 FROM messages lm JOIN message_labels lml ON lml.message_id=lm.id
+        WHERE lm.conversation_id=c.id AND lml.label_id=?)`)
+      parameters.push(input.labelId)
+    }
+    if (input.unreadOnly === true) conditions.push('c.unread_count>0')
+    if (cursor !== undefined) {
+      conditions.push('(c.last_message_at < ? OR (c.last_message_at = ? AND c.id < ?))')
+      parameters.push(cursor.t, cursor.t, cursor.id)
+    }
+    parameters.push(limit + 1)
+    const rows = this.db
+      .prepare(`SELECT c.* FROM conversations c WHERE ${conditions.join(' AND ')}
+        ORDER BY c.last_message_at DESC,c.id DESC LIMIT ?`)
+      .all(...parameters)
     const hasNext = rows.length > limit
     const items = rows.slice(0, limit).map((value): ConversationSummary => {
       const result = row(value)
@@ -356,9 +577,213 @@ export class SqliteMailStore implements MailStore {
     return {
       items,
       ...(hasNext && last
-        ? { nextCursor: encodeCursor({ v: 1, t: last.lastMessageAt, id: last.id }) }
+        ? { nextCursor: encodeCursor({ v: 1, t: last.lastMessageAt, id: last.id, f: filter }) }
         : {}),
     }
+  }
+
+  async listLabels(id: MailboxId): Promise<LabelSummary[]> {
+    return this.db
+      .prepare(`SELECT l.*,
+        count(DISTINCT m.conversation_id) AS conversation_count,
+        count(DISTINCT CASE WHEN ul.id IS NOT NULL THEN m.conversation_id END) AS unread_count
+        FROM labels l
+        LEFT JOIN message_labels ml ON ml.label_id=l.id
+        LEFT JOIN messages m ON m.id=ml.message_id
+        LEFT JOIN message_labels uml ON uml.message_id=m.id
+        LEFT JOIN labels ul ON ul.id=uml.label_id AND ul.provider_label_id='UNREAD'
+        WHERE l.mailbox_id=?
+        GROUP BY l.id ORDER BY CASE l.provider_label_id
+          WHEN 'INBOX' THEN 0 WHEN 'STARRED' THEN 1 WHEN 'SENT' THEN 2 WHEN 'DRAFT' THEN 3 ELSE 4 END,
+          l.name COLLATE NOCASE`)
+      .all(id)
+      .map((value): LabelSummary => {
+        const result = row(value)
+        const colorValue = optionalString(result.color_json)
+        const color: unknown = colorValue === undefined ? undefined : JSON.parse(colorValue)
+        return {
+          id: labelId(String(result.id)),
+          mailboxId: mailboxId(String(result.mailbox_id)),
+          providerLabelId: String(result.provider_label_id),
+          name: String(result.name),
+          kind: String(result.kind) === 'user' ? 'user' : 'system',
+          ...(typeof color === 'object' && color !== null
+            ? { color: color as LabelSummary['color'] }
+            : {}),
+          conversationCount: Number(result.conversation_count),
+          unreadCount: Number(result.unread_count),
+        }
+      })
+  }
+
+  async getConversation(input: GetConversationInput): Promise<ConversationDetail | undefined> {
+    const conversationValue = this.db
+      .prepare('SELECT * FROM conversations WHERE id=? AND mailbox_id=?')
+      .get(input.conversationId, input.mailboxId)
+    if (conversationValue === undefined) return undefined
+    const conversation = row(conversationValue)
+    const messageRows = this.db
+      .prepare(`SELECT m.* FROM messages m WHERE m.conversation_id=?
+        ORDER BY m.received_at,m.id`)
+      .all(input.conversationId)
+    const labels = this.db.prepare(
+      `SELECT ml.label_id FROM message_labels ml WHERE ml.message_id=?`,
+    )
+    const attachments = this.db.prepare(`SELECT * FROM attachments WHERE message_id=? ORDER BY id`)
+    return {
+      id: conversationId(String(conversation.id)),
+      mailboxId: mailboxId(String(conversation.mailbox_id)),
+      subject: String(conversation.subject),
+      version: Number(conversation.version),
+      messages: messageRows.map((value) => {
+        const message = row(value)
+        const recipientsValue: unknown = JSON.parse(String(message.recipients_json))
+        const recipients =
+          typeof recipientsValue === 'object' && recipientsValue !== null
+            ? recipientsValue
+            : { to: [], cc: [], bcc: [] }
+        const to = 'to' in recipients ? parseAddresses(JSON.stringify(recipients.to)) : []
+        const cc = 'cc' in recipients ? parseAddresses(JSON.stringify(recipients.cc)) : []
+        const bcc = 'bcc' in recipients ? parseAddresses(JSON.stringify(recipients.bcc)) : []
+        const sentAt = optionalString(message.sent_at)
+        const textBody = optionalString(message.text_body)
+        const htmlBody = optionalString(message.sanitized_html_body)
+        return {
+          id: messageId(String(message.id)),
+          conversationId: conversationId(String(message.conversation_id)),
+          sender: parseAddress(message.sender_json),
+          recipients: { to, cc, bcc },
+          subject: String(message.subject),
+          ...(sentAt === undefined ? {} : { sentAt: utcTimestamp(sentAt) }),
+          receivedAt: utcTimestamp(String(message.received_at)),
+          ...(textBody === undefined ? {} : { textBody }),
+          ...(htmlBody === undefined ? {} : { sanitizedHtmlBody: htmlBody }),
+          isDraft: Number(message.is_draft) === 1,
+          labelIds: labels.all(message.id).map((label) => labelId(String(row(label).label_id))),
+          attachments: attachments.all(message.id).map((attachment) => {
+            const result = row(attachment)
+            const contentId = optionalString(result.content_id)
+            return {
+              id: attachmentId(String(result.id)),
+              filename: String(result.filename),
+              mediaType: String(result.media_type),
+              sizeBytes: Number(result.size_bytes),
+              ...(contentId === undefined ? {} : { contentId }),
+            }
+          }),
+        }
+      }),
+    }
+  }
+
+  async searchMail(input: SearchMailInput): Promise<SearchPage> {
+    const limit = input.limit ?? 50
+    if (!Number.isInteger(limit) || limit < 1 || limit > 200)
+      throw new Error('limit must be 1 through 200')
+    const query = ftsQuery(input.query)
+    const stateValue = this.db
+      .prepare('SELECT state FROM search_index_state WHERE mailbox_id=?')
+      .get(input.mailboxId)
+    const indexing = stateValue === undefined || String(row(stateValue).state) !== 'complete'
+    if (query.length === 0) return { items: [], indexing }
+    const filter = `${input.mailboxId}|${input.labelId ?? ''}|${input.after ?? ''}|${input.before ?? ''}|${query}`
+    const cursor = input.cursor === undefined ? undefined : decodeSearchCursor(input.cursor)
+    if (cursor !== undefined && cursor.f !== filter)
+      throw new Error('Search cursor does not match the current filter')
+    const conditions = ['mail_fts MATCH ?', 'f.mailbox_id=?']
+    const parameters: Array<string | number> = [query, input.mailboxId]
+    if (input.labelId !== undefined) {
+      conditions.push(
+        'EXISTS (SELECT 1 FROM message_labels sml WHERE sml.message_id=m.id AND sml.label_id=?)',
+      )
+      parameters.push(input.labelId)
+    }
+    if (input.after !== undefined) {
+      conditions.push('m.received_at>=?')
+      parameters.push(input.after)
+    }
+    if (input.before !== undefined) {
+      conditions.push('m.received_at<?')
+      parameters.push(input.before)
+    }
+    if (cursor !== undefined) {
+      conditions.push('(bm25(mail_fts)>? OR (bm25(mail_fts)=? AND f.rowid>?))')
+      parameters.push(cursor.r, cursor.r, cursor.rowid)
+    }
+    parameters.push(limit + 1)
+    const values = this.db
+      .prepare(`SELECT f.rowid,bm25(mail_fts) AS rank,
+        snippet(mail_fts,5,'‹','›','…',24) AS excerpt,
+        m.id,m.conversation_id,m.subject,m.sender_json,m.received_at
+        FROM mail_fts f JOIN messages m ON m.id=f.message_id
+        WHERE ${conditions.join(' AND ')} ORDER BY rank,f.rowid LIMIT ?`)
+      .all(...parameters)
+    const hasNext = values.length > limit
+    const items = values.slice(0, limit).map((value): SearchHit => {
+      const result = row(value)
+      return {
+        messageId: messageId(String(result.id)),
+        conversationId: conversationId(String(result.conversation_id)),
+        subject: String(result.subject),
+        sender: parseAddress(result.sender_json),
+        receivedAt: utcTimestamp(String(result.received_at)),
+        excerpt: String(result.excerpt),
+        rank: Number(result.rank),
+      }
+    })
+    const finalValue = values.at(Math.min(values.length, limit) - 1)
+    const finalRow = finalValue === undefined ? undefined : row(finalValue)
+    return {
+      items,
+      ...(hasNext && finalRow !== undefined
+        ? {
+            nextCursor: encodeSearchCursor({
+              v: 1,
+              r: Number(finalRow.rank),
+              rowid: Number(finalRow.rowid),
+              f: filter,
+            }),
+          }
+        : {}),
+      indexing,
+    }
+  }
+
+  async backfillSearchIndex(input: {
+    mailboxId: MailboxId
+    limit: number
+    updatedAt: ReturnType<typeof utcTimestamp>
+  }): Promise<boolean> {
+    const currentValue = this.db
+      .prepare('SELECT last_message_rowid FROM search_index_state WHERE mailbox_id=?')
+      .get(input.mailboxId)
+    const current = currentValue === undefined ? 0 : Number(row(currentValue).last_message_rowid)
+    const messages = this.db
+      .prepare(
+        'SELECT rowid,id FROM messages WHERE mailbox_id=? AND rowid>? ORDER BY rowid LIMIT ?',
+      )
+      .all(input.mailboxId, current, input.limit)
+    this.db.transaction(() => {
+      for (const value of messages) indexMessage(this.db, String(row(value).id))
+      const last = messages.at(-1)
+      const lastRowid = last === undefined ? current : Number(row(last).rowid)
+      const hasMore =
+        this.db
+          .prepare('SELECT 1 FROM messages WHERE mailbox_id=? AND rowid>? LIMIT 1')
+          .get(input.mailboxId, lastRowid) !== undefined
+      this.db
+        .prepare(`INSERT INTO search_index_state(mailbox_id,last_message_rowid,state,updated_at)
+          VALUES (?,?,?,?) ON CONFLICT(mailbox_id) DO UPDATE SET
+          last_message_rowid=excluded.last_message_rowid,state=excluded.state,updated_at=excluded.updated_at`)
+        .run(input.mailboxId, lastRowid, hasMore ? 'indexing' : 'complete', input.updatedAt)
+    })()
+    const last = messages.at(-1)
+    if (last === undefined) return true
+    return (
+      this.db
+        .prepare('SELECT 1 FROM messages WHERE mailbox_id=? AND rowid>? LIMIT 1')
+        .get(input.mailboxId, Number(row(last).rowid)) === undefined
+    )
   }
 
   async listMailboxes(): Promise<MailboxSummary[]> {
@@ -441,6 +866,10 @@ export class SqliteMailStore implements MailStore {
           input.checkpoint.updatedAt,
         )
       this.db
+        .prepare(`INSERT OR IGNORE INTO search_index_state(mailbox_id,last_message_rowid,state,updated_at)
+          VALUES (?,0,'pending',?)`)
+        .run(input.mailbox.id, input.mailbox.updatedAt)
+      this.db
         .prepare(`INSERT INTO encrypted_secrets(mailbox_id,kind,ciphertext,created_at,updated_at)
           VALUES (?,'gmail_refresh_token',?,?,?)
           ON CONFLICT(mailbox_id,kind) DO UPDATE SET ciphertext=excluded.ciphertext,updated_at=excluded.updated_at`)
@@ -474,9 +903,15 @@ export class SqliteMailStore implements MailStore {
         .run(input.mailboxId)
       this.db.prepare('DELETE FROM draft_reconciliation WHERE mailbox_id=?').run(input.mailboxId)
       this.db.prepare('DELETE FROM drafts WHERE mailbox_id=?').run(input.mailboxId)
+      this.db.prepare('DELETE FROM mail_fts WHERE mailbox_id=?').run(input.mailboxId)
       this.db.prepare('DELETE FROM messages WHERE mailbox_id=?').run(input.mailboxId)
       this.db.prepare('DELETE FROM conversations WHERE mailbox_id=?').run(input.mailboxId)
       this.db.prepare('DELETE FROM labels WHERE mailbox_id=?').run(input.mailboxId)
+      this.db.prepare('DELETE FROM command_outbox WHERE mailbox_id=?').run(input.mailboxId)
+      this.db
+        .prepare('DELETE FROM full_reconciliation_seen WHERE mailbox_id=?')
+        .run(input.mailboxId)
+      this.db.prepare('DELETE FROM search_index_state WHERE mailbox_id=?').run(input.mailboxId)
       this.db.prepare('DELETE FROM sync_checkpoints WHERE mailbox_id=?').run(input.mailboxId)
       this.db.prepare('DELETE FROM mailboxes WHERE id=?').run(input.mailboxId)
     })()
@@ -497,6 +932,360 @@ export class SqliteMailStore implements MailStore {
   async getSyncCheckpoint(id: MailboxId): Promise<SyncCheckpoint | undefined> {
     const value = this.db.prepare('SELECT * FROM sync_checkpoints WHERE mailbox_id=?').get(id)
     return value === undefined ? undefined : mapCheckpoint(value)
+  }
+
+  async enqueueCommand(input: Parameters<MailStore['enqueueCommand']>[0]): Promise<CommandReceipt> {
+    const existing = this.db
+      .prepare('SELECT * FROM command_outbox WHERE mailbox_id=? AND idempotency_key=?')
+      .get(input.mailboxId, input.idempotencyKey)
+    if (existing !== undefined) return mapCommand(existing)
+    this.db
+      .prepare(`INSERT INTO command_outbox
+        (id,mailbox_id,idempotency_key,command_kind,entity_key,payload_json,state,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,'pending',?,?)`)
+      .run(
+        input.id,
+        input.mailboxId,
+        input.idempotencyKey,
+        input.command.kind,
+        commandEntity(input.command),
+        JSON.stringify(input.command),
+        input.createdAt,
+        input.createdAt,
+      )
+    const stored = this.db.prepare('SELECT * FROM command_outbox WHERE id=?').get(input.id)
+    if (stored === undefined) throw new Error('Failed to persist command')
+    return mapCommand(stored)
+  }
+
+  async enqueueDraftCommand(
+    input: Parameters<MailStore['enqueueDraftCommand']>[0],
+  ): Promise<CommandReceipt> {
+    const existing = this.db
+      .prepare('SELECT * FROM command_outbox WHERE mailbox_id=? AND idempotency_key=?')
+      .get(input.mailboxId, input.idempotencyKey)
+    if (existing !== undefined) return mapCommand(existing)
+    this.db
+      .prepare(`INSERT INTO command_outbox
+        (id,mailbox_id,idempotency_key,command_kind,entity_key,payload_json,state,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,'pending',?,?)`)
+      .run(
+        input.id,
+        input.mailboxId,
+        input.idempotencyKey,
+        input.command.kind,
+        commandEntity(input.command),
+        JSON.stringify(input.command),
+        input.createdAt,
+        input.createdAt,
+      )
+    const stored = this.db.prepare('SELECT * FROM command_outbox WHERE id=?').get(input.id)
+    if (stored === undefined) throw new Error('Failed to persist draft command')
+    return mapCommand(stored)
+  }
+
+  async claimNextCommand(
+    input: Parameters<MailStore['claimNextCommand']>[0],
+  ): Promise<Awaited<ReturnType<MailStore['claimNextCommand']>>> {
+    return this.db.transaction(() => {
+      this.db
+        .prepare(`UPDATE command_outbox SET state='retry_wait',claimed_at=NULL,lease_expires_at=NULL,
+          updated_at=? WHERE state='running' AND lease_expires_at<=?`)
+        .run(input.now, input.now)
+      const value = this.db
+        .prepare(`SELECT * FROM command_outbox c WHERE c.state IN ('pending','retry_wait')
+          AND (c.next_attempt_at IS NULL OR c.next_attempt_at<=?)
+          AND NOT EXISTS (SELECT 1 FROM command_outbox earlier
+            WHERE earlier.mailbox_id=c.mailbox_id AND earlier.entity_key=c.entity_key
+            AND earlier.sequence<c.sequence
+            AND earlier.state IN ('pending','running','retry_wait','needs_review'))
+          AND (c.command_kind<>'send-draft' OR EXISTS (
+            SELECT 1 FROM command_outbox synced
+            WHERE synced.mailbox_id=c.mailbox_id AND synced.entity_key=c.entity_key
+            AND synced.command_kind='sync-draft' AND synced.state='succeeded'
+            AND json_extract(synced.payload_json,'$.version')=json_extract(c.payload_json,'$.version')
+          ))
+          ORDER BY c.sequence LIMIT 1`)
+        .get(input.now)
+      if (value === undefined) return undefined
+      const result = row(value)
+      this.db
+        .prepare(`UPDATE command_outbox SET state='running',attempt_count=attempt_count+1,
+          claimed_at=?,lease_expires_at=?,updated_at=? WHERE id=?`)
+        .run(input.now, input.leaseExpiresAt, input.now, result.id)
+      const receipt = mapCommand({ ...result, state: 'running' })
+      return {
+        ...receipt,
+        idempotencyKey: String(result.idempotency_key),
+        entityKey: String(result.entity_key),
+        attemptCount: Number(result.attempt_count) + 1,
+      }
+    })()
+  }
+
+  async resolveProviderCommand(
+    stored: Parameters<MailStore['resolveProviderCommand']>[0],
+  ): Promise<Awaited<ReturnType<MailStore['resolveProviderCommand']>>> {
+    switch (stored.command.kind) {
+      case 'set-thread-archived':
+      case 'set-thread-read': {
+        const value = this.db
+          .prepare('SELECT provider_thread_id FROM conversations WHERE id=? AND mailbox_id=?')
+          .get(stored.command.conversationId, stored.mailboxId)
+        if (value === undefined) throw new Error('Command conversation was not found')
+        return {
+          mailboxId: stored.mailboxId,
+          command: stored.command,
+          providerThreadId: String(row(value).provider_thread_id),
+        }
+      }
+      case 'set-thread-label': {
+        const value = this.db
+          .prepare(`SELECT c.provider_thread_id,l.provider_label_id FROM conversations c,labels l
+            WHERE c.id=? AND c.mailbox_id=? AND l.id=? AND l.mailbox_id=c.mailbox_id`)
+          .get(stored.command.conversationId, stored.mailboxId, stored.command.labelId)
+        if (value === undefined) throw new Error('Command conversation or label was not found')
+        const result = row(value)
+        return {
+          mailboxId: stored.mailboxId,
+          command: stored.command,
+          providerThreadId: String(result.provider_thread_id),
+          providerLabelId: String(result.provider_label_id),
+        }
+      }
+      case 'set-message-starred': {
+        const value = this.db
+          .prepare('SELECT provider_message_id FROM messages WHERE id=? AND mailbox_id=?')
+          .get(stored.command.messageId, stored.mailboxId)
+        if (value === undefined) throw new Error('Command message was not found')
+        return {
+          mailboxId: stored.mailboxId,
+          command: stored.command,
+          providerMessageId: String(row(value).provider_message_id),
+        }
+      }
+      case 'sync-draft':
+      case 'send-draft': {
+        const value = this.db
+          .prepare(`SELECT d.*,c.provider_thread_id,
+            reply.internet_message_id AS reply_internet_message_id,
+            mailbox.email_address AS mailbox_email_address,
+            mailbox.display_name AS mailbox_display_name
+            FROM drafts d
+            JOIN mailboxes mailbox ON mailbox.id=d.mailbox_id
+            LEFT JOIN conversations c ON c.id=d.conversation_id
+            LEFT JOIN messages reply ON reply.id=d.reply_to_message_id
+            WHERE d.id=? AND d.mailbox_id=?`)
+          .get(stored.command.draftId, stored.mailboxId)
+        if (value === undefined) throw new Error('Command draft was not found')
+        const result = row(value)
+        if (Number(result.version) !== stored.command.version) throw new Error('DRAFT_SUPERSEDED')
+        const providerThreadId = optionalString(result.provider_thread_id)
+        const internetMessageId = String(result.internet_message_id)
+        const replyInternetMessageId = optionalString(result.reply_internet_message_id)
+        return {
+          mailboxId: stored.mailboxId,
+          command: stored.command,
+          draft: mapDraft(value),
+          sender: {
+            address: String(result.mailbox_email_address),
+            name: String(result.mailbox_display_name),
+          },
+          internetMessageId,
+          ...(providerThreadId === undefined ? {} : { providerThreadId }),
+          ...(replyInternetMessageId === undefined ? {} : { replyInternetMessageId }),
+        }
+      }
+    }
+  }
+
+  async completeCommand(input: Parameters<MailStore['completeCommand']>[0]): Promise<void> {
+    this.db.transaction(() => {
+      if (input.draftIdentity !== undefined)
+        this.db
+          .prepare(`UPDATE drafts SET provider_draft_id=?,provider_message_id=?,sync_state='synced',
+            updated_at=? WHERE id=? AND mailbox_id=?`)
+          .run(
+            input.draftIdentity.providerDraftId,
+            input.draftIdentity.providerMessageId,
+            input.completedAt,
+            input.draftIdentity.draftId,
+            input.mailboxId,
+          )
+      applyChanges(this.db, input.mailboxId, input.changes)
+      if (input.sentDraftId !== undefined)
+        this.db
+          .prepare('DELETE FROM drafts WHERE id=? AND mailbox_id=?')
+          .run(input.sentDraftId, input.mailboxId)
+      this.db
+        .prepare(`UPDATE command_outbox SET state='succeeded',claimed_at=NULL,lease_expires_at=NULL,
+          provider_result_json='{"confirmed":true}',last_error_code=NULL,last_error_message=NULL,
+          updated_at=? WHERE id=?`)
+        .run(input.completedAt, input.id)
+    })()
+  }
+
+  async setCommandState(input: Parameters<MailStore['setCommandState']>[0]): Promise<void> {
+    this.db
+      .prepare(`UPDATE command_outbox SET state=?,next_attempt_at=?,last_error_code=?,
+        last_error_message=?,claimed_at=NULL,lease_expires_at=NULL,updated_at=? WHERE id=?`)
+      .run(
+        input.state,
+        input.nextAttemptAt ?? null,
+        input.errorCode ?? null,
+        input.errorMessage ?? null,
+        input.updatedAt,
+        input.id,
+      )
+  }
+
+  async listCommandIssues(id: MailboxId): Promise<CommandReceipt[]> {
+    return this.db
+      .prepare(`SELECT * FROM command_outbox WHERE mailbox_id=?
+        AND state IN ('failed','needs_review') ORDER BY updated_at DESC`)
+      .all(id)
+      .map(mapCommand)
+  }
+
+  async saveDraft(input: Parameters<MailStore['saveDraft']>[0]): Promise<Draft> {
+    return this.db.transaction(() => {
+      const duplicate = this.db
+        .prepare('SELECT 1 FROM command_outbox WHERE mailbox_id=? AND idempotency_key=?')
+        .get(input.request.mailboxId, input.request.idempotencyKey)
+      if (duplicate !== undefined) {
+        const duplicateDraft = this.db
+          .prepare('SELECT * FROM drafts WHERE id=? AND mailbox_id=?')
+          .get(input.id, input.request.mailboxId)
+        if (duplicateDraft !== undefined) return mapDraft(duplicateDraft)
+      }
+      const existing = this.db
+        .prepare('SELECT * FROM drafts WHERE id=? AND mailbox_id=?')
+        .get(input.id, input.request.mailboxId)
+      if (existing !== undefined) {
+        const existingDraft = mapDraft(existing)
+        if (
+          input.request.expectedVersion !== undefined &&
+          existingDraft.version !== input.request.expectedVersion
+        )
+          throw new Error('DRAFT_VERSION_CONFLICT')
+      } else if (input.request.expectedVersion !== undefined) {
+        throw new Error('DRAFT_VERSION_CONFLICT')
+      }
+      const mailboxValue = this.db
+        .prepare('SELECT workspace_id FROM mailboxes WHERE id=?')
+        .get(input.request.mailboxId)
+      if (mailboxValue === undefined) throw new Error('Mailbox not found')
+      this.db
+        .prepare(`INSERT INTO drafts
+          (id,workspace_id,mailbox_id,conversation_id,reply_to_message_id,provider_draft_id,
+          provider_message_id,internet_message_id,to_json,cc_json,bcc_json,subject,text_body,
+          html_body,version,sync_state,created_at,updated_at)
+          VALUES (?,?,?,?,?,NULL,NULL,?,?,?,?,?,?,?,1,'local',?,?)
+          ON CONFLICT(id) DO UPDATE SET conversation_id=excluded.conversation_id,
+          reply_to_message_id=excluded.reply_to_message_id,to_json=excluded.to_json,
+          cc_json=excluded.cc_json,bcc_json=excluded.bcc_json,subject=excluded.subject,
+          text_body=excluded.text_body,html_body=excluded.html_body,version=drafts.version+1,
+          sync_state='local',updated_at=excluded.updated_at`)
+        .run(
+          input.id,
+          row(mailboxValue).workspace_id,
+          input.request.mailboxId,
+          input.request.conversationId ?? null,
+          input.request.replyToMessageId ?? null,
+          input.internetMessageId,
+          JSON.stringify(input.request.to),
+          JSON.stringify(input.request.cc),
+          JSON.stringify(input.request.bcc),
+          input.request.subject,
+          input.request.textBody,
+          input.request.htmlBody ?? null,
+          input.updatedAt,
+          input.updatedAt,
+        )
+      const value = this.db.prepare('SELECT * FROM drafts WHERE id=?').get(input.id)
+      if (value === undefined) throw new Error('Failed to save draft')
+      const draft = mapDraft(value)
+      this.db
+        .prepare(`UPDATE command_outbox SET state='cancelled',updated_at=?
+          WHERE mailbox_id=? AND entity_key=? AND command_kind='sync-draft' AND state='pending'`)
+        .run(input.updatedAt, input.request.mailboxId, `draft:${input.id}`)
+      const syncCommand: DraftCommand = {
+        kind: 'sync-draft',
+        draftId: input.id,
+        version: draft.version,
+      }
+      this.db
+        .prepare(`INSERT INTO command_outbox
+          (id,mailbox_id,idempotency_key,command_kind,entity_key,payload_json,state,created_at,updated_at)
+          VALUES (?,?,?,?,?,?,'pending',?,?)`)
+        .run(
+          commandId(`draft-sync:${input.request.idempotencyKey}`),
+          input.request.mailboxId,
+          input.request.idempotencyKey,
+          syncCommand.kind,
+          `draft:${input.id}`,
+          JSON.stringify(syncCommand),
+          input.updatedAt,
+          input.updatedAt,
+        )
+      return draft
+    })()
+  }
+
+  async getDraft(input: {
+    mailboxId: MailboxId
+    draftId: ReturnType<typeof draftId>
+  }): Promise<Draft | undefined> {
+    const value = this.db
+      .prepare('SELECT * FROM drafts WHERE id=? AND mailbox_id=?')
+      .get(input.draftId, input.mailboxId)
+    return value === undefined ? undefined : mapDraft(value)
+  }
+
+  async listDrafts(id: MailboxId): Promise<Draft[]> {
+    return this.db
+      .prepare('SELECT * FROM drafts WHERE mailbox_id=? ORDER BY updated_at DESC,id DESC')
+      .all(id)
+      .map(mapDraft)
+  }
+
+  async enqueueSendDraft(
+    input: Parameters<MailStore['enqueueSendDraft']>[0],
+  ): Promise<CommandReceipt> {
+    return this.db.transaction(() => {
+      const existing = this.db
+        .prepare('SELECT * FROM command_outbox WHERE mailbox_id=? AND idempotency_key=?')
+        .get(input.mailboxId, input.idempotencyKey)
+      if (existing !== undefined) return mapCommand(existing)
+      const draftValue = this.db
+        .prepare('SELECT version FROM drafts WHERE id=? AND mailbox_id=?')
+        .get(input.draftId, input.mailboxId)
+      if (draftValue === undefined || Number(row(draftValue).version) !== input.expectedVersion)
+        throw new Error('DRAFT_VERSION_CONFLICT')
+      const command: DraftCommand = {
+        kind: 'send-draft',
+        draftId: input.draftId,
+        version: input.expectedVersion,
+      }
+      const id = commandId(`draft-send:${input.idempotencyKey}`)
+      this.db
+        .prepare(`INSERT INTO command_outbox
+          (id,mailbox_id,idempotency_key,command_kind,entity_key,payload_json,state,created_at,updated_at)
+          VALUES (?,?,?,?,?,?,'pending',?,?)`)
+        .run(
+          id,
+          input.mailboxId,
+          input.idempotencyKey,
+          command.kind,
+          `draft:${input.draftId}`,
+          JSON.stringify(command),
+          input.createdAt,
+          input.createdAt,
+        )
+      const stored = this.db.prepare('SELECT * FROM command_outbox WHERE id=?').get(id)
+      if (stored === undefined) throw new Error('Failed to persist send command')
+      return mapCommand(stored)
+    })()
   }
 
   async beginDraftReconciliation(input: {
@@ -544,14 +1333,43 @@ export class SqliteMailStore implements MailStore {
     input: Parameters<MailStore['completeDraftReconciliation']>[0],
   ): Promise<void> {
     this.db.transaction(() => {
-      this.db.prepare('DELETE FROM drafts WHERE mailbox_id=?').run(input.mailboxId)
+      const conflicts = this.db
+        .prepare(`SELECT d.id FROM drafts d JOIN draft_reconciliation r
+          ON r.mailbox_id=d.mailbox_id AND r.provider_draft_id=d.provider_draft_id
+          WHERE d.mailbox_id=? AND r.generation=? AND d.sync_state<>'synced'`)
+        .all(input.mailboxId, input.generation)
+      for (const conflict of conflicts)
+        this.db
+          .prepare(`UPDATE drafts SET provider_draft_id=NULL,provider_message_id=NULL,
+            sync_state='conflict',conflict_of_draft_id=id,updated_at=? WHERE id=?`)
+          .run(input.completedAt, row(conflict).id)
+      this.db
+        .prepare(`UPDATE drafts SET provider_draft_id=NULL,provider_message_id=NULL,
+          sync_state='local',updated_at=? WHERE mailbox_id=? AND sync_state<>'synced'
+          AND provider_draft_id IS NOT NULL
+          AND provider_draft_id NOT IN (SELECT provider_draft_id FROM draft_reconciliation
+            WHERE mailbox_id=? AND generation=?)`)
+        .run(input.completedAt, input.mailboxId, input.mailboxId, input.generation)
+      this.db
+        .prepare(`DELETE FROM drafts WHERE mailbox_id=? AND sync_state='synced'
+          AND provider_draft_id NOT IN (SELECT provider_draft_id FROM draft_reconciliation
+            WHERE mailbox_id=? AND generation=?)`)
+        .run(input.mailboxId, input.mailboxId, input.generation)
       this.db
         .prepare(`INSERT INTO drafts
           (id,workspace_id,mailbox_id,conversation_id,provider_draft_id,provider_message_id,
-          to_json,cc_json,bcc_json,subject,text_body,html_body,version,sync_state,created_at,updated_at)
+          internet_message_id,to_json,cc_json,bcc_json,subject,text_body,html_body,version,
+          sync_state,created_at,updated_at)
           SELECT id,workspace_id,mailbox_id,conversation_id,provider_draft_id,provider_message_id,
-          to_json,cc_json,bcc_json,subject,text_body,html_body,1,'imported',?,updated_at
-          FROM draft_reconciliation WHERE mailbox_id=? AND generation=?`)
+          '<' || id || '@mailrovers.local>',to_json,cc_json,bcc_json,subject,text_body,html_body,
+          1,'synced',?,updated_at FROM draft_reconciliation
+          WHERE mailbox_id=? AND generation=?
+          ON CONFLICT(mailbox_id,provider_draft_id) DO UPDATE SET
+          conversation_id=excluded.conversation_id,provider_message_id=excluded.provider_message_id,
+          to_json=excluded.to_json,cc_json=excluded.cc_json,bcc_json=excluded.bcc_json,
+          subject=excluded.subject,text_body=excluded.text_body,html_body=excluded.html_body,
+          version=drafts.version+1,updated_at=excluded.updated_at
+          WHERE drafts.sync_state='synced'`)
         .run(input.completedAt, input.mailboxId, input.generation)
       this.db.prepare('DELETE FROM draft_reconciliation WHERE mailbox_id=?').run(input.mailboxId)
     })()
@@ -572,6 +1390,101 @@ export class SqliteMailStore implements MailStore {
     this.db
       .prepare('UPDATE mailboxes SET sync_state=?,updated_at=? WHERE id=?')
       .run(mailboxState, input.updatedAt, input.mailboxId)
+  }
+
+  async setSyncRetry(input: Parameters<MailStore['setSyncRetry']>[0]): Promise<void> {
+    this.db
+      .prepare(`UPDATE sync_checkpoints SET retry_at=?,last_error_code=?,
+        sync_failure_count=CASE WHEN ? IS NULL THEN 0 ELSE sync_failure_count+1 END,
+        updated_at=? WHERE mailbox_id=?`)
+      .run(
+        input.retryAt ?? null,
+        input.errorCode ?? null,
+        input.retryAt ?? null,
+        input.updatedAt,
+        input.mailboxId,
+      )
+  }
+
+  async setMailboxAuthRequired(
+    input: Parameters<MailStore['setMailboxAuthRequired']>[0],
+  ): Promise<void> {
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE sync_checkpoints SET retry_at=NULL,last_error_code='AUTHENTICATION_REQUIRED',updated_at=? WHERE mailbox_id=?`,
+        )
+        .run(input.updatedAt, input.mailboxId)
+      this.db
+        .prepare("UPDATE mailboxes SET sync_state='auth_required',updated_at=? WHERE id=?")
+        .run(input.updatedAt, input.mailboxId)
+    })()
+  }
+
+  async resetHistoryPagination(
+    input: Parameters<MailStore['resetHistoryPagination']>[0],
+  ): Promise<void> {
+    this.db
+      .prepare(`UPDATE sync_checkpoints SET history_page_token=NULL,history_target_cursor=NULL,
+        updated_at=? WHERE mailbox_id=?`)
+      .run(input.updatedAt, input.mailboxId)
+  }
+
+  async beginFullReconciliation(
+    input: Parameters<MailStore['beginFullReconciliation']>[0],
+  ): Promise<void> {
+    this.db.transaction(() => {
+      this.db
+        .prepare('DELETE FROM full_reconciliation_seen WHERE mailbox_id=?')
+        .run(input.mailboxId)
+      this.db
+        .prepare(`UPDATE sync_checkpoints SET import_state='full_reconciliation',
+          history_start_cursor=?,full_reconciliation_generation=?,
+          full_reconciliation_page_token=NULL,updated_at=? WHERE mailbox_id=?`)
+        .run(input.historyStartCursor, input.generation, input.updatedAt, input.mailboxId)
+      this.db
+        .prepare("UPDATE mailboxes SET sync_state='reconciling',updated_at=? WHERE id=?")
+        .run(input.updatedAt, input.mailboxId)
+    })()
+  }
+
+  async stageFullReconciliation(
+    input: Parameters<MailStore['stageFullReconciliation']>[0],
+  ): Promise<void> {
+    this.db.transaction(() => {
+      applyChanges(this.db, input.mailboxId, input.batch)
+      const insert = this.db.prepare(`INSERT OR IGNORE INTO full_reconciliation_seen
+        (mailbox_id,generation,provider_message_id) VALUES (?,?,?)`)
+      for (const message of input.batch.messages ?? [])
+        insert.run(input.mailboxId, input.generation, message.providerMessageId)
+      if (input.pageComplete)
+        this.db
+          .prepare(`UPDATE sync_checkpoints SET full_reconciliation_page_token=?,updated_at=?
+            WHERE mailbox_id=?`)
+          .run(input.nextPageToken ?? null, input.updatedAt, input.mailboxId)
+    })()
+  }
+
+  async completeFullReconciliation(
+    input: Parameters<MailStore['completeFullReconciliation']>[0],
+  ): Promise<void> {
+    this.db.transaction(() => {
+      const stale = this.db
+        .prepare(`SELECT provider_message_id FROM messages WHERE mailbox_id=?
+          AND provider_message_id NOT IN (SELECT provider_message_id FROM full_reconciliation_seen
+            WHERE mailbox_id=? AND generation=?)`)
+        .all(input.mailboxId, input.mailboxId, input.generation)
+        .map((value) => String(row(value).provider_message_id))
+      applyChanges(this.db, input.mailboxId, { deletedProviderMessageIds: stale })
+      this.db
+        .prepare('DELETE FROM full_reconciliation_seen WHERE mailbox_id=?')
+        .run(input.mailboxId)
+      this.db
+        .prepare(`UPDATE sync_checkpoints SET import_state='reconciling_history',
+          full_reconciliation_generation=NULL,full_reconciliation_page_token=NULL,updated_at=?
+          WHERE mailbox_id=?`)
+        .run(input.updatedAt, input.mailboxId)
+    })()
   }
 
   async setImportStart(input: {
@@ -632,7 +1545,8 @@ export class SqliteMailStore implements MailStore {
       this.db
         .prepare(`UPDATE sync_checkpoints SET provider_cursor=?,history_start_cursor=NULL,
           history_page_token=NULL,history_target_cursor=NULL,import_state='complete',
-          resume_import_state=NULL,last_reconciled_at=?,updated_at=? WHERE mailbox_id=?`)
+          resume_import_state=NULL,last_reconciled_at=?,retry_at=NULL,last_error_code=NULL,
+          sync_failure_count=0,updated_at=? WHERE mailbox_id=?`)
         .run(input.providerCursor, input.completedAt, input.completedAt, input.mailboxId)
       this.db
         .prepare(
@@ -655,10 +1569,18 @@ export class SqliteMailStore implements MailStore {
         )
         .run(input.mailboxId)
       this.db.prepare('DELETE FROM draft_reconciliation WHERE mailbox_id=?').run(input.mailboxId)
-      this.db.prepare('DELETE FROM drafts WHERE mailbox_id=?').run(input.mailboxId)
+      this.db
+        .prepare("DELETE FROM drafts WHERE mailbox_id=? AND sync_state='synced'")
+        .run(input.mailboxId)
+      this.db.prepare('DELETE FROM mail_fts WHERE mailbox_id=?').run(input.mailboxId)
       this.db.prepare('DELETE FROM messages WHERE mailbox_id=?').run(input.mailboxId)
       this.db.prepare('DELETE FROM conversations WHERE mailbox_id=?').run(input.mailboxId)
       this.db.prepare('DELETE FROM labels WHERE mailbox_id=?').run(input.mailboxId)
+      this.db
+        .prepare(
+          "UPDATE search_index_state SET last_message_rowid=0,state='pending',updated_at=? WHERE mailbox_id=?",
+        )
+        .run(input.updatedAt, input.mailboxId)
       this.db
         .prepare(`UPDATE sync_checkpoints SET provider_cursor=NULL,history_start_cursor=NULL,
           history_page_token=NULL,history_target_cursor=NULL,import_message_page_token=NULL,

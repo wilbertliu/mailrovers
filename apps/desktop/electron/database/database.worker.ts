@@ -24,6 +24,16 @@ async function execute(message: Request): Promise<unknown> {
       return store.listMailboxes()
     case 'listConversations':
       return store.listConversations(message.input as Parameters<MailStore['listConversations']>[0])
+    case 'listLabels':
+      return store.listLabels(message.input as Parameters<MailStore['listLabels']>[0])
+    case 'getConversation':
+      return store.getConversation(message.input as Parameters<MailStore['getConversation']>[0])
+    case 'searchMail':
+      return store.searchMail(message.input as Parameters<MailStore['searchMail']>[0])
+    case 'backfillSearchIndex':
+      return store.backfillSearchIndex(
+        message.input as Parameters<MailStore['backfillSearchIndex']>[0],
+      )
     case 'getMailbox':
       return store.getMailbox(message.input as Parameters<MailStore['getMailbox']>[0])
     case 'saveConnectedMailbox':
@@ -38,6 +48,32 @@ async function execute(message: Request): Promise<unknown> {
       )
     case 'getSyncCheckpoint':
       return store.getSyncCheckpoint(message.input as Parameters<MailStore['getSyncCheckpoint']>[0])
+    case 'enqueueCommand':
+      return store.enqueueCommand(message.input as Parameters<MailStore['enqueueCommand']>[0])
+    case 'enqueueDraftCommand':
+      return store.enqueueDraftCommand(
+        message.input as Parameters<MailStore['enqueueDraftCommand']>[0],
+      )
+    case 'claimNextCommand':
+      return store.claimNextCommand(message.input as Parameters<MailStore['claimNextCommand']>[0])
+    case 'resolveProviderCommand':
+      return store.resolveProviderCommand(
+        message.input as Parameters<MailStore['resolveProviderCommand']>[0],
+      )
+    case 'completeCommand':
+      return store.completeCommand(message.input as Parameters<MailStore['completeCommand']>[0])
+    case 'setCommandState':
+      return store.setCommandState(message.input as Parameters<MailStore['setCommandState']>[0])
+    case 'listCommandIssues':
+      return store.listCommandIssues(message.input as Parameters<MailStore['listCommandIssues']>[0])
+    case 'saveDraft':
+      return store.saveDraft(message.input as Parameters<MailStore['saveDraft']>[0])
+    case 'getDraft':
+      return store.getDraft(message.input as Parameters<MailStore['getDraft']>[0])
+    case 'listDrafts':
+      return store.listDrafts(message.input as Parameters<MailStore['listDrafts']>[0])
+    case 'enqueueSendDraft':
+      return store.enqueueSendDraft(message.input as Parameters<MailStore['enqueueSendDraft']>[0])
     case 'beginDraftReconciliation':
       return store.beginDraftReconciliation(
         message.input as Parameters<MailStore['beginDraftReconciliation']>[0],
@@ -52,6 +88,28 @@ async function execute(message: Request): Promise<unknown> {
       )
     case 'setImportState':
       return store.setImportState(message.input as Parameters<MailStore['setImportState']>[0])
+    case 'setSyncRetry':
+      return store.setSyncRetry(message.input as Parameters<MailStore['setSyncRetry']>[0])
+    case 'setMailboxAuthRequired':
+      return store.setMailboxAuthRequired(
+        message.input as Parameters<MailStore['setMailboxAuthRequired']>[0],
+      )
+    case 'resetHistoryPagination':
+      return store.resetHistoryPagination(
+        message.input as Parameters<MailStore['resetHistoryPagination']>[0],
+      )
+    case 'beginFullReconciliation':
+      return store.beginFullReconciliation(
+        message.input as Parameters<MailStore['beginFullReconciliation']>[0],
+      )
+    case 'stageFullReconciliation':
+      return store.stageFullReconciliation(
+        message.input as Parameters<MailStore['stageFullReconciliation']>[0],
+      )
+    case 'completeFullReconciliation':
+      return store.completeFullReconciliation(
+        message.input as Parameters<MailStore['completeFullReconciliation']>[0],
+      )
     case 'setImportStart':
       return store.setImportStart(message.input as Parameters<MailStore['setImportStart']>[0])
     case 'applyImportBatch':

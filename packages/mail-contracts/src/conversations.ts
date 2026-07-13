@@ -1,6 +1,10 @@
 import type { MailboxId, ConversationId, UtcTimestamp } from '@mailrovers/mail-domain'
+import type { LabelId, OperationId } from '@mailrovers/mail-domain'
 export type ListConversationsInput = {
+  requestId?: OperationId | undefined
   mailboxId: MailboxId
+  labelId?: LabelId | undefined
+  unreadOnly?: boolean | undefined
   cursor?: string | undefined
   limit?: number | undefined
 }

@@ -11,7 +11,7 @@ import {
   type NormalizedMessage,
   type SyncCheckpoint,
 } from '@mailrovers/mail-domain'
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -84,9 +84,10 @@ afterEach(() => {
   db = undefined
 })
 
-describe('SQLite M2 store', () => {
-  it('migrates an existing M1 database to the M2 schema', () => {
-    db = openDatabase(join(mkdtempSync(join(tmpdir(), 'mailrovers-m1-upgrade-')), 'mail.sqlite'))
+describe('SQLite mail store', () => {
+  it('backs up and migrates an existing M1 database through the M3 schema', () => {
+    const databasePath = join(mkdtempSync(join(tmpdir(), 'mailrovers-m1-upgrade-')), 'mail.sqlite')
+    db = openDatabase(databasePath)
     db.exec(migration0001)
     db.prepare('INSERT INTO schema_migrations(version,applied_at) VALUES(1,?)').run(now)
     migrate(db)
@@ -99,7 +100,17 @@ describe('SQLite M2 store', () => {
     expect(db.prepare('SELECT version FROM schema_migrations ORDER BY version').all()).toEqual([
       { version: 1 },
       { version: 2 },
+      { version: 3 },
     ])
+    const backup: unknown = db
+      .prepare('SELECT path,version,status,integrity_result FROM migration_backups')
+      .get()
+    expect(backup).toEqual(
+      expect.objectContaining({ version: 3, status: 'complete', integrity_result: 'ok' }),
+    )
+    if (typeof backup !== 'object' || backup === null || !('path' in backup))
+      throw new Error('Migration backup path was not recorded')
+    expect(existsSync(String(backup.path))).toBe(true)
   })
 
   it('persists connection state and encrypted token bytes', async () => {

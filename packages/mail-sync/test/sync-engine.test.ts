@@ -113,6 +113,14 @@ class FakeProvider implements MailProvider {
     }
   }
 
+  async executeCommand(): Promise<{ changes: {} }> {
+    return { changes: {} }
+  }
+
+  async reconcileCommand(): Promise<{ kind: 'not-applied' }> {
+    return { kind: 'not-applied' }
+  }
+
   async pullChanges(input: { pageToken?: string | undefined }): Promise<PullChangesResult> {
     return input.pageToken === undefined
       ? { changes: {}, historyId: '200', nextPageToken: 'history-page-2' }
@@ -166,6 +174,38 @@ async function setup(provider: FakeProvider) {
   return { store, engine, events, terminal }
 }
 
+class RejectedTokenProvider extends FakeProvider {
+  readonly pageTokens: Array<string | undefined> = []
+  private pullCount = 0
+
+  override async pullChanges(input: {
+    pageToken?: string | undefined
+  }): Promise<PullChangesResult> {
+    this.pageTokens.push(input.pageToken)
+    this.pullCount += 1
+    if (this.pullCount === 1) return { changes: {}, historyId: '200', nextPageToken: 'initial-2' }
+    if (this.pullCount === 2) return { changes: {}, historyId: '201' }
+    if (this.pullCount === 3) return { changes: {}, historyId: '300', nextPageToken: 'rejected' }
+    if (this.pullCount === 4) throw Object.assign(new Error('Invalid page token'), { status: 400 })
+    return { changes: {}, historyId: '301' }
+  }
+}
+
+class ExpiredCursorProvider extends FakeProvider {
+  private pullCount = 0
+
+  override async getCurrentCursor(): Promise<string> {
+    return this.pullCount > 1 ? '250' : '100'
+  }
+
+  override async pullChanges(): Promise<PullChangesResult> {
+    this.pullCount += 1
+    if (this.pullCount === 1) return { changes: {}, historyId: '201' }
+    if (this.pullCount === 2) throw Object.assign(new Error('History expired'), { status: 404 })
+    return { changes: {}, historyId: '300' }
+  }
+}
+
 describe('resumable Gmail import', () => {
   it('imports pages and advances history only on the final page', async () => {
     const provider = new FakeProvider()
@@ -185,6 +225,62 @@ describe('resumable Gmail import', () => {
     expect(provider.labelImports).toBe(2)
     expect(provider.draftImports).toBe(2)
     expect(events.at(-1)?.kind).toBe('sync-completed')
+  })
+
+  it('restarts rejected history pagination from the completed cursor', async () => {
+    const provider = new RejectedTokenProvider()
+    const first = await setup(provider)
+    await first.engine.start({
+      mailboxId: mailbox.id,
+      requestId: operationId('sync-token-initial'),
+    })
+    await first.terminal
+
+    let terminalResolve: (() => void) | undefined
+    const terminal = new Promise<void>((resolve) => {
+      terminalResolve = resolve
+    })
+    const engine = new MailSyncEngine({
+      store: first.store,
+      providers: new FakeFactory(provider),
+      now: () => new Date(now),
+      publish(event) {
+        if (event.kind !== 'sync-progress') terminalResolve?.()
+      },
+    })
+    await engine.start({ mailboxId: mailbox.id, requestId: operationId('sync-token-retry') })
+    await terminal
+
+    expect(provider.pageTokens.slice(-3)).toEqual([undefined, 'rejected', undefined])
+    expect((await first.store.getSyncCheckpoint(mailbox.id))?.providerCursor).toBe('301')
+  })
+
+  it('uses non-destructive full reconciliation when history expires', async () => {
+    const provider = new ExpiredCursorProvider()
+    const first = await setup(provider)
+    await first.engine.start({
+      mailboxId: mailbox.id,
+      requestId: operationId('sync-expiry-initial'),
+    })
+    await first.terminal
+
+    let terminalResolve: (() => void) | undefined
+    const terminal = new Promise<void>((resolve) => {
+      terminalResolve = resolve
+    })
+    const engine = new MailSyncEngine({
+      store: first.store,
+      providers: new FakeFactory(provider),
+      now: () => new Date(now),
+      publish(event) {
+        if (event.kind !== 'sync-progress') terminalResolve?.()
+      },
+    })
+    await engine.start({ mailboxId: mailbox.id, requestId: operationId('sync-expiry-reconcile') })
+    await terminal
+
+    expect((await first.store.getSyncCheckpoint(mailbox.id))?.providerCursor).toBe('300')
+    expect((await first.store.listConversations({ mailboxId: mailbox.id })).items).toHaveLength(3)
   })
 
   it('pauses at cancellation and resumes from the committed page token', async () => {

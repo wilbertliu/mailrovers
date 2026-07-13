@@ -37,6 +37,7 @@ export const syncStatusSchema = z
       'importing_messages',
       'importing_drafts',
       'reconciling_history',
+      'full_reconciliation',
       'paused',
       'complete',
       'failed',
@@ -112,7 +113,7 @@ export const desktopEventSchema = z.discriminatedUnion('kind', [
     .strict(),
 ])
 
-function resultSchema<Value extends z.ZodTypeAny>(value: Value) {
+export function resultSchema<Value extends z.ZodTypeAny>(value: Value) {
   return z.discriminatedUnion('ok', [
     z.object({ ok: z.literal(true), value }).strict(),
     z.object({ ok: z.literal(false), error: applicationErrorSchema }).strict(),

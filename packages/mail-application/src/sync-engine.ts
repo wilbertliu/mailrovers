@@ -7,6 +7,12 @@ export interface SyncEngine {
   cancel(operationId: OperationId): Promise<boolean>
   cancelMailbox(mailboxId: MailboxId): Promise<boolean>
   resumeInterrupted(): Promise<void>
+  startAll(reason: 'startup' | 'focus' | 'timer'): Promise<void>
+  shutdown(): Promise<void>
+}
+
+export interface CommandDispatcher {
+  wake(): void
   shutdown(): Promise<void>
 }
 

@@ -53,7 +53,7 @@ function headers(part: GmailMessagePart): Map<string, string> {
 }
 
 function decode(data: string | undefined): string | undefined {
-  if (!data) return undefined
+  if (!data || data.length > 28_000_000) return undefined
   try {
     return Buffer.from(data, 'base64url').toString('utf8')
   } catch {
@@ -98,7 +98,7 @@ function cleanHtml(value: string): string {
       td: ['colspan', 'rowspan'],
       th: ['colspan', 'rowspan'],
     },
-    allowedSchemes: ['http', 'https', 'mailto'],
+    allowedSchemes: ['http', 'https'],
     allowProtocolRelative: false,
     disallowedTagsMode: 'discard',
   })
@@ -106,7 +106,14 @@ function cleanHtml(value: string): string {
 
 type BodyParts = { text?: string | undefined; html?: string | undefined }
 
-function collectBodyParts(part: GmailMessagePart, result: BodyParts): void {
+function collectBodyParts(
+  part: GmailMessagePart,
+  result: BodyParts,
+  depth = 0,
+  budget = { remaining: 2_000 },
+): void {
+  if (depth > 32 || budget.remaining <= 0) return
+  budget.remaining -= 1
   const filename = part.filename ?? ''
   if (filename.length === 0) {
     const value = decode(part.body?.data)
@@ -115,7 +122,7 @@ function collectBodyParts(part: GmailMessagePart, result: BodyParts): void {
     if (value !== undefined && part.mimeType === 'text/html' && result.html === undefined)
       result.html = cleanHtml(value)
   }
-  for (const child of part.parts ?? []) collectBodyParts(child, result)
+  for (const child of part.parts ?? []) collectBodyParts(child, result, depth + 1, budget)
 }
 
 function collectAttachments(
@@ -124,7 +131,9 @@ function collectAttachments(
   localMessageId: ReturnType<typeof messageId>,
   part: GmailMessagePart,
   result: NormalizedAttachment[],
+  depth = 0,
 ): void {
+  if (depth > 32 || result.length >= 2_000) return
   const partHeaders = headers(part)
   const filename = part.filename ?? ''
   const disposition = partHeaders.get('content-disposition')
@@ -150,7 +159,7 @@ function collectAttachments(
     })
   }
   for (const child of part.parts ?? [])
-    collectAttachments(mailbox, providerMessageId, localMessageId, child, result)
+    collectAttachments(mailbox, providerMessageId, localMessageId, child, result, depth + 1)
 }
 
 export function translateMessage(input: {

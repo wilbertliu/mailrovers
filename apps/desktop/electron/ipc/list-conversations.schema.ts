@@ -1,10 +1,19 @@
-import { conversationId, mailboxId, utcTimestamp } from '@mailrovers/mail-domain'
+import {
+  conversationId,
+  labelId,
+  mailboxId,
+  operationId,
+  utcTimestamp,
+} from '@mailrovers/mail-domain'
 import { z } from 'zod'
 
 const cursor = z.string().min(1).max(512)
 export const listConversationsInputSchema = z
   .object({
+    requestId: z.string().min(1).max(200).transform(operationId).optional(),
     mailboxId: z.string().min(1).max(200).transform(mailboxId),
+    labelId: z.string().min(1).max(500).transform(labelId).optional(),
+    unreadOnly: z.boolean().optional(),
     cursor: cursor.optional(),
     limit: z.number().int().min(1).max(200).default(50),
   })

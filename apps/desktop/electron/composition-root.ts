@@ -1,5 +1,6 @@
 import {
   createMailApplication,
+  type CommandDispatcher,
   type GmailConnector,
   type MailApplication,
   type MailProviderFactory,
@@ -7,7 +8,7 @@ import {
   type SyncEngine,
 } from '@mailrovers/mail-application'
 import type { DesktopEvent } from '@mailrovers/mail-contracts'
-import { MailSyncEngine } from '@mailrovers/mail-sync'
+import { MailCommandExecutor, MailSyncEngine } from '@mailrovers/mail-sync'
 import { migrate, openDatabase, SqliteMailStore } from '@mailrovers/mail-store-sqlite'
 import { ElectronSafeStorageSecretSealer } from '@mailrovers/platform-electron'
 import { shell } from 'electron'
@@ -37,7 +38,11 @@ function unavailableProviderFactory(): MailProviderFactory {
 export function composeDesktopApplication(input: {
   store: MailStore
   publish(event: DesktopEvent): void
-}): { application: MailApplication; syncEngine: SyncEngine } {
+}): {
+  application: MailApplication
+  syncEngine: SyncEngine
+  commandDispatcher: CommandDispatcher
+} {
   const clientId = process.env.MAILROVERS_GOOGLE_OAUTH_CLIENT_ID
   const secretSealer = new ElectronSafeStorageSecretSealer()
   const gmailConnector: GmailConnector =
@@ -77,13 +82,17 @@ export function composeDesktopApplication(input: {
     providers,
     publish: (event) => input.publish(event),
   })
+  const commandDispatcher = new MailCommandExecutor({ store: input.store, providers })
+  commandDispatcher.wake()
   return {
     application: createMailApplication({
       store: input.store,
       gmailConnector,
       secretSealer,
       syncEngine,
+      commandDispatcher,
     }),
     syncEngine,
+    commandDispatcher,
   }
 }

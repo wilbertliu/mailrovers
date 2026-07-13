@@ -1,4 +1,5 @@
-import type { SyncEngine } from '@mailrovers/mail-application'
+import type { CommandDispatcher, MailStore, SyncEngine } from '@mailrovers/mail-application'
+import { utcTimestamp } from '@mailrovers/mail-domain'
 import { ElectronSafeStorageSecretSealer } from '@mailrovers/platform-electron'
 import { app, BrowserWindow, shell } from 'electron'
 import { appendFileSync, writeFileSync } from 'node:fs'
@@ -10,6 +11,7 @@ import { composeDesktopApplication } from './composition-root.js'
 import type { DatabaseHost } from './database/database-host.js'
 import { createMainDatabaseHost } from './database/main-database-host.js'
 import { createWorkerDatabaseHost } from './database/worker-database-host.js'
+import { allowedExternalUrl } from './external-links.js'
 import { DesktopEventBus } from './ipc/desktop-event-bus.js'
 import { registerMailApplication } from './ipc/register-mail-application.js'
 import {
@@ -23,6 +25,7 @@ const checkpointPath = process.env.MAILROVERS_SMOKE_CHECKPOINT_PATH
 const databaseHost = process.env.MAILROVERS_DATABASE_HOST === 'worker' ? 'worker' : 'main'
 let host: DatabaseHost | undefined
 let syncEngine: SyncEngine | undefined
+let commandDispatcher: CommandDispatcher | undefined
 let shuttingDown = false
 
 function checkpoint(stage: string, detail?: string): void {
@@ -52,6 +55,21 @@ process.on('uncaughtException', writeSmokeFailure)
 process.on('unhandledRejection', writeSmokeFailure)
 checkpoint('mainEntry')
 
+async function backfillSearch(store: MailStore): Promise<void> {
+  const mailboxes = await store.listMailboxes()
+  for (const mailbox of mailboxes) {
+    let complete = false
+    while (!complete && !shuttingDown) {
+      complete = await store.backfillSearchIndex({
+        mailboxId: mailbox.id,
+        limit: 250,
+        updatedAt: utcTimestamp(new Date().toISOString()),
+      })
+      if (!complete) await delay(0)
+    }
+  }
+}
+
 async function createWindow(): Promise<void> {
   const dbPath =
     process.env.MAILROVERS_DB_PATH ?? path.join(app.getPath('userData'), 'mailrovers.sqlite')
@@ -68,6 +86,7 @@ async function createWindow(): Promise<void> {
   })
   const application = composed.application
   syncEngine = composed.syncEngine
+  commandDispatcher = composed.commandDispatcher
 
   const packagedRendererPath = path.join(
     __dirname,
@@ -98,18 +117,17 @@ async function createWindow(): Promise<void> {
     }
     event.preventDefault()
   })
+  const openAllowedExternalUrl = (value: string) => {
+    const allowed = allowedExternalUrl(value)
+    if (allowed !== undefined) void shell.openExternal(allowed)
+  }
+  windowContents.on('will-frame-navigate', (details) => {
+    if (details.isMainFrame) return
+    details.preventDefault()
+    openAllowedExternalUrl(details.url)
+  })
   window.webContents.setWindowOpenHandler(({ url }) => {
-    try {
-      const parsed = new URL(url)
-      if (
-        (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
-        !parsed.username &&
-        !parsed.password
-      )
-        void shell.openExternal(parsed.toString())
-    } catch {
-      /* Invalid URLs stay closed. */
-    }
+    openAllowedExternalUrl(url)
     return { action: 'deny' }
   })
   registerListConversations({
@@ -127,7 +145,13 @@ async function createWindow(): Promise<void> {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) await window.loadURL(rendererUrl)
   else await window.loadFile(packagedRendererPath)
   checkpoint('windowLoaded')
+  void backfillSearch(host.store).catch((error: unknown) =>
+    console.error('Search indexing failed', error),
+  )
   await syncEngine.resumeInterrupted()
+  const syncTimer = setInterval(() => void syncEngine?.startAll('timer'), 60_000)
+  window.on('focus', () => void syncEngine?.startAll('focus'))
+  window.once('closed', () => clearInterval(syncTimer))
 
   if (!smokeResultPath) return
   const performanceRequested = process.env.MAILROVERS_PERFORMANCE === '1'
@@ -141,7 +165,7 @@ async function createWindow(): Promise<void> {
     .executeJavaScript(`new Promise((resolve, reject) => {
     const deadline = Date.now() + 10000;
     const inspect = async () => {
-      const rows = document.querySelectorAll('article').length;
+      const rows = document.querySelectorAll('.conversation-row').length;
       if (rows > 0) {
         const base = { rows, processType: typeof process, requireType: typeof require, bridgeKeys: Object.keys(window.mailrovers.v1) };
         if (!${performanceRequested}) { resolve(base); return; }
@@ -164,7 +188,7 @@ async function createWindow(): Promise<void> {
         const durationMs = timestamps.at(-1) - timestamps[0];
         const fps = (timestamps.length - 1) * 1000 / durationMs;
         resolve({ ...base, scroll: { durationMs, frameCount: timestamps.length, fps, p95FrameMs: intervals[Math.floor(intervals.length * 0.95)], maxFrameMs: intervals.at(-1), framesOver20Ms: intervals.filter((interval) => interval > 20).length } });
-      } else if (Date.now() > deadline) reject(new Error('Inbox did not render'));
+      } else if (Date.now() > deadline) reject(new Error('Inbox did not render: ' + document.body.innerText.slice(0, 500)));
       else setTimeout(inspect, 50);
     };
     inspect();
@@ -233,5 +257,7 @@ app.on('before-quit', (event) => {
   if (shuttingDown) return
   event.preventDefault()
   shuttingDown = true
-  void Promise.all([syncEngine?.shutdown(), host?.close()]).finally(() => app.exit())
+  void Promise.all([syncEngine?.shutdown(), commandDispatcher?.shutdown(), host?.close()]).finally(
+    () => app.exit(),
+  )
 })

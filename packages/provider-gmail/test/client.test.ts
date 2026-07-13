@@ -40,4 +40,56 @@ describe('Gmail HTTP client', () => {
     expect(calls).toBe(2)
     expect(waits).toEqual([1_000])
   })
+
+  it('retries only explicitly set-like mutations', async () => {
+    let safeCalls = 0
+    const safe = new GmailHttpClient({
+      accessTokens: tokenSource(),
+      endpoints: {
+        authorization: 'https://accounts.example.test/authorize',
+        token: 'https://accounts.example.test/token',
+        tokenInfo: 'https://accounts.example.test/tokeninfo',
+        gmailApi: 'https://gmail.example.test/v1',
+      },
+      random: () => 0,
+      wait: async () => undefined,
+      fetch: async () => {
+        safeCalls += 1
+        return safeCalls === 1
+          ? new Response(JSON.stringify({ error: {} }), { status: 500 })
+          : new Response(JSON.stringify({ id: 'thread' }), { status: 200 })
+      },
+    })
+    await expect(
+      safe.mutateSetLike('/users/me/threads/thread/modify', {
+        signal: new AbortController().signal,
+        body: { removeLabelIds: ['INBOX'] },
+      }),
+    ).resolves.toEqual({ id: 'thread' })
+    expect(safeCalls).toBe(2)
+
+    let unsafeCalls = 0
+    const unsafe = new GmailHttpClient({
+      accessTokens: tokenSource(),
+      endpoints: {
+        authorization: 'https://accounts.example.test/authorize',
+        token: 'https://accounts.example.test/token',
+        tokenInfo: 'https://accounts.example.test/tokeninfo',
+        gmailApi: 'https://gmail.example.test/v1',
+      },
+      wait: async () => undefined,
+      fetch: async () => {
+        unsafeCalls += 1
+        return new Response(JSON.stringify({ error: {} }), { status: 500 })
+      },
+    })
+    await expect(
+      unsafe.mutateOnce('/users/me/drafts', {
+        signal: new AbortController().signal,
+        method: 'POST',
+        body: { message: { raw: 'encoded' } },
+      }),
+    ).rejects.toMatchObject({ status: 500 })
+    expect(unsafeCalls).toBe(1)
+  })
 })

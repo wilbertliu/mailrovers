@@ -82,6 +82,7 @@ function phaseFor(checkpoint: SyncCheckpoint): SyncStatus['phase'] {
     case 'importing_messages':
     case 'importing_drafts':
     case 'reconciling_history':
+    case 'full_reconciliation':
       return checkpoint.importState
     case 'paused':
       return 'paused'
@@ -101,6 +102,7 @@ function statusFromCheckpoint(checkpoint: SyncCheckpoint): SyncStatus {
     ...(checkpoint.importTotalEstimate === undefined
       ? {}
       : { totalEstimate: checkpoint.importTotalEstimate }),
+    ...(checkpoint.retryAt === undefined ? {} : { retryAt: checkpoint.retryAt }),
   }
 }
 
@@ -164,12 +166,17 @@ export class MailSyncEngine implements SyncEngine {
   }
 
   async resumeInterrupted(): Promise<void> {
+    await this.startAll('startup')
+  }
+
+  async startAll(reason: 'startup' | 'focus' | 'timer'): Promise<void> {
     const mailboxes = await this.options.store.listMailboxes()
     for (const mailbox of mailboxes) {
-      if (mailbox.syncState !== 'importing' && mailbox.syncState !== 'reconciling') continue
+      if (mailbox.syncState === 'auth_required' || mailbox.syncState === 'paused') continue
+      if ((await this.options.store.getSyncCheckpoint(mailbox.id)) === undefined) continue
       await this.start({
         mailboxId: mailbox.id,
-        requestId: operationId(`resume:${mailbox.id}:${Date.now()}`),
+        requestId: operationId(`${reason}:${mailbox.id}:${Date.now()}`),
       })
     }
   }
@@ -192,6 +199,19 @@ export class MailSyncEngine implements SyncEngine {
 
   private async run(operation: RunningOperation): Promise<void> {
     try {
+      const initialCheckpoint = await this.requireCheckpoint(operation.mailboxId)
+      if (
+        initialCheckpoint.retryAt !== undefined &&
+        Date.parse(initialCheckpoint.retryAt) > (this.options.now?.() ?? new Date()).getTime()
+      ) {
+        this.options.publish({
+          kind: 'sync-completed',
+          requestId: operation.requestId,
+          mailboxId: operation.mailboxId,
+          status: statusFromCheckpoint(initialCheckpoint),
+        })
+        return
+      }
       const provider = await this.options.providers.create(operation.mailboxId)
       for (let restart = 0; restart < 3; restart += 1) {
         const completed = await this.runFromCheckpoint(operation, provider)
@@ -225,11 +245,38 @@ export class MailSyncEngine implements SyncEngine {
         }
         return
       }
-      await this.options.store.setImportState({
-        mailboxId: operation.mailboxId,
-        state: 'failed',
-        updatedAt: this.now(),
-      })
+      const timestamp = this.now()
+      const status = providerStatus(error)
+      const checkpoint = await this.options.store.getSyncCheckpoint(operation.mailboxId)
+      if (status === 401) {
+        await this.options.store.setMailboxAuthRequired({
+          mailboxId: operation.mailboxId,
+          updatedAt: timestamp,
+        })
+      } else if (
+        checkpoint?.importState === 'complete' ||
+        checkpoint?.importState === 'reconciling_history' ||
+        checkpoint?.importState === 'full_reconciliation'
+      ) {
+        const failures = checkpoint.syncFailureCount ?? 0
+        const delayMilliseconds = Math.min(30_000 * 2 ** failures, 30 * 60_000)
+        await this.options.store.setSyncRetry({
+          mailboxId: operation.mailboxId,
+          retryAt: utcTimestamp(
+            new Date(
+              (this.options.now?.() ?? new Date()).getTime() + delayMilliseconds,
+            ).toISOString(),
+          ),
+          errorCode: applicationError(error, operation.requestId).code,
+          updatedAt: timestamp,
+        })
+      } else {
+        await this.options.store.setImportState({
+          mailboxId: operation.mailboxId,
+          state: 'failed',
+          updatedAt: timestamp,
+        })
+      }
       this.options.publish({
         kind: 'sync-failed',
         requestId: operation.requestId,
@@ -258,6 +305,7 @@ export class MailSyncEngine implements SyncEngine {
     }
 
     if (state === 'complete') return this.reconcile(operation, provider, checkpoint)
+    if (state === 'full_reconciliation') return this.fullReconcile(operation, provider, checkpoint)
 
     if (state === 'pending' || state === 'importing_labels') {
       await this.options.store.setImportState({
@@ -376,6 +424,7 @@ export class MailSyncEngine implements SyncEngine {
     operation: RunningOperation,
     provider: MailProvider,
     initialCheckpoint: SyncCheckpoint,
+    pageTokenRestarts = 0,
   ): Promise<boolean> {
     let checkpoint = initialCheckpoint
     const startCursor = checkpoint.historyStartCursor ?? checkpoint.providerCursor
@@ -423,19 +472,72 @@ export class MailSyncEngine implements SyncEngine {
         return true
       }
     } catch (error) {
-      if (providerStatus(error) !== 404) throw error
+      const status = providerStatus(error)
+      if (status === 400 && checkpoint.historyPageToken !== undefined && pageTokenRestarts < 1) {
+        await this.options.store.resetHistoryPagination({
+          mailboxId: operation.mailboxId,
+          updatedAt: this.now(),
+        })
+        return this.reconcile(
+          operation,
+          provider,
+          await this.requireCheckpoint(operation.mailboxId),
+          pageTokenRestarts + 1,
+        )
+      }
+      if (status !== 404) throw error
       const current = await provider.getCurrentCursor(operation.controller.signal)
-      await this.options.store.resetInitialImport({
+      const generation = `reconcile:${operation.requestId}`
+      await this.options.store.beginFullReconciliation({
         mailboxId: operation.mailboxId,
-        updatedAt: this.now(),
-      })
-      await this.options.store.setImportStart({
-        mailboxId: operation.mailboxId,
+        generation,
         historyStartCursor: current,
         updatedAt: this.now(),
       })
-      return false
+      return this.fullReconcile(
+        operation,
+        provider,
+        await this.requireCheckpoint(operation.mailboxId),
+      )
     }
+  }
+
+  private async fullReconcile(
+    operation: RunningOperation,
+    provider: MailProvider,
+    initialCheckpoint: SyncCheckpoint,
+  ): Promise<boolean> {
+    const generation = initialCheckpoint.fullReconciliationGeneration
+    if (generation === undefined) throw new Error('Full reconciliation has no generation')
+    let pageToken = initialCheckpoint.fullReconciliationPageToken
+    do {
+      let nextPageToken: string | undefined
+      for await (const batch of provider.importMailbox({
+        mailboxId: operation.mailboxId,
+        phase: 'messages',
+        ...(pageToken === undefined ? {} : { pageToken }),
+        signal: operation.controller.signal,
+      })) {
+        await this.options.store.stageFullReconciliation({
+          mailboxId: operation.mailboxId,
+          generation,
+          batch: batch.changes,
+          pageComplete: batch.pageComplete,
+          ...(batch.nextPageToken === undefined ? {} : { nextPageToken: batch.nextPageToken }),
+          updatedAt: this.now(),
+        })
+        if (batch.pageComplete) nextPageToken = batch.nextPageToken
+      }
+      pageToken = nextPageToken
+      await this.publishProgress(operation)
+    } while (pageToken !== undefined)
+    await this.refreshFinalMetadata(operation, provider)
+    await this.options.store.completeFullReconciliation({
+      mailboxId: operation.mailboxId,
+      generation,
+      updatedAt: this.now(),
+    })
+    return this.reconcile(operation, provider, await this.requireCheckpoint(operation.mailboxId))
   }
 
   private async refreshFinalMetadata(

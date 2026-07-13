@@ -139,6 +139,16 @@ async function runMode(input: {
       throw new Error(`${input.mode} renderer exposed Node globals`)
     const expectedBridgeKeys = [
       'listConversations',
+      'listLabels',
+      'getConversation',
+      'searchMail',
+      'executeCommand',
+      'listCommandIssues',
+      'resolveCommand',
+      'saveDraft',
+      'getDraft',
+      'listDrafts',
+      'sendDraft',
       'listMailboxes',
       'connectGmail',
       'disconnectMailbox',

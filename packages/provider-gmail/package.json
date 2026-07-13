@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@mailrovers/mail-application": "workspace:*",
+    "@mailrovers/mail-contracts": "workspace:*",
     "@mailrovers/mail-domain": "workspace:*",
+    "mimetext": "3.0.28",
     "sanitize-html": "2.17.6",
     "zod": "3.24.3"
   },

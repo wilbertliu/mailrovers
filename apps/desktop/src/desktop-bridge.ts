@@ -1,11 +1,20 @@
 import type {
   ApplicationError,
+  CommandReceipt,
   ConnectGmailResult,
+  ConversationDetail,
   ConversationPage,
   DesktopEvent,
+  Draft,
   IpcResult,
+  LabelSummary,
   ListConversationsInput,
+  MailCommand,
   MailboxSummary,
+  SaveDraftInput,
+  SearchMailInput,
+  SearchPage,
+  SendDraftReceipt,
   SyncReceipt,
   SyncStatus,
 } from '@mailrovers/mail-contracts'
@@ -29,6 +38,86 @@ export const desktopBridge = {
   },
   listConversations: (input: ListConversationsInput): Promise<ConversationPage> =>
     window.mailrovers.v1.listConversations(input),
+  async listLabels(mailboxId: MailboxId): Promise<LabelSummary[]> {
+    return unwrap(
+      await window.mailrovers.v1.listLabels({
+        requestId: this.createRequestId(),
+        mailboxId,
+      }),
+    )
+  },
+  async getConversation(input: {
+    mailboxId: MailboxId
+    conversationId: ConversationDetail['id']
+  }): Promise<ConversationDetail | undefined> {
+    const result = unwrap(
+      await window.mailrovers.v1.getConversation({
+        requestId: this.createRequestId(),
+        ...input,
+      }),
+    )
+    return result ?? undefined
+  },
+  async searchMail(input: Omit<SearchMailInput, 'requestId'>): Promise<SearchPage> {
+    return unwrap(
+      await window.mailrovers.v1.searchMail({ requestId: this.createRequestId(), ...input }),
+    )
+  },
+  async executeCommand(input: {
+    mailboxId: MailboxId
+    idempotencyKey: string
+    command: MailCommand
+  }): Promise<CommandReceipt> {
+    return unwrap(
+      await window.mailrovers.v1.executeCommand({
+        requestId: this.createRequestId(),
+        ...input,
+      }),
+    )
+  },
+  async listCommandIssues(mailboxId: MailboxId): Promise<CommandReceipt[]> {
+    return unwrap(
+      await window.mailrovers.v1.listCommandIssues({
+        requestId: this.createRequestId(),
+        mailboxId,
+      }),
+    )
+  },
+  async resolveCommand(input: {
+    mailboxId: MailboxId
+    commandId: CommandReceipt['id']
+    resolution: 'recheck' | 'retry' | 'cancel'
+  }): Promise<void> {
+    unwrap(
+      await window.mailrovers.v1.resolveCommand({
+        requestId: this.createRequestId(),
+        ...input,
+      }),
+    )
+  },
+  async saveDraft(input: Omit<SaveDraftInput, 'requestId'>): Promise<Draft> {
+    return unwrap(
+      await window.mailrovers.v1.saveDraft({ requestId: this.createRequestId(), ...input }),
+    )
+  },
+  async listDrafts(mailboxId: MailboxId): Promise<Draft[]> {
+    return unwrap(
+      await window.mailrovers.v1.listDrafts({
+        requestId: this.createRequestId(),
+        mailboxId,
+      }),
+    )
+  },
+  async sendDraft(input: {
+    mailboxId: MailboxId
+    draftId: Draft['id']
+    expectedVersion: number
+    idempotencyKey: string
+  }): Promise<SendDraftReceipt> {
+    return unwrap(
+      await window.mailrovers.v1.sendDraft({ requestId: this.createRequestId(), ...input }),
+    )
+  },
   async listMailboxes(requestId: OperationId): Promise<MailboxSummary[]> {
     return unwrap(await window.mailrovers.v1.listMailboxes({ requestId }))
   },

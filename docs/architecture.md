@@ -1149,13 +1149,19 @@ These decisions do not block the architecture, but each must be resolved before 
 
 - Exact Electron packaging tool and update publisher.
 - Exact SQLite Node driver after packaged native-module testing.
-- Exact maintained HTML sanitizer and MIME parser after security and performance evaluation.
-- Whether database access starts in the main process or a worker process based on the architecture spike measurements.
 - Windows installer format.
 - Linux package formats and supported distributions.
 - Open-source license and contributor agreement policy.
 
 Deferred library choices must preserve the interfaces and constraints in this document.
+
+### 27.1 Decisions resolved for Milestone 3
+
+- Database access uses the main-process host by default because packaged profiling kept the total idle working set within the 250 MB target. `MAILROVERS_DATABASE_HOST=worker` remains available for diagnostics, parity testing, and future event-loop escalation.
+- Inbound Gmail mail uses the Gmail `format=full` MIME tree rather than fetching and retaining raw MIME. Traversal is depth-, part-, and body-size-bounded. `sanitize-html` 2.17 provides the stored HTML allowlist.
+- Outbound text and HTML MIME is serialized by MIMEText 3.0.28. Stable RFC `Message-ID`, `In-Reply-To`, and `References` values are supplied by the application-owned draft state.
+- Sanitized HTML is presented in an opaque sandboxed `srcdoc` frame with a document-specific CSP. Remote resources, scripts, forms, popups, same-origin access, and top navigation are unavailable. Credential-free HTTP and HTTPS links are intercepted in the main process.
+- Ambiguous draft creation and send outcomes are searched by RFC `Message-ID`. An unresolved result enters `needs_review`; it is never resent automatically.
 
 ## 28. Primary references
 

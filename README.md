@@ -80,7 +80,7 @@ packages/mail-contracts/      Transport-neutral contracts
 packages/mail-application/    Application facade and use cases
 packages/mail-store-sqlite/   Local SQLite storage
 packages/provider-gmail/      Gmail OAuth, REST access, and payload translation
-packages/mail-sync/           Resumable import and history reconciliation
+packages/mail-sync/           Resumable sync, reconciliation, and durable command execution
 packages/platform-electron/   Electron safeStorage adapter
 packages/test-support/        Fixtures and test helpers
 docs/                         Architecture and engineering notes
@@ -101,4 +101,6 @@ The initial release synchronizes only while the desktop application is running.
 
 ## Status
 
-The project has an implementation of Gmail connection and resumable local import. It still requires testing with the production OAuth client and packaged macOS release validation. Mailbox commands, ongoing polling, full email workflows, and AI remain under development.
+Milestones 1 through 3 are implemented. The desktop application supports Gmail connection, resumable local synchronization, cached label and conversation browsing, local FTS5 search, durable mailbox commands, compose and reply, local draft persistence, and conservative send reconciliation.
+
+The Gmail write workflows still require the controlled-account release gate in [`docs/m3-verification.md`](docs/m3-verification.md). AI features, release signing, notarization, and automatic updates remain under development.

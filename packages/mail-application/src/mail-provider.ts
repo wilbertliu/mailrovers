@@ -1,4 +1,5 @@
-import type { MailboxId, ProviderChangeBatch } from '@mailrovers/mail-domain'
+import type { Draft, DurableCommand } from '@mailrovers/mail-contracts'
+import type { DraftId, MailAddress, MailboxId, ProviderChangeBatch } from '@mailrovers/mail-domain'
 
 export type GmailAuthorization = {
   providerAccountId: string
@@ -29,6 +30,35 @@ export type PullChangesResult = {
   nextPageToken?: string | undefined
 }
 
+export type ResolvedProviderCommand = {
+  mailboxId: MailboxId
+  command: DurableCommand
+  providerThreadId?: string | undefined
+  providerMessageId?: string | undefined
+  providerLabelId?: string | undefined
+  draft?: Draft | undefined
+  sender?: MailAddress | undefined
+  internetMessageId?: string | undefined
+  replyInternetMessageId?: string | undefined
+}
+
+export type ProviderCommandResult = {
+  changes: ProviderChangeBatch
+  draftIdentity?:
+    | {
+        draftId: DraftId
+        providerDraftId: string
+        providerMessageId: string
+      }
+    | undefined
+  sentDraftId?: DraftId | undefined
+}
+
+export type ProviderCommandReconciliation =
+  | { kind: 'applied'; result: ProviderCommandResult }
+  | { kind: 'not-applied' }
+  | { kind: 'uncertain' }
+
 export interface MailProvider {
   getCurrentCursor(signal: AbortSignal): Promise<string>
   importMailbox(input: {
@@ -43,6 +73,12 @@ export interface MailProvider {
     pageToken?: string | undefined
     signal: AbortSignal
   }): Promise<PullChangesResult>
+  executeCommand(
+    input: ResolvedProviderCommand & { signal: AbortSignal },
+  ): Promise<ProviderCommandResult>
+  reconcileCommand(
+    input: ResolvedProviderCommand & { signal: AbortSignal },
+  ): Promise<ProviderCommandReconciliation>
 }
 
 export interface MailProviderFactory {

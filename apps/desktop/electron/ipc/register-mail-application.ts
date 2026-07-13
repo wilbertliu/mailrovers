@@ -5,6 +5,31 @@ import { z } from 'zod'
 import { isAuthorizedRequest, type AuthorizedWebContents } from './authorization.js'
 import { channels } from './channels.js'
 import {
+  commandReceiptResultSchema,
+  executeCommandInputSchema,
+  listCommandIssuesInputSchema,
+  listCommandIssuesResultSchema,
+  resolveCommandInputSchema,
+} from './commands.schema.js'
+import {
+  draftResultSchema,
+  getDraftInputSchema,
+  getDraftResultSchema,
+  listDraftsInputSchema,
+  listDraftsResultSchema,
+  saveDraftInputSchema,
+  sendDraftInputSchema,
+  sendDraftResultSchema,
+} from './drafts.schema.js'
+import {
+  getConversationInputSchema,
+  getConversationResultSchema,
+  listLabelsInputSchema,
+  listLabelsResultSchema,
+  searchMailInputSchema,
+  searchMailResultSchema,
+} from './mail.schema.js'
+import {
   cancelOperationInputSchema,
   connectGmailInputSchema,
   connectGmailIpcResultSchema,
@@ -34,6 +59,14 @@ function safeError(error: unknown, id: string): ApplicationError {
     return {
       code: 'OPERATION_CANCELLED',
       message: 'The operation was cancelled.',
+      retryable: true,
+      requestId: id,
+      userAction: 'retry',
+    }
+  if (error instanceof Error && error.message === 'DRAFT_VERSION_CONFLICT')
+    return {
+      code: 'DRAFT_VERSION_CONFLICT',
+      message: 'This draft changed in another window. Reload it before saving again.',
       retryable: true,
       requestId: id,
       userAction: 'retry',
@@ -104,6 +137,79 @@ export function registerMailApplication(input: {
     inputSchema: listMailboxesInputSchema,
     resultSchema: listMailboxesResultSchema,
     run: (application, value) => application.listMailboxes(value),
+  })
+  register({
+    ...common,
+    channel: channels.listLabels,
+    inputSchema: listLabelsInputSchema,
+    resultSchema: listLabelsResultSchema,
+    run: (application, value) => application.listLabels(value),
+  })
+  register({
+    ...common,
+    channel: channels.getConversation,
+    inputSchema: getConversationInputSchema,
+    resultSchema: getConversationResultSchema,
+    run: async (application, value) => (await application.getConversation(value)) ?? null,
+  })
+  register({
+    ...common,
+    channel: channels.searchMail,
+    inputSchema: searchMailInputSchema,
+    resultSchema: searchMailResultSchema,
+    run: (application, value) => application.searchMail(value),
+  })
+  register({
+    ...common,
+    channel: channels.executeCommand,
+    inputSchema: executeCommandInputSchema,
+    resultSchema: commandReceiptResultSchema,
+    run: (application, value) => application.executeCommand(value),
+  })
+  register({
+    ...common,
+    channel: channels.listCommandIssues,
+    inputSchema: listCommandIssuesInputSchema,
+    resultSchema: listCommandIssuesResultSchema,
+    run: (application, value) => application.listCommandIssues(value),
+  })
+  register({
+    ...common,
+    channel: channels.resolveCommand,
+    inputSchema: resolveCommandInputSchema,
+    resultSchema: voidResultSchema,
+    run: async (application, value) => {
+      await application.resolveCommand(value)
+      return null
+    },
+  })
+  register({
+    ...common,
+    channel: channels.saveDraft,
+    inputSchema: saveDraftInputSchema,
+    resultSchema: draftResultSchema,
+    run: (application, value) => application.saveDraft(value),
+  })
+  register({
+    ...common,
+    channel: channels.getDraft,
+    inputSchema: getDraftInputSchema,
+    resultSchema: getDraftResultSchema,
+    run: async (application, value) => (await application.getDraft(value)) ?? null,
+  })
+  register({
+    ...common,
+    channel: channels.listDrafts,
+    inputSchema: listDraftsInputSchema,
+    resultSchema: listDraftsResultSchema,
+    run: (application, value) => application.listDrafts(value),
+  })
+  register({
+    ...common,
+    channel: channels.sendDraft,
+    inputSchema: sendDraftInputSchema,
+    resultSchema: sendDraftResultSchema,
+    run: (application, value) => application.sendDraft(value),
   })
   register({
     ...common,

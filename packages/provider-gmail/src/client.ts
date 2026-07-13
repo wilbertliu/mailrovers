@@ -104,16 +104,54 @@ export class GmailHttpClient {
     path: string,
     input: { signal: AbortSignal; allowNotFound?: boolean | undefined },
   ): Promise<unknown> {
+    return this.performRequest(path, { ...input, method: 'GET', retrySafe: true })
+  }
+
+  async mutateSetLike(
+    path: string,
+    input: { signal: AbortSignal; body: unknown },
+  ): Promise<unknown> {
+    return this.performRequest(path, {
+      signal: input.signal,
+      method: 'POST',
+      body: input.body,
+      retrySafe: true,
+    })
+  }
+
+  async mutateOnce(
+    path: string,
+    input: { signal: AbortSignal; method: 'POST' | 'PUT' | 'DELETE'; body?: unknown },
+  ): Promise<unknown> {
+    return this.performRequest(path, { ...input, retrySafe: false })
+  }
+
+  private async performRequest(
+    path: string,
+    input: {
+      signal: AbortSignal
+      method: 'GET' | 'POST' | 'PUT' | 'DELETE'
+      body?: unknown
+      allowNotFound?: boolean | undefined
+      retrySafe: boolean
+    },
+  ): Promise<unknown> {
     let refreshed = false
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    const attempts = input.retrySafe ? 5 : 2
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
       input.signal.throwIfAborted()
       try {
         const token = await this.input.accessTokens.get(input.signal)
         const response = await this.fetchImplementation(`${this.gmailApi}${path}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          method: input.method,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...(input.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          },
+          ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
           signal: input.signal,
         })
-        if (response.ok) return await response.json()
+        if (response.ok) return response.status === 204 ? undefined : await response.json()
         if (response.status === 404 && input.allowNotFound) return undefined
         if (response.status === 401 && !refreshed) {
           refreshed = true
@@ -121,7 +159,7 @@ export class GmailHttpClient {
           continue
         }
         const reason = await errorReason(response)
-        if (!retryable(response.status, reason) || attempt === 4)
+        if (!input.retrySafe || !retryable(response.status, reason) || attempt === attempts - 1)
           throw new GmailApiError(
             `Gmail request failed with HTTP ${response.status}`,
             response.status,
@@ -130,7 +168,7 @@ export class GmailHttpClient {
       } catch (error) {
         if (input.signal.aborted) throw error
         if (error instanceof GmailApiError && !retryable(error.status, error.reason)) throw error
-        if (attempt === 4) throw error
+        if (!input.retrySafe || attempt === attempts - 1) throw error
       }
       const jitter = Math.floor((this.input.random?.() ?? Math.random()) * 1000)
       const milliseconds = Math.min(2 ** attempt * 1000 + jitter, 32_000)

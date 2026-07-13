@@ -50,6 +50,7 @@ export type SyncPhase =
   | 'importing_messages'
   | 'importing_drafts'
   | 'reconciling_history'
+  | 'full_reconciliation'
   | 'paused'
   | 'complete'
   | 'failed'

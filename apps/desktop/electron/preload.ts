@@ -2,9 +2,34 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { z } from 'zod'
 import { channels } from './ipc/channels.js'
 import {
+  commandReceiptResultSchema,
+  executeCommandInputSchema,
+  listCommandIssuesInputSchema,
+  listCommandIssuesResultSchema,
+  resolveCommandInputSchema,
+} from './ipc/commands.schema.js'
+import {
+  draftResultSchema,
+  getDraftInputSchema,
+  getDraftResultSchema,
+  listDraftsInputSchema,
+  listDraftsResultSchema,
+  saveDraftInputSchema,
+  sendDraftInputSchema,
+  sendDraftResultSchema,
+} from './ipc/drafts.schema.js'
+import {
   conversationPageSchema,
   listConversationsInputSchema,
 } from './ipc/list-conversations.schema.js'
+import {
+  getConversationInputSchema,
+  getConversationResultSchema,
+  listLabelsInputSchema,
+  listLabelsResultSchema,
+  searchMailInputSchema,
+  searchMailResultSchema,
+} from './ipc/mail.schema.js'
 import {
   cancelOperationInputSchema,
   connectGmailInputSchema,
@@ -41,6 +66,56 @@ const bridge = {
       const parsed = listConversationsInputSchema.parse(input)
       const result: unknown = await ipcRenderer.invoke(channels.listConversations, parsed)
       return conversationPageSchema.parse(result)
+    },
+    async listLabels(input: unknown) {
+      const parsed = listLabelsInputSchema.parse(input)
+      const result: unknown = await ipcRenderer.invoke(channels.listLabels, parsed)
+      return listLabelsResultSchema.parse(result)
+    },
+    async getConversation(input: unknown) {
+      const parsed = getConversationInputSchema.parse(input)
+      const result: unknown = await ipcRenderer.invoke(channels.getConversation, parsed)
+      return getConversationResultSchema.parse(result)
+    },
+    async searchMail(input: unknown) {
+      const parsed = searchMailInputSchema.parse(input)
+      const result: unknown = await ipcRenderer.invoke(channels.searchMail, parsed)
+      return searchMailResultSchema.parse(result)
+    },
+    async executeCommand(input: unknown) {
+      const parsed = executeCommandInputSchema.parse(input)
+      const result: unknown = await ipcRenderer.invoke(channels.executeCommand, parsed)
+      return commandReceiptResultSchema.parse(result)
+    },
+    async listCommandIssues(input: unknown) {
+      const parsed = listCommandIssuesInputSchema.parse(input)
+      const result: unknown = await ipcRenderer.invoke(channels.listCommandIssues, parsed)
+      return listCommandIssuesResultSchema.parse(result)
+    },
+    async resolveCommand(input: unknown) {
+      const parsed = resolveCommandInputSchema.parse(input)
+      const result: unknown = await ipcRenderer.invoke(channels.resolveCommand, parsed)
+      return voidResultSchema.parse(result)
+    },
+    async saveDraft(input: unknown) {
+      const parsed = saveDraftInputSchema.parse(input)
+      const result: unknown = await ipcRenderer.invoke(channels.saveDraft, parsed)
+      return draftResultSchema.parse(result)
+    },
+    async getDraft(input: unknown) {
+      const parsed = getDraftInputSchema.parse(input)
+      const result: unknown = await ipcRenderer.invoke(channels.getDraft, parsed)
+      return getDraftResultSchema.parse(result)
+    },
+    async listDrafts(input: unknown) {
+      const parsed = listDraftsInputSchema.parse(input)
+      const result: unknown = await ipcRenderer.invoke(channels.listDrafts, parsed)
+      return listDraftsResultSchema.parse(result)
+    },
+    async sendDraft(input: unknown) {
+      const parsed = sendDraftInputSchema.parse(input)
+      const result: unknown = await ipcRenderer.invoke(channels.sendDraft, parsed)
+      return sendDraftResultSchema.parse(result)
     },
     async listMailboxes(input: unknown) {
       const parsed = listMailboxesInputSchema.parse(input)

@@ -1,18 +1,36 @@
 import type {
   CancelOperationInput,
+  CommandReceipt,
   ConnectGmailInput,
   ConnectGmailResult,
+  ConversationDetail,
   ConversationPage,
   DisconnectMailboxInput,
+  Draft,
+  ExecuteMailCommandInput,
+  GetConversationInput,
+  GetDraftInput,
   GetSyncStatusInput,
+  ListCommandIssuesInput,
   ListConversationsInput,
+  ListDraftsInput,
+  ListLabelsInput,
   ListMailboxesInput,
+  LabelSummary,
   MailboxSummary,
+  ResolveCommandInput,
+  SaveDraftInput,
+  SearchMailInput,
+  SearchPage,
+  SendDraftInput,
+  SendDraftReceipt,
   StartSyncInput,
   SyncReceipt,
   SyncStatus,
 } from '@mailrovers/mail-contracts'
 import {
+  commandId,
+  draftId,
   mailboxId,
   utcTimestamp,
   workspaceId,
@@ -21,13 +39,23 @@ import {
 } from '@mailrovers/mail-domain'
 import type { GmailConnector } from './mail-provider.js'
 import type { MailStore } from './mail-store.js'
-import type { SecretSealer, SyncEngine } from './sync-engine.js'
+import type { CommandDispatcher, SecretSealer, SyncEngine } from './sync-engine.js'
 
 export interface MailApplication {
   listMailboxes(input: ListMailboxesInput): Promise<MailboxSummary[]>
   connectGmail(input: ConnectGmailInput): Promise<ConnectGmailResult>
   disconnectMailbox(input: DisconnectMailboxInput): Promise<void>
   listConversations(input: ListConversationsInput): Promise<ConversationPage>
+  listLabels(input: ListLabelsInput): Promise<LabelSummary[]>
+  getConversation(input: GetConversationInput): Promise<ConversationDetail | undefined>
+  searchMail(input: SearchMailInput): Promise<SearchPage>
+  executeCommand(input: ExecuteMailCommandInput): Promise<CommandReceipt>
+  listCommandIssues(input: ListCommandIssuesInput): Promise<CommandReceipt[]>
+  resolveCommand(input: ResolveCommandInput): Promise<void>
+  saveDraft(input: SaveDraftInput): Promise<Draft>
+  getDraft(input: GetDraftInput): Promise<Draft | undefined>
+  listDrafts(input: ListDraftsInput): Promise<Draft[]>
+  sendDraft(input: SendDraftInput): Promise<SendDraftReceipt>
   startSync(input: StartSyncInput): Promise<SyncReceipt>
   getSyncStatus(input: GetSyncStatusInput): Promise<SyncStatus>
   cancelOperation(input: CancelOperationInput): Promise<void>
@@ -38,6 +66,7 @@ export type MailApplicationDependencies = {
   gmailConnector?: GmailConnector | undefined
   secretSealer?: SecretSealer | undefined
   syncEngine?: SyncEngine | undefined
+  commandDispatcher?: CommandDispatcher | undefined
   now?: (() => Date) | undefined
 }
 
@@ -56,6 +85,53 @@ export function createMailApplication(
   return {
     listMailboxes: () => dependencies.store.listMailboxes(),
     listConversations: (request) => dependencies.store.listConversations(request),
+    listLabels: (request) => dependencies.store.listLabels(request.mailboxId),
+    getConversation: (request) => dependencies.store.getConversation(request),
+    searchMail: (request) => dependencies.store.searchMail(request),
+    async executeCommand(request) {
+      const receipt = await dependencies.store.enqueueCommand({
+        id: commandId(request.idempotencyKey),
+        mailboxId: request.mailboxId,
+        idempotencyKey: request.idempotencyKey,
+        command: request.command,
+        createdAt: utcTimestamp(now().toISOString()),
+      })
+      dependencies.commandDispatcher?.wake()
+      return receipt
+    },
+    listCommandIssues: (request) => dependencies.store.listCommandIssues(request.mailboxId),
+    async resolveCommand(request) {
+      await dependencies.store.setCommandState({
+        id: request.commandId,
+        state: request.resolution === 'cancel' ? 'cancelled' : 'pending',
+        updatedAt: utcTimestamp(now().toISOString()),
+      })
+      if (request.resolution !== 'cancel') dependencies.commandDispatcher?.wake()
+    },
+    async saveDraft(request) {
+      const draft = await dependencies.store.saveDraft({
+        request,
+        id: request.draftId ?? draftId(`draft:${request.idempotencyKey}`),
+        internetMessageId: `<${request.draftId ?? request.idempotencyKey}@mailrovers.local>`,
+        updatedAt: utcTimestamp(now().toISOString()),
+      })
+      dependencies.commandDispatcher?.wake()
+      return draft
+    },
+    getDraft: (request) =>
+      dependencies.store.getDraft({ mailboxId: request.mailboxId, draftId: request.draftId }),
+    listDrafts: (request) => dependencies.store.listDrafts(request.mailboxId),
+    async sendDraft(request) {
+      const receipt = await dependencies.store.enqueueSendDraft({
+        mailboxId: request.mailboxId,
+        draftId: request.draftId,
+        expectedVersion: request.expectedVersion,
+        idempotencyKey: request.idempotencyKey,
+        createdAt: utcTimestamp(now().toISOString()),
+      })
+      dependencies.commandDispatcher?.wake()
+      return { commandId: receipt.id, draftId: request.draftId, version: request.expectedVersion }
+    },
     async connectGmail(request) {
       const connector = required(dependencies.gmailConnector, 'Gmail connector')
       const sealer = required(dependencies.secretSealer, 'Secret sealer')
