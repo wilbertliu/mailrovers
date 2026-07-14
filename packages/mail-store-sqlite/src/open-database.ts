@@ -4,6 +4,10 @@ import { migration0001 } from './migrations/0001-m1.js'
 import { migration0002 } from './migrations/0002-m2.js'
 import { migration0003 } from './migrations/0003-m3.js'
 import { migration0004 } from './migrations/0004-m4.js'
+import { backfillDraftIntegrity, migration0005 } from './migrations/0005-draft-integrity.js'
+import { migration0006 } from './migrations/0006-sync-leases.js'
+import { migration0007 } from './migrations/0007-capabilities-atomicity.js'
+import { migration0008 } from './migrations/0008-post-import-maintenance.js'
 export type SqliteDatabase = Database.Database
 export function openDatabase(path: string): SqliteDatabase {
   const db = new Database(path)
@@ -19,6 +23,10 @@ const migrations = [
   { version: 2, sql: migration0002 },
   { version: 3, sql: migration0003 },
   { version: 4, sql: migration0004 },
+  { version: 5, sql: migration0005 },
+  { version: 6, sql: migration0006 },
+  { version: 7, sql: migration0007 },
+  { version: 8, sql: migration0008 },
 ] as const
 
 function backupBeforeDestructiveMigration(db: SqliteDatabase, version: number): void {
@@ -61,10 +69,17 @@ export function migrate(db: SqliteDatabase): void {
   const upgradingExistingDatabase = appliedVersions.size > 0
   for (const migration of migrations) {
     if (appliedVersions.has(migration.version)) continue
-    if (migration.version === 3 && upgradingExistingDatabase)
+    if ((migration.version === 3 || migration.version === 5) && upgradingExistingDatabase)
       backupBeforeDestructiveMigration(db, migration.version)
     db.transaction(() => {
       db.exec(migration.sql)
+      if (migration.version === 5) backfillDraftIntegrity(db)
+      const foreignKeyFailures = db.pragma('foreign_key_check') as unknown[]
+      if (foreignKeyFailures.length > 0)
+        throw new Error(`Foreign key check failed during migration ${migration.version}`)
+      const integrityResult = String(db.pragma('integrity_check', { simple: true }))
+      if (integrityResult !== 'ok')
+        throw new Error(`Integrity check failed during migration ${migration.version}`)
       db.prepare('INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)').run(
         migration.version,
         new Date().toISOString(),

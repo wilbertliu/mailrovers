@@ -73,20 +73,25 @@ The first release will not include:
 
 ### 5.1 Performance budgets
 
-The application will target the following values on a supported Mac with a warm local database:
+The following are hard release budgets on a supported Mac with a warm local database. Packaged
+verification records raw samples and nearest-rank percentiles; a missing measurement or a hard
+budget violation fails `performance:packaged`.
 
-| Operation                      |                                 Target |
-| ------------------------------ | -------------------------------------: |
-| First window visible           |                         Under 1 second |
-| Inbox usable from local data   |                      Under 1.5 seconds |
-| Cached inbox query             |                     Under 50 ms at p95 |
-| Cached thread open             |                    Under 100 ms at p95 |
-| Navigation and typing response |                           Under 100 ms |
-| Thread-list scrolling          | 60 frames per second under normal load |
-| Background synchronization     |         No renderer stalls over 100 ms |
-| Idle memory                    |                    Target below 250 MB |
+| Operation                      |                                   Target |
+| ------------------------------ | ---------------------------------------: |
+| First window visible           |                           Under 1 second |
+| Inbox usable from local data   |                        Under 1.5 seconds |
+| Cached inbox query             |                       Under 50 ms at p95 |
+| Cached thread open             |                      Under 100 ms at p95 |
+| Navigation and typing response |                             Under 100 ms |
+| Thread-list scrolling          |   60 frames per second under normal load |
+| Background synchronization     |           No renderer stalls over 100 ms |
+| Idle resident memory           | Hard limit 300 MiB; target below 250 MiB |
 
-Performance tests must cover synthetic mailboxes containing 10,000 and 100,000 messages. The architecture must not require loading an entire mailbox or thread list into memory.
+Idle RSS below 250 MiB remains the optimization target. Reaching 300 MiB is a hard release-budget
+violation, and a missing idle RSS measurement also fails `performance:packaged`. Performance tests
+must cover synthetic mailboxes containing 10,000 and 100,000 messages. The architecture must not
+require loading an entire mailbox or thread list into memory.
 
 ### 5.2 Reliability
 
@@ -170,7 +175,7 @@ The bridge must expose task-oriented operations such as `listThreads` and `sendD
 The main process owns:
 
 - Application lifecycle and windows.
-- Single-instance enforcement.
+- Single-instance enforcement. `app.requestSingleInstanceLock()` runs before readiness, database opening, worker creation, provider construction, or command/sync startup. A losing process quits without opening local services; the winner restores, shows, and focuses its window on `second-instance`.
 - Deep links and OAuth callback coordination.
 - Native menus, notifications, dock integration, and updater lifecycle.
 - Secret encryption and decryption.
@@ -208,7 +213,7 @@ packages/
   mail-domain/                   provider-neutral domain types and rules
   mail-application/              application facade and use cases
   mail-contracts/                transport-neutral inputs, results, and events
-  mail-store-sqlite/             SQLite schema, migrations, repositories, FTS
+  mail-store-sqlite/             SQLite schema, migrations, focused internal store modules, FTS
   provider-gmail/                Gmail OAuth, import, deltas, and mutations
   mail-sync/                     checkpoints, retries, reconciliation, outbox
   mail-ai/                       AI tasks, provider adapter, policies, auditing
@@ -461,7 +466,7 @@ The pair is unique.
 - `local_path`
 - `download_state`
 
-Attachment content downloads on demand unless needed for rendering an inline body part. The attachment cache has a default 1 GB limit and removes least-recently-used unpinned files when it exceeds the limit. Removing cached content never removes the provider attachment. Export operations fetch or read the attachment and stream it to a user-selected destination.
+Attachment content downloads on demand unless needed for rendering an inline body part. The attachment cache has a default 1 GB limit and removes least-recently-used cached files when it exceeds the limit. Removing cached content never removes the provider attachment. Export operations fetch or read the attachment, show the native save dialog in the main process, and return only an exported/cancelled result to the renderer; destination paths never cross IPC.
 
 #### `drafts`
 
@@ -557,7 +562,10 @@ Semantic search is deferred. The first release must prove that FTS5 and structur
 - Use schema migrations with a monotonic application schema version.
 - Use explicit transactions for imported batches.
 - Use keyset pagination for chronological lists.
-- Run `ANALYZE` after large initial imports.
+- Schedule `ANALYZE` after a completed production initial import, after startup and interactive
+  work. Persist its checkpoint marker only after success; a crash before the marker repeats the
+  safe operation. It runs in the database worker when the optional worker host is selected and is
+  deferred/yielded through the same `MailStore` abstraction in the default main-process host.
 - Never execute unbounded table scans on the interaction path.
 - Back up the database before destructive migrations.
 
@@ -608,11 +616,17 @@ Synchronization runs:
 - After a provider mutation with an uncertain result.
 - When the user requests refresh.
 
-The initial polling interval is 60 seconds. Backoff applies when Gmail returns throttling or transient errors. Manual refresh respects active backoff unless it is safe to retry.
+The initial polling interval is 60 seconds. A single reschedulable due-time scheduler owns the
+timer, coalesces each mailbox to one in-flight sync, removes disconnected mailboxes, and reads
+durable retry deadlines before waking. Focus advances an eligible sync only after the quiet period.
+Backoff applies when Gmail returns throttling or transient errors. Manual refresh respects active
+backoff unless it is safe to retry and returns a `deferred` receipt with its durable retry time when
+backoff remains active. The renderer uses committed sync events with a recovery refetch on event
+overflow; it does not poll sync status.
 
 For each synchronization cycle:
 
-1. Acquire a per-mailbox synchronization lease.
+1. Acquire a per-mailbox synchronization lease. SQLite is authoritative; process-local maps are only a fast path.
 2. Read `provider_cursor` and any in-progress `history_page_token`.
 3. Request Gmail history from the fixed start cursor and pass the saved page token when resuming.
 4. Fetch changed entities with bounded concurrency.
@@ -622,7 +636,9 @@ For each synchronization cycle:
 8. On the final page, atomically apply the batch, advance `provider_cursor` to the returned history identifier, and clear in-progress continuation fields.
 9. Reconcile Gmail drafts when history includes draft-related changes and run a periodic full draft reconciliation while the app remains open.
 10. Publish compact change events to the renderer.
-11. Release the lease.
+11. Release the lease with an owner-and-token compare-and-swap.
+
+The default lease TTL is 30 seconds. Each engine has a unique owner identifier; tests and non-desktop hosts may inject the owner, TTL, and clock. Acquisition creates or takes over an expired lease and atomically increments its durable fencing token. Renewal and release require the exact mailbox, owner, and token, and renewal cannot revive an expired lease. Every sync-owned SQLite mutation validates the same unexpired owner/token fence inside the transaction that applies provider batches, import/history/full/draft reconciliation state, retry/auth/reset state, destructive reconciliation cleanup, and cursor advancement. A stale owner aborts and emits no terminal completion event. Outbox claims exclude mailboxes with active sync leases, sync acquisition excludes active outbox commands, and command completion rejects an active sync lease so provider results cannot destructively interleave with synchronization.
 
 If a resumed page token is rejected, restart the pull from the unchanged `provider_cursor`; normalized upserts must tolerate duplicate delivery. If Gmail rejects an expired or invalid start history identifier with HTTP 404, the mailbox enters `reconciling` state and runs a bounded full reconciliation.
 
@@ -660,6 +676,12 @@ Gmail drafts have both a draft identifier and an underlying message identifier. 
 - If Gmail deletes a clean local draft, MailRovers removes it locally. If Gmail deletes a dirty local draft, MailRovers preserves the local content as a new unsynced draft and informs the user.
 - After every successful create or update, MailRovers stores the returned Gmail draft and message identifiers before marking the local command complete.
 
+Draft revisions use a provider-neutral, versioned SHA-256 fingerprint over the stable RFC `Message-ID`, sender, ordered recipients, subject, normalized text and optional HTML bodies, provider thread identity when known, and reply/reference headers. Provider IDs, local IDs, timestamps, MIME boundaries, and transfer encodings are excluded. Queued draft commands retain both the exact expected local version and its immutable outbound fingerprint. Ambiguous Gmail draft or send results are accepted only when exactly one bounded candidate has both the stable `Message-ID` and the exact revision fingerprint; Message-ID-only matching is never sufficient.
+
+SQLite stores the current local revision fingerprint, the latest observed provider fingerprint, and their last common base. Provider reconciliation preserves dirty local bytes as a detached conflict revision when the provider also changed, and remote deletion detaches rather than deletes a dirty local draft. Command completion checks the expected version and fingerprint in the same transaction as provider identity, provider changes, and outbox state; a delayed completion cannot mark or delete a newer local revision.
+
+Schema version 5 backfills legacy drafts transactionally. Synced legacy rows receive equal revision/provider/base fingerprints. Dirty legacy provider rows retain an unknown provider/base and therefore take the conservative conflict-preserving path on their next reconciliation.
+
 ## 13. IPC contracts
 
 All desktop IPC contracts are versioned and validated at both ends. They adapt transport-neutral values from `mail-contracts` to Electron channels.
@@ -686,7 +708,9 @@ AI streaming follows this lifecycle:
 5. Exactly one terminal event is emitted. No event is emitted after termination.
 6. Renderer cancellation invokes `cancelOperation`, aborts the provider request where possible, and emits `cancelled`.
 
-The preload bridge batches text deltas for at most 16 ms or 8 KB before delivering them to the renderer. It buffers at most 256 KB per request. If no renderer subscriber appears within five seconds, the dormant operation expires. If the renderer stops consuming events and the buffer limit is reached, the preload bridge requests cancellation and drops further nonterminal deltas. These limits prevent an unresponsive renderer from causing unbounded memory growth.
+The preload bridge batches text deltas for at most 16 ms or 8 KiB before delivering them to the renderer. The extracted, clock-injectable queue retains at most 256 events and 256 KiB per request and at most 256 request states globally. Unsubscribed orphan states expire after five seconds, drained terminal states are removed immediately, and late post-terminal events are rejected. AI overflow or listener failure requests cancellation exactly once while retaining the terminal event. Durable mail/sync updates are coalesced; overflow emits an `events-overflowed` recovery marker so the renderer invalidates all queries instead of silently trusting an incomplete stream.
+
+SQLite is the authority for renderer-visible mail state. Each successful write transaction publishes a compact `mail-changed` set only after commit, containing mailbox identity and boolean invalidation categories for mailboxes, conversations, labels, drafts, and outbox state. It never carries subjects, bodies, addresses, provider identifiers, or provider payloads. The database host forwards these sets in commit order to one composition-root subscription and the renderer's root React Query subscription. A callback may therefore read the database immediately and observe the committed write; rolled-back transactions publish nothing. Enqueue-time UI behavior may remain locally optimistic, but it is not the authoritative invalidation path.
 
 Event categories:
 
@@ -710,8 +734,9 @@ Data rules:
 - Keep composer state local to the composer feature.
 - Update cached pages from compact change events.
 - Avoid mirroring the database in a global state store.
-- Load full conversation content only when opened.
-- Keep older messages collapsed in long conversations until requested.
+- Conversation retrieval returns headers, attachment metadata, and body availability only.
+- Load a message body through the authorized `getMessageBody` flow only when that message is expanded; collapsed older messages issue no body request.
+- Cache fetched bodies in the renderer query cache. Only text and allowlist-sanitized HTML may cross IPC; provider HTML never crosses unsanitized.
 
 Email rendering rules:
 
@@ -1157,8 +1182,9 @@ Deferred library choices must preserve the interfaces and constraints in this do
 
 ### 27.1 Decisions resolved for Milestone 3
 
-- Database access uses the main-process host by default because packaged profiling kept the total idle working set within the 250 MB target. `MAILROVERS_DATABASE_HOST=worker` remains available for diagnostics, parity testing, and future event-loop escalation.
-- Inbound Gmail mail uses the Gmail `format=full` MIME tree rather than fetching and retaining raw MIME. Traversal is depth-, part-, and body-size-bounded. `sanitize-html` 2.17 provides the stored HTML allowlist.
+- Database access uses the main-process host by default because packaged profiling showed a lower total idle working set than the worker host. `MAILROVERS_DATABASE_HOST=worker` remains available for diagnostics, parity testing, and future event-loop escalation. The selected host must remain below the 300 MiB hard idle-RSS limit.
+- Inbound Gmail mail uses the Gmail `format=full` MIME tree rather than fetching and retaining raw MIME. One iterative traversal shares conservative per-message limits: 1,000 parts, depth 32, 8 MiB encoded data, 8 MiB decoded UTF-8, 4 MiB sanitized HTML output, 500 attachments, and 512 KiB attachment metadata. Crossing any limit returns a typed `MIME_BUDGET_EXCEEDED` diagnostic and metadata-only normalization; bodies and attachment subsets are discarded rather than presented as complete. `sanitize-html` 2.17 provides the stored HTML allowlist.
+- Desktop Gmail normalization runs through one worker with at most eight active/queued jobs. Abort replaces a busy worker, unexpected worker failure rejects all pending jobs, and application shutdown rejects pending work and terminates the worker. Gmail payload types remain inside the provider/Desktop adapter seam.
 - Outbound text and HTML MIME is serialized by MIMEText 3.0.28. Stable RFC `Message-ID`, `In-Reply-To`, and `References` values are supplied by the application-owned draft state.
 - Sanitized HTML is presented in an opaque sandboxed `srcdoc` frame with a document-specific CSP. Remote resources, scripts, forms, popups, same-origin access, and top navigation are unavailable. Credential-free HTTP and HTTPS links are intercepted in the main process.
 - Ambiguous draft creation and send outcomes are searched by RFC `Message-ID`. An unresolved result enters `needs_review`; it is never resent automatically.
@@ -1167,7 +1193,7 @@ Deferred library choices must preserve the interfaces and constraints in this do
 
 - AI configuration is mailbox-scoped. Public base URL and model settings use `app_settings`; the API key uses the mailbox-scoped `encrypted_secrets` row with kind `ai_api_key`.
 - The initial compatibility profile uses `POST {baseUrl}/chat/completions` with native `fetch` and server-sent events. MailRovers does not depend on a provider SDK. HTTPS is required except for loopback HTTP endpoints. The desktop composition root lazy-loads `mail-ai` only when configuration validation or generation starts so AI stays off the cached-inbox startup path.
-- The application layer loads and bounds source messages, checks conversation and draft versions, owns artifact caching, and creates dormant operations. `mail-ai` receives only an explicit request and decrypted provider configuration.
+- The application layer loads bodies internally for at most 32 selected source messages and 64 KiB total context, checks conversation and draft versions, owns artifact caching, and creates dormant operations. This internal body path is separate from renderer lazy loading; `mail-ai` receives only an explicit bounded request and decrypted provider configuration.
 - AI operations start only after the preload bridge registers its callback and sends the authorized `operation:subscribe` request. Text deltas are batched for at most 16 ms or 8 KB with a 256 KB per-request buffer limit.
 - Summary cache lookup requires matching conversation version, policy version, and model. Reply suggestions record draft version and a canonical recipient fingerprint and are never reused silently.
 - Accepting a reply suggestion saves a new optimistic draft version and records artifact acceptance. It does not call the send path; sending still requires the existing explicit `sendDraft` action.

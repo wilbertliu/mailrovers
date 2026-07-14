@@ -1,0 +1,197 @@
+import type { ApplicationError } from '@mailrovers/mail-contracts'
+import { stableErrorCode, type StableErrorCode } from '@mailrovers/platform-electron'
+import type { z } from 'zod'
+import {
+  isAuthorizedRequest,
+  type AuthorizationEvent,
+  type AuthorizedWebContents,
+} from './authorization.js'
+
+export type IpcMainLike = {
+  handle(channel: string, listener: (event: AuthorizationEvent, input: unknown) => unknown): void
+  removeHandler(channel: string): void
+}
+
+export type ValidatedHandlerDefinition<Application, Input = unknown> = {
+  channel: string
+  inputSchema: z.ZodType<Input, z.ZodTypeDef, any>
+  resultSchema: z.ZodTypeAny
+  run(application: Application, value: Input): Promise<unknown>
+}
+
+function requestId(value: unknown): string {
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    'requestId' in value &&
+    typeof value.requestId === 'string' &&
+    value.requestId.length > 0 &&
+    value.requestId.length <= 200
+  )
+    return value.requestId
+  return 'unknown-request'
+}
+
+function errorCode(error: unknown): unknown {
+  return typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined
+}
+
+export function safeApplicationError(error: unknown, id: string): ApplicationError {
+  if (error instanceof Error && error.name === 'AbortError')
+    return applicationError(
+      'OPERATION_CANCELLED',
+      'The operation was cancelled.',
+      true,
+      id,
+      'retry',
+    )
+  if (error instanceof Error && error.message === 'DRAFT_VERSION_CONFLICT')
+    return applicationError(
+      'DRAFT_VERSION_CONFLICT',
+      'This draft changed in another window. Reload it before saving again.',
+      true,
+      id,
+      'retry',
+    )
+  const code = stableErrorCode(errorCode(error), 'APPLICATION_ERROR')
+  if (code === 'AI_CONTEXT_STALE' || code === 'AI_ARTIFACT_STALE')
+    return applicationError(
+      code,
+      'The conversation or draft changed. Generate a new suggestion.',
+      true,
+      id,
+      'retry',
+    )
+  if (code === 'AI_CONFIGURATION_INVALID' || code === 'AI_AUTHENTICATION_FAILED')
+    return applicationError(
+      code,
+      'Review the AI provider settings and API key.',
+      false,
+      id,
+      'reviewSettings',
+    )
+  if (
+    code === 'AI_PROVIDER_THROTTLED' ||
+    code === 'AI_PROVIDER_UNAVAILABLE' ||
+    code === 'AI_RESPONSE_INVALID' ||
+    code === 'AI_UNSAFE_OUTPUT'
+  )
+    return applicationError(
+      code,
+      'The AI provider could not complete the request.',
+      code !== 'AI_UNSAFE_OUTPUT',
+      id,
+      code === 'AI_UNSAFE_OUTPUT' ? undefined : 'retry',
+    )
+  if (error instanceof Error && error.message.includes('client ID is not configured'))
+    return applicationError(
+      'GMAIL_CONFIGURATION_REQUIRED',
+      'This build does not have a Google OAuth client ID.',
+      false,
+      id,
+      'reviewSettings',
+    )
+  return applicationError(
+    'APPLICATION_ERROR',
+    'MailRovers could not complete the request.',
+    true,
+    id,
+    'retry',
+  )
+}
+
+function applicationError(
+  code: StableErrorCode,
+  message: string,
+  retryable: boolean,
+  requestIdValue: string,
+  userAction?: ApplicationError['userAction'],
+): ApplicationError {
+  return {
+    code,
+    message,
+    retryable,
+    requestId: requestIdValue,
+    ...(userAction === undefined ? {} : { userAction }),
+  }
+}
+
+function failure(
+  code: StableErrorCode,
+  message: string,
+  id: string,
+): { ok: false; error: ApplicationError } {
+  return { ok: false, error: applicationError(code, message, false, id) }
+}
+
+/** Registers one authorized, schema-validated invoke handler and returns an idempotent unregister. */
+export function registerValidatedHandler<Application, Input>(input: {
+  ipcMain: IpcMainLike
+  definition: ValidatedHandlerDefinition<Application, Input>
+  application: Application
+  webContents: AuthorizedWebContents
+  rendererUrl: string
+}): () => void {
+  const { definition } = input
+  const configurationProbe = definition.resultSchema.safeParse(
+    failure('INTERNAL_ERROR', 'MailRovers could not complete the request.', 'unknown-request'),
+  )
+  if (!configurationProbe.success) throw new Error('Invalid IPC result schema')
+
+  input.ipcMain.removeHandler(definition.channel)
+  input.ipcMain.handle(definition.channel, async (event, unknownInput) => {
+    const id = requestId(unknownInput)
+    const respond = (
+      candidate: unknown,
+      invalidMessage = 'MailRovers returned an invalid response.',
+    ) => {
+      const parsed = definition.resultSchema.safeParse(candidate)
+      if (parsed.success) return parsed.data
+      const fallback = definition.resultSchema.safeParse(
+        failure('INVALID_RESPONSE', invalidMessage, id),
+      )
+      if (fallback.success) return fallback.data
+      return configurationProbe.data
+    }
+
+    if (!isAuthorizedRequest(event, input.webContents, input.rendererUrl))
+      return respond(failure('UNAUTHORIZED_REQUEST', 'The request was not authorized.', id))
+    const parsedInput = definition.inputSchema.safeParse(unknownInput)
+    if (!parsedInput.success)
+      return respond(failure('INVALID_REQUEST', 'The request was invalid.', id))
+    try {
+      const value = await definition.run(input.application, parsedInput.data)
+      return respond({ ok: true, value })
+    } catch (error) {
+      return respond({ ok: false, error: safeApplicationError(error, id) })
+    }
+  })
+
+  let registered = true
+  return () => {
+    if (!registered) return
+    registered = false
+    input.ipcMain.removeHandler(definition.channel)
+  }
+}
+
+export function registerValidatedRegistry<Application>(input: {
+  ipcMain: IpcMainLike
+  definitions: readonly ValidatedHandlerDefinition<Application, any>[]
+  application: Application
+  webContents: AuthorizedWebContents
+  rendererUrl: string
+}): () => void {
+  const unregister = input.definitions.map((definition) =>
+    registerValidatedHandler({
+      ...input,
+      definition: definition as ValidatedHandlerDefinition<Application, unknown>,
+    }),
+  )
+  let registered = true
+  return () => {
+    if (!registered) return
+    registered = false
+    for (const remove of [...unregister].reverse()) remove()
+  }
+}

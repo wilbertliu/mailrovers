@@ -6,10 +6,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@mailrovers/mail-application": "workspace:*"
+    "@mailrovers/mail-application": "workspace:*",
+    "@mailrovers/mail-contracts": "workspace:*"
   },
   "devDependencies": {
     "electron": "43.1.0",

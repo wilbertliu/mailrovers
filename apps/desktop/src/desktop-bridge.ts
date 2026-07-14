@@ -1,3 +1,4 @@
+import { COMMITTED_CHANGES_REQUEST_ID } from '@mailrovers/mail-contracts'
 import type {
   AiArtifact,
   AiConfigurationStatus,
@@ -5,16 +6,20 @@ import type {
   AiStreamReceipt,
   ApplicationError,
   CommandReceipt,
+  CommittedChangesEvent,
   ConnectGmailResult,
   ConversationDetail,
   ConversationPage,
   DesktopEvent,
+  EventRecoveryRequired,
   Draft,
+  ExportAttachmentResult,
   IpcResult,
   LabelSummary,
   ListConversationsInput,
   MailCommand,
   MailboxSummary,
+  MessageBody,
   SaveAiConfigurationInput,
   SaveDraftInput,
   SearchMailInput,
@@ -41,8 +46,9 @@ export const desktopBridge = {
   createRequestId(): OperationId {
     return operationId(crypto.randomUUID())
   },
-  listConversations: (input: ListConversationsInput): Promise<ConversationPage> =>
-    window.mailrovers.v1.listConversations(input),
+  async listConversations(input: ListConversationsInput): Promise<ConversationPage> {
+    return unwrap(await window.mailrovers.v1.listConversations(input))
+  },
   async listLabels(mailboxId: MailboxId): Promise<LabelSummary[]> {
     return unwrap(
       await window.mailrovers.v1.listLabels({
@@ -63,6 +69,31 @@ export const desktopBridge = {
     )
     return result ?? undefined
   },
+  async getMessageBody(input: {
+    mailboxId: MailboxId
+    conversationId: ConversationDetail['id']
+    messageId: ConversationDetail['messages'][number]['id']
+  }): Promise<MessageBody | undefined> {
+    const result = unwrap(
+      await window.mailrovers.v1.getMessageBody({
+        requestId: this.createRequestId(),
+        ...input,
+      }),
+    )
+    return result ?? undefined
+  },
+  async exportAttachment(input: {
+    mailboxId: MailboxId
+    messageId: ConversationDetail['messages'][number]['id']
+    attachmentId: ConversationDetail['messages'][number]['attachments'][number]['id']
+  }): Promise<ExportAttachmentResult> {
+    return unwrap(
+      await window.mailrovers.v1.exportAttachment({
+        requestId: this.createRequestId(),
+        ...input,
+      }),
+    )
+  },
   async searchMail(input: Omit<SearchMailInput, 'requestId'>): Promise<SearchPage> {
     return unwrap(
       await window.mailrovers.v1.searchMail({ requestId: this.createRequestId(), ...input }),
@@ -75,6 +106,18 @@ export const desktopBridge = {
   }): Promise<CommandReceipt> {
     return unwrap(
       await window.mailrovers.v1.executeCommand({
+        requestId: this.createRequestId(),
+        ...input,
+      }),
+    )
+  },
+  async undoCommand(input: {
+    mailboxId: MailboxId
+    sourceCommandId: CommandReceipt['id']
+    idempotencyKey: string
+  }): Promise<CommandReceipt> {
+    return unwrap(
+      await window.mailrovers.v1.undoCommand({
         requestId: this.createRequestId(),
         ...input,
       }),
@@ -227,7 +270,11 @@ export const desktopBridge = {
   }): Promise<void> {
     unwrap(await window.mailrovers.v1.disconnectMailbox(input))
   },
-  async startSync(input: { requestId: OperationId; mailboxId: MailboxId }): Promise<SyncReceipt> {
+  async startSync(input: {
+    requestId: OperationId
+    mailboxId: MailboxId
+    reason?: 'manual' | 'lifecycle' | undefined
+  }): Promise<SyncReceipt> {
     return unwrap(await window.mailrovers.v1.startSync(input))
   },
   async getSyncStatus(input: {
@@ -244,6 +291,13 @@ export const desktopBridge = {
   },
   subscribe(requestId: OperationId, callback: (event: DesktopEvent) => void): () => void {
     return window.mailrovers.v1.subscribe(requestId, callback)
+  },
+  subscribeCommittedChanges(
+    callback: (event: CommittedChangesEvent | EventRecoveryRequired) => void,
+  ): () => void {
+    return window.mailrovers.v1.subscribe(operationId(COMMITTED_CHANGES_REQUEST_ID), (event) => {
+      if (event.kind === 'mail-changed' || event.kind === 'events-overflowed') callback(event)
+    })
   },
   subscribeOperation(
     requestId: OperationId,

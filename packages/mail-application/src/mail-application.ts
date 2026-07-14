@@ -1,3 +1,4 @@
+import { GMAIL_CAPABILITIES } from '@mailrovers/mail-contracts'
 import type {
   AcceptAiReplyInput,
   AiArtifact,
@@ -15,9 +16,12 @@ import type {
   Draft,
   DraftReplyInput,
   ExecuteMailCommandInput,
+  ExportAttachmentInput,
+  ExportAttachmentResult,
   GetAiConfigurationInput,
   GetConversationInput,
   GetDraftInput,
+  GetMessageBodyInput,
   GetSyncStatusInput,
   ListCommandIssuesInput,
   ListConversationsInput,
@@ -26,6 +30,7 @@ import type {
   ListMailboxesInput,
   LabelSummary,
   MailboxSummary,
+  MessageBody,
   ResolveCommandInput,
   ReviewAiArtifactInput,
   SaveAiConfigurationInput,
@@ -38,6 +43,7 @@ import type {
   SummarizeConversationInput,
   SyncReceipt,
   SyncStatus,
+  UndoMailCommandInput,
   ValidateAiConfigurationInput,
 } from '@mailrovers/mail-contracts'
 import {
@@ -49,9 +55,10 @@ import {
   workspaceId,
   type Mailbox,
   type MailboxId,
+  type ConversationId,
   type OperationId,
 } from '@mailrovers/mail-domain'
-import { recipientFingerprint, selectAiContext } from './ai-context.js'
+import { MAX_CONTEXT_BYTES, recipientFingerprint, selectAiContext } from './ai-context.js'
 import { AiApplicationError, AiOperationRegistry } from './ai-operations.js'
 import {
   REPLY_POLICY_VERSION,
@@ -59,7 +66,7 @@ import {
   type AiProviderConfiguration,
   type AiRuntimeFactory,
 } from './ai-runtime.js'
-import type { GmailConnector } from './mail-provider.js'
+import type { AttachmentStorage, GmailConnector, MailProviderFactory } from './mail-provider.js'
 import type { MailStore, StoredAiConfiguration } from './mail-store.js'
 import type { CommandDispatcher, SecretSealer, SyncEngine } from './sync-engine.js'
 
@@ -70,8 +77,11 @@ export interface MailApplication {
   listConversations(input: ListConversationsInput): Promise<ConversationPage>
   listLabels(input: ListLabelsInput): Promise<LabelSummary[]>
   getConversation(input: GetConversationInput): Promise<ConversationDetail | undefined>
+  getMessageBody(input: GetMessageBodyInput): Promise<MessageBody | undefined>
+  exportAttachment(input: ExportAttachmentInput): Promise<ExportAttachmentResult>
   searchMail(input: SearchMailInput): Promise<SearchPage>
   executeCommand(input: ExecuteMailCommandInput): Promise<CommandReceipt>
+  undoCommand(input: UndoMailCommandInput): Promise<CommandReceipt>
   listCommandIssues(input: ListCommandIssuesInput): Promise<CommandReceipt[]>
   resolveCommand(input: ResolveCommandInput): Promise<void>
   saveDraft(input: SaveDraftInput): Promise<Draft>
@@ -101,6 +111,8 @@ export type MailApplicationDependencies = {
   secretSealer?: SecretSealer | undefined
   syncEngine?: SyncEngine | undefined
   commandDispatcher?: CommandDispatcher | undefined
+  providers?: MailProviderFactory | undefined
+  attachmentStorage?: AttachmentStorage | undefined
   aiRuntimeFactory?: AiRuntimeFactory | undefined
   publishAiEvent?: ((event: AiStreamEvent) => void) | undefined
   now?: (() => Date) | undefined
@@ -141,13 +153,44 @@ export function createMailApplication(
   const now = dependencies.now ?? (() => new Date())
   const connectionOperations = new Map<OperationId, AbortController>()
   const validationOperations = new Map<OperationId, AbortController>()
+  const attachmentOperations = new Map<OperationId, AbortController>()
   const aiOperations = new AiOperationRegistry(dependencies.publishAiEvent ?? (() => {}))
+
+  const requireConnectedMailbox = async (id: MailboxId): Promise<void> => {
+    const mailbox = await dependencies.store.getMailbox(id)
+    if (mailbox === undefined) throw new Error('Mailbox was not found')
+    if (mailbox.connectionState === 'disconnected')
+      throw new Error('Mailbox is disconnected and cannot contact Gmail')
+  }
 
   const loadAiConfiguration = async (id: MailboxId): Promise<StoredAiConfiguration> => {
     const configuration = await dependencies.store.getAiConfiguration(id)
     if (!configuration?.encryptedApiKey)
       throw new AiApplicationError('AI_CONFIGURATION_INVALID', 'AI is not configured')
     return configuration
+  }
+
+  const loadAiContext = async (
+    mailboxId: MailboxId,
+    conversationId: ConversationId,
+    expectedVersion: number,
+    artifactType: 'conversation_summary' | 'reply_draft',
+  ) => {
+    const snapshot = await dependencies.store.loadAiSourceSnapshot({
+      mailboxId,
+      conversationId,
+      expectedVersion,
+      artifactType,
+      maxBodyBytes: MAX_CONTEXT_BYTES,
+    })
+    if (!snapshot)
+      throw new AiApplicationError('AI_CONTEXT_STALE', 'Conversation changed before generation')
+    const context = selectAiContext(snapshot.conversation, snapshot.bodies, artifactType)
+    return {
+      conversation: snapshot.conversation,
+      ...context,
+      truncated: context.truncated || snapshot.truncated,
+    }
   }
 
   const resolveRuntimeConfiguration = async (
@@ -165,13 +208,76 @@ export function createMailApplication(
     listConversations: (request) => dependencies.store.listConversations(request),
     listLabels: (request) => dependencies.store.listLabels(request.mailboxId),
     getConversation: (request) => dependencies.store.getConversation(request),
+    getMessageBody: (request) => dependencies.store.getMessageBody(request),
+    async exportAttachment(request) {
+      await requireConnectedMailbox(request.mailboxId)
+      if (attachmentOperations.has(request.requestId))
+        throw new Error('An operation with this request ID already exists')
+      const attachment = await dependencies.store.getAttachmentForExport(request)
+      if (attachment === undefined) throw new Error('Attachment was not found for this mailbox')
+      const controller = new AbortController()
+      attachmentOperations.set(request.requestId, controller)
+      try {
+        let relativePath = attachment.cachedRelativePath
+        const storage = required(dependencies.attachmentStorage, 'Attachment storage')
+        if (relativePath !== undefined && !(await storage.exists(relativePath)))
+          relativePath = undefined
+        if (relativePath === undefined) {
+          const provider = await required(dependencies.providers, 'Mail provider').create(
+            request.mailboxId,
+          )
+          if (!provider.getCapabilities().attachmentExport)
+            throw new Error('This provider does not support attachment export')
+          const stream = await provider.getAttachment({
+            mailboxId: request.mailboxId,
+            providerMessageId: attachment.providerMessageId,
+            providerAttachmentId: attachment.providerAttachmentId,
+            expectedSizeBytes: attachment.sizeBytes,
+            signal: controller.signal,
+          })
+          const cached = await storage.cache({
+            stream,
+            expectedSizeBytes: attachment.sizeBytes,
+            signal: controller.signal,
+          })
+          relativePath = cached.relativePath
+          await dependencies.store.markAttachmentCached({
+            mailboxId: request.mailboxId,
+            messageId: request.messageId,
+            attachmentId: request.attachmentId,
+            relativePath,
+          })
+        }
+        const status = await storage.export({
+          relativePath,
+          suggestedName: attachment.filename,
+          signal: controller.signal,
+        })
+        return { status, attachmentId: request.attachmentId }
+      } finally {
+        attachmentOperations.delete(request.requestId)
+      }
+    },
     searchMail: (request) => dependencies.store.searchMail(request),
     async executeCommand(request) {
+      await requireConnectedMailbox(request.mailboxId)
       const receipt = await dependencies.store.enqueueCommand({
         id: commandId(request.idempotencyKey),
         mailboxId: request.mailboxId,
         idempotencyKey: request.idempotencyKey,
         command: request.command,
+        createdAt: utcTimestamp(now().toISOString()),
+      })
+      dependencies.commandDispatcher?.wake()
+      return receipt
+    },
+    async undoCommand(request) {
+      await requireConnectedMailbox(request.mailboxId)
+      const receipt = await dependencies.store.enqueueInverseCommand({
+        id: commandId(request.idempotencyKey),
+        mailboxId: request.mailboxId,
+        sourceCommandId: request.sourceCommandId,
+        idempotencyKey: request.idempotencyKey,
         createdAt: utcTimestamp(now().toISOString()),
       })
       dependencies.commandDispatcher?.wake()
@@ -200,6 +306,7 @@ export function createMailApplication(
       dependencies.store.getDraft({ mailboxId: request.mailboxId, draftId: request.draftId }),
     listDrafts: (request) => dependencies.store.listDrafts(request.mailboxId),
     async sendDraft(request) {
+      await requireConnectedMailbox(request.mailboxId)
       const receipt = await dependencies.store.enqueueSendDraft({
         mailboxId: request.mailboxId,
         draftId: request.draftId,
@@ -273,9 +380,12 @@ export function createMailApplication(
       }
     },
     async startConversationSummary(request) {
-      const conversation = await dependencies.store.getConversation(request)
-      if (!conversation || conversation.version !== request.sourceVersion)
-        throw new AiApplicationError('AI_CONTEXT_STALE', 'Conversation changed before generation')
+      const context = await loadAiContext(
+        request.mailboxId,
+        request.conversationId,
+        request.sourceVersion,
+        'conversation_summary',
+      )
       const configuration = await loadAiConfiguration(request.mailboxId)
       const receipt: AiStreamReceipt = {
         requestId: request.requestId,
@@ -295,7 +405,6 @@ export function createMailApplication(
         })
         if (cached) return aiOperations.registerCached(receipt, cached)
       }
-      const context = selectAiContext(conversation, 'conversation_summary')
       return aiOperations.registerRuntime({
         receipt,
         prepare: async () => ({
@@ -328,15 +437,22 @@ export function createMailApplication(
             content,
             createdAt: utcTimestamp(now().toISOString()),
           }
-          await dependencies.store.saveAiArtifact(artifact)
+          if (!(await dependencies.store.saveAiArtifactIfCurrent(artifact)))
+            throw new AiApplicationError(
+              'AI_CONTEXT_STALE',
+              'Conversation changed during generation',
+            )
           return artifact
         },
       })
     },
     async startReplyDraft(request) {
-      const conversation = await dependencies.store.getConversation(request)
-      if (!conversation || conversation.version !== request.sourceVersion)
-        throw new AiApplicationError('AI_CONTEXT_STALE', 'Conversation changed before generation')
+      const context = await loadAiContext(
+        request.mailboxId,
+        request.conversationId,
+        request.sourceVersion,
+        'reply_draft',
+      )
       const draft = await dependencies.store.getDraft({
         mailboxId: request.mailboxId,
         draftId: request.draftId,
@@ -348,7 +464,6 @@ export function createMailApplication(
       )
         throw new AiApplicationError('AI_CONTEXT_STALE', 'Draft changed before generation')
       const configuration = await loadAiConfiguration(request.mailboxId)
-      const context = selectAiContext(conversation, 'reply_draft')
       const fingerprint = recipientFingerprint(draft)
       const receipt: AiStreamReceipt = {
         requestId: request.requestId,
@@ -399,67 +514,25 @@ export function createMailApplication(
             recipientFingerprint: fingerprint,
             createdAt: utcTimestamp(now().toISOString()),
           }
-          await dependencies.store.saveAiArtifact(artifact)
+          if (!(await dependencies.store.saveAiArtifactIfCurrent(artifact)))
+            throw new AiApplicationError(
+              'AI_CONTEXT_STALE',
+              'Conversation changed during generation',
+            )
           return artifact
         },
       })
     },
     async acceptAiReply(request) {
-      const artifact = await dependencies.store.getAiArtifact({
+      const saved = await dependencies.store.acceptAiReply({
         mailboxId: request.mailboxId,
         artifactId: request.artifactId,
-      })
-      if (
-        !artifact?.draftId ||
-        artifact.artifactType !== 'reply_draft' ||
-        artifact.draftVersion !== request.expectedDraftVersion
-      )
-        throw new AiApplicationError('AI_ARTIFACT_STALE', 'AI reply is stale')
-      const conversation = await dependencies.store.getConversation({
-        requestId: request.requestId,
-        mailboxId: request.mailboxId,
-        conversationId: artifact.conversationId,
-      })
-      const draft = await dependencies.store.getDraft({
-        mailboxId: request.mailboxId,
-        draftId: artifact.draftId,
-      })
-      if (
-        !conversation ||
-        conversation.version !== artifact.sourceVersion ||
-        !draft ||
-        draft.version !== request.expectedDraftVersion ||
-        recipientFingerprint(draft) !== artifact.recipientFingerprint
-      )
-        throw new AiApplicationError('AI_ARTIFACT_STALE', 'AI reply is stale')
-      const saved = await dependencies.store.saveDraft({
-        request: {
-          requestId: request.requestId,
-          mailboxId: request.mailboxId,
-          draftId: draft.id,
-          ...(draft.conversationId === undefined ? {} : { conversationId: draft.conversationId }),
-          ...(draft.replyToMessageId === undefined
-            ? {}
-            : { replyToMessageId: draft.replyToMessageId }),
-          expectedVersion: draft.version,
-          idempotencyKey: request.idempotencyKey,
-          to: draft.to,
-          cc: draft.cc,
-          bcc: draft.bcc,
-          subject: draft.subject,
-          textBody: artifact.content,
-          ...(draft.htmlBody === undefined ? {} : { htmlBody: draft.htmlBody }),
-        },
-        id: draft.id,
-        internetMessageId: `<${draft.id}@mailrovers.local>`,
+        expectedDraftVersion: request.expectedDraftVersion,
+        idempotencyKey: request.idempotencyKey,
         updatedAt: utcTimestamp(now().toISOString()),
       })
-      await dependencies.store.reviewAiArtifact({
-        mailboxId: request.mailboxId,
-        artifactId: request.artifactId,
-        decision: 'accepted',
-        reviewedAt: utcTimestamp(now().toISOString()),
-      })
+      if (saved === undefined)
+        throw new AiApplicationError('AI_ARTIFACT_STALE', 'AI reply is stale')
       dependencies.commandDispatcher?.wake()
       return saved
     },
@@ -494,6 +567,7 @@ export function createMailApplication(
           emailAddress: authorization.emailAddress,
           displayName: authorization.displayName,
           syncState: 'importing',
+          connectionState: 'connected',
           createdAt: timestamp,
           updatedAt: timestamp,
         }
@@ -510,7 +584,11 @@ export function createMailApplication(
             updatedAt: timestamp,
           },
         })
-        const sync = await syncEngine.start({ mailboxId: id, requestId: request.requestId })
+        const sync = await syncEngine.start({
+          mailboxId: id,
+          requestId: request.requestId,
+          reason: 'lifecycle',
+        })
         return {
           mailbox: {
             id,
@@ -518,6 +596,8 @@ export function createMailApplication(
             emailAddress: authorization.emailAddress,
             displayName: authorization.displayName,
             syncState: 'importing',
+            connectionState: 'connected',
+            capabilities: GMAIL_CAPABILITIES,
             importedMessageCount: 0,
           },
           sync,
@@ -529,6 +609,14 @@ export function createMailApplication(
     async disconnectMailbox(request) {
       connectionOperations.get(request.requestId)?.abort()
       await required(dependencies.syncEngine, 'Sync engine').cancelMailbox(request.mailboxId)
+      // Provider work must be quiescent before credentials or local data can disappear.
+      await required(dependencies.commandDispatcher, 'Command dispatcher').cancelMailbox(
+        request.mailboxId,
+      )
+      await dependencies.store.cancelMailboxCommands({
+        mailboxId: request.mailboxId,
+        updatedAt: utcTimestamp(now().toISOString()),
+      })
       await dependencies.store.removeMailbox({
         mailboxId: request.mailboxId,
         removeLocalData: request.removeLocalData,
@@ -550,6 +638,11 @@ export function createMailApplication(
       const connection = connectionOperations.get(request.operationId)
       if (connection) {
         connection.abort()
+        return
+      }
+      const attachment = attachmentOperations.get(request.operationId)
+      if (attachment) {
+        attachment.abort()
         return
       }
       await required(dependencies.syncEngine, 'Sync engine').cancel(request.operationId)

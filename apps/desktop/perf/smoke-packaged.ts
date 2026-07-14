@@ -10,13 +10,17 @@ import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { migrate, openDatabase } from '@mailrovers/mail-store-sqlite'
+import { redactedJson, redactLogValue, writeRedactedJsonLine } from '@mailrovers/platform-electron'
 import { seedMailboxFixture } from '@mailrovers/test-support'
+import { evaluatePerformanceBudgets, PERFORMANCE_BUDGETS } from './budgets.js'
+import { measureQueryPerformance, type QueryPerformanceReport } from './query.js'
 
 type Mode = 'main' | 'worker'
 type SmokeResult = {
   status: string
   databaseHost: string
   stages?: Record<string, number>
+  mainEventLoopStallMs?: number
   rendererProbe?: {
     rows?: number
     processType?: string
@@ -31,7 +35,7 @@ type SmokeResult = {
       framesOver20Ms?: number
     }
   }
-  secretStorageProbe?: {
+  safeStorageProbe?: {
     roundTrip?: boolean
     ciphertextContainsPlaintext?: boolean
   }
@@ -40,7 +44,7 @@ type SmokeResult = {
     workingSetMb?: number
     processes?: Array<{ pid: number; type: string; workingSetKb: number }>
   }
-  error?: string
+  error?: unknown
 }
 
 function terminate(child: ChildProcess): void {
@@ -126,7 +130,7 @@ async function runMode(input: {
     const result = JSON.parse(readFileSync(resultPath, 'utf8')) as SmokeResult
     if (result.status !== 'passed')
       throw new Error(
-        `${input.mode} packaged app reported failure: ${result.error ?? 'unknown error'}`,
+        `${input.mode} packaged app reported failure: ${JSON.stringify(redactLogValue(result.error ?? 'unknown error'))}`,
       )
     if (result.databaseHost !== input.mode)
       throw new Error(`${input.mode} smoke used unexpected database host ${result.databaseHost}`)
@@ -141,8 +145,11 @@ async function runMode(input: {
       'listConversations',
       'listLabels',
       'getConversation',
+      'getMessageBody',
+      'exportAttachment',
       'searchMail',
       'executeCommand',
+      'undoCommand',
       'listCommandIssues',
       'resolveCommand',
       'saveDraft',
@@ -169,8 +176,8 @@ async function runMode(input: {
     if (JSON.stringify(result.rendererProbe.bridgeKeys) !== JSON.stringify(expectedBridgeKeys))
       throw new Error(`${input.mode} renderer bridge exposed unexpected methods`)
     if (
-      result.secretStorageProbe?.roundTrip !== true ||
-      result.secretStorageProbe.ciphertextContainsPlaintext !== false
+      result.safeStorageProbe?.roundTrip !== true ||
+      result.safeStorageProbe.ciphertextContainsPlaintext !== false
     )
       throw new Error(`${input.mode} packaged safeStorage probe failed`)
     return result
@@ -183,11 +190,8 @@ async function runMode(input: {
       stdout: existsSync(stdoutPath) ? readFileSync(stdoutPath, 'utf8') : '',
       stderr: existsSync(stderrPath) ? readFileSync(stderrPath, 'utf8') : '',
     }
-    writeFileSync(
-      path.join(input.directory, `${input.mode}-failure.json`),
-      JSON.stringify(detail, null, 2),
-    )
-    throw new Error(JSON.stringify(detail), { cause: error })
+    writeFileSync(path.join(input.directory, `${input.mode}-failure.json`), redactedJson(detail, 2))
+    throw new Error(redactedJson(detail), { cause: redactLogValue(error) })
   } finally {
     terminate(child)
   }
@@ -226,6 +230,9 @@ async function main(): Promise<void> {
   migrate(db)
   const fixture = seedMailboxFixture(db)
   db.close()
+  const queryPerformance: QueryPerformanceReport | undefined = performanceRequested
+    ? await measureQueryPerformance(fixtureDatabase)
+    : undefined
 
   const modes: Mode[] = requestedMode ? [requestedMode] : ['main', 'worker']
   const results: Array<{ mode: Mode; result: SmokeResult }> = []
@@ -245,17 +252,33 @@ async function main(): Promise<void> {
     })
   }
   const performanceFailures: string[] = []
+  const performanceAdvisories: string[] = []
   if (performanceRequested) {
     for (const { mode, result } of results) {
       const fps = result.rendererProbe?.scroll?.fps ?? 0
       const workingSetMb = result.packagedPerformance?.workingSetMb ?? Number.POSITIVE_INFINITY
+      const mainEntry = result.stages?.mainEntry
+      const windowVisible = result.stages?.windowVisible
+      const inboxUsable = result.stages?.inboxUsable
+      const firstWindowMs =
+        mainEntry === undefined || windowVisible === undefined
+          ? undefined
+          : windowVisible - mainEntry
+      const cachedInboxMs =
+        mainEntry === undefined || inboxUsable === undefined ? undefined : inboxUsable - mainEntry
+      const verdict = evaluatePerformanceBudgets({
+        firstWindowMs,
+        cachedInboxMs,
+        queryP95Ms: queryPerformance?.inbox.p95,
+        threadMetadataP95Ms: queryPerformance?.conversation.p95,
+        mainEventLoopStallMs: result.mainEventLoopStallMs,
+        idleRssMiB: workingSetMb,
+      })
+      performanceFailures.push(...verdict.hardFailures.map((failure) => `${mode} ${failure}`))
+      performanceAdvisories.push(...verdict.advisories.map((advisory) => `${mode} ${advisory}`))
       if (fps < 59.5)
-        performanceFailures.push(
+        performanceAdvisories.push(
           `${mode} packaged scroll measured ${fps.toFixed(2)} FPS, below the 60 FPS target`,
-        )
-      if (workingSetMb > 250)
-        performanceFailures.push(
-          `${mode} packaged working set measured ${workingSetMb.toFixed(2)} MB, above the 250 MB target`,
         )
       if (result.packagedPerformance?.idleDelayMs !== idleDelayMs)
         performanceFailures.push(`${mode} packaged performance used an unexpected idle delay`)
@@ -268,11 +291,14 @@ async function main(): Promise<void> {
     fixture,
     performanceRequested,
     idleDelayMs,
+    budgets: PERFORMANCE_BUDGETS,
+    queryPerformance,
     results,
     performanceFailures,
+    performanceAdvisories,
   }
-  writeFileSync(path.join(directory, 'report.json'), JSON.stringify(report, null, 2))
-  console.log(JSON.stringify(report))
+  writeFileSync(path.join(directory, 'report.json'), redactedJson(report, 2))
+  writeRedactedJsonLine(report)
   if (performanceFailures.length > 0) throw new Error(performanceFailures.join('; '))
 }
 

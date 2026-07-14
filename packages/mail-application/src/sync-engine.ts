@@ -1,8 +1,8 @@
-import type { SyncReceipt, SyncStatus } from '@mailrovers/mail-contracts'
+import type { StartSyncInput, SyncReceipt, SyncStatus } from '@mailrovers/mail-contracts'
 import type { MailboxId, OperationId } from '@mailrovers/mail-domain'
 
 export interface SyncEngine {
-  start(input: { mailboxId: MailboxId; requestId: OperationId }): Promise<SyncReceipt>
+  start(input: StartSyncInput): Promise<SyncReceipt>
   getStatus(mailboxId: MailboxId): Promise<SyncStatus>
   cancel(operationId: OperationId): Promise<boolean>
   cancelMailbox(mailboxId: MailboxId): Promise<boolean>
@@ -13,6 +13,8 @@ export interface SyncEngine {
 
 export interface CommandDispatcher {
   wake(): void
+  /** Aborts active provider work for a mailbox and waits until it is quiescent. */
+  cancelMailbox(mailboxId: MailboxId): Promise<boolean>
   shutdown(): Promise<void>
 }
 

@@ -15,6 +15,9 @@ const port = parentPort
 const db = openDatabase(workerData.dbPath)
 migrate(db)
 const store = new SqliteMailStore(db)
+store.subscribeCommittedChanges((changes) =>
+  port.postMessage({ kind: 'committed-changes', changes }),
+)
 
 type Request = { id: number; method: keyof MailStore; input?: unknown }
 
@@ -28,6 +31,22 @@ async function execute(message: Request): Promise<unknown> {
       return store.listLabels(message.input as Parameters<MailStore['listLabels']>[0])
     case 'getConversation':
       return store.getConversation(message.input as Parameters<MailStore['getConversation']>[0])
+    case 'getMessageBody':
+      return store.getMessageBody(message.input as Parameters<MailStore['getMessageBody']>[0])
+    case 'getAttachmentForExport':
+      return store.getAttachmentForExport(
+        message.input as Parameters<MailStore['getAttachmentForExport']>[0],
+      )
+    case 'markAttachmentCached':
+      return store.markAttachmentCached(
+        message.input as Parameters<MailStore['markAttachmentCached']>[0],
+      )
+    case 'getMessageBodies':
+      return store.getMessageBodies(message.input as Parameters<MailStore['getMessageBodies']>[0])
+    case 'loadAiSourceSnapshot':
+      return store.loadAiSourceSnapshot(
+        message.input as Parameters<MailStore['loadAiSourceSnapshot']>[0],
+      )
     case 'searchMail':
       return store.searchMail(message.input as Parameters<MailStore['searchMail']>[0])
     case 'backfillSearchIndex':
@@ -66,14 +85,30 @@ async function execute(message: Request): Promise<unknown> {
       return store.findAiArtifact(message.input as Parameters<MailStore['findAiArtifact']>[0])
     case 'getAiArtifact':
       return store.getAiArtifact(message.input as Parameters<MailStore['getAiArtifact']>[0])
+    case 'saveAiArtifactIfCurrent':
+      return store.saveAiArtifactIfCurrent(
+        message.input as Parameters<MailStore['saveAiArtifactIfCurrent']>[0],
+      )
     case 'saveAiArtifact':
       return store.saveAiArtifact(message.input as Parameters<MailStore['saveAiArtifact']>[0])
+    case 'acceptAiReply':
+      return store.acceptAiReply(message.input as Parameters<MailStore['acceptAiReply']>[0])
     case 'reviewAiArtifact':
       return store.reviewAiArtifact(message.input as Parameters<MailStore['reviewAiArtifact']>[0])
     case 'getSyncCheckpoint':
       return store.getSyncCheckpoint(message.input as Parameters<MailStore['getSyncCheckpoint']>[0])
+    case 'acquireSyncLease':
+      return store.acquireSyncLease(message.input as Parameters<MailStore['acquireSyncLease']>[0])
+    case 'renewSyncLease':
+      return store.renewSyncLease(message.input as Parameters<MailStore['renewSyncLease']>[0])
+    case 'releaseSyncLease':
+      return store.releaseSyncLease(message.input as Parameters<MailStore['releaseSyncLease']>[0])
     case 'enqueueCommand':
       return store.enqueueCommand(message.input as Parameters<MailStore['enqueueCommand']>[0])
+    case 'enqueueInverseCommand':
+      return store.enqueueInverseCommand(
+        message.input as Parameters<MailStore['enqueueInverseCommand']>[0],
+      )
     case 'enqueueDraftCommand':
       return store.enqueueDraftCommand(
         message.input as Parameters<MailStore['enqueueDraftCommand']>[0],
@@ -88,6 +123,10 @@ async function execute(message: Request): Promise<unknown> {
       return store.completeCommand(message.input as Parameters<MailStore['completeCommand']>[0])
     case 'setCommandState':
       return store.setCommandState(message.input as Parameters<MailStore['setCommandState']>[0])
+    case 'cancelMailboxCommands':
+      return store.cancelMailboxCommands(
+        message.input as Parameters<MailStore['cancelMailboxCommands']>[0],
+      )
     case 'listCommandIssues':
       return store.listCommandIssues(message.input as Parameters<MailStore['listCommandIssues']>[0])
     case 'saveDraft':
@@ -145,6 +184,10 @@ async function execute(message: Request): Promise<unknown> {
     case 'resetInitialImport':
       return store.resetInitialImport(
         message.input as Parameters<MailStore['resetInitialImport']>[0],
+      )
+    case 'runPostImportMaintenance':
+      return store.runPostImportMaintenance(
+        message.input as Parameters<MailStore['runPostImportMaintenance']>[0],
       )
   }
 }

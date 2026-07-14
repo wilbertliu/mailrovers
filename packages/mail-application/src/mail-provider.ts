@@ -1,5 +1,12 @@
-import type { Draft, DurableCommand } from '@mailrovers/mail-contracts'
-import type { DraftId, MailAddress, MailboxId, ProviderChangeBatch } from '@mailrovers/mail-domain'
+import type { Draft, DurableCommand, ProviderCapabilities } from '@mailrovers/mail-contracts'
+import type {
+  CanonicalDraftRevision,
+  DraftId,
+  DraftRevisionFingerprint,
+  MailAddress,
+  MailboxId,
+  ProviderChangeBatch,
+} from '@mailrovers/mail-domain'
 
 export type GmailAuthorization = {
   providerAccountId: string
@@ -40,6 +47,7 @@ export type ResolvedProviderCommand = {
   sender?: MailAddress | undefined
   internetMessageId?: string | undefined
   replyInternetMessageId?: string | undefined
+  outboundRevision?: CanonicalDraftRevision | undefined
 }
 
 export type ProviderCommandResult = {
@@ -49,6 +57,7 @@ export type ProviderCommandResult = {
         draftId: DraftId
         providerDraftId: string
         providerMessageId: string
+        providerFingerprint: DraftRevisionFingerprint
       }
     | undefined
   sentDraftId?: DraftId | undefined
@@ -59,7 +68,16 @@ export type ProviderCommandReconciliation =
   | { kind: 'not-applied' }
   | { kind: 'uncertain' }
 
+export type GetProviderAttachmentInput = {
+  mailboxId: MailboxId
+  providerMessageId: string
+  providerAttachmentId: string
+  expectedSizeBytes: number
+  signal: AbortSignal
+}
+
 export interface MailProvider {
+  getCapabilities(): ProviderCapabilities
   getCurrentCursor(signal: AbortSignal): Promise<string>
   importMailbox(input: {
     mailboxId: MailboxId
@@ -79,8 +97,28 @@ export interface MailProvider {
   reconcileCommand(
     input: ResolvedProviderCommand & { signal: AbortSignal },
   ): Promise<ProviderCommandReconciliation>
+  getAttachment(input: GetProviderAttachmentInput): Promise<ReadableStream<Uint8Array>>
 }
 
 export interface MailProviderFactory {
   create(mailboxId: MailboxId): Promise<MailProvider>
+}
+
+export type AttachmentCacheReceipt = {
+  relativePath: string
+  sizeBytes: number
+}
+
+export interface AttachmentStorage {
+  exists(relativePath: string): Promise<boolean>
+  cache(input: {
+    stream: ReadableStream<Uint8Array>
+    expectedSizeBytes: number
+    signal: AbortSignal
+  }): Promise<AttachmentCacheReceipt>
+  export(input: {
+    relativePath: string
+    suggestedName: string
+    signal: AbortSignal
+  }): Promise<'exported' | 'cancelled'>
 }

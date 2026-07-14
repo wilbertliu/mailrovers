@@ -28,6 +28,8 @@ pnpm check
 pnpm fixture:seed
 pnpm --filter @mailrovers/desktop perf
 pnpm smoke:packaged
+pnpm --filter @mailrovers/desktop exec tsx perf/smoke-packaged.ts --performance --idle-ms=1000 --mode=main
+# Full idle-memory gate (60 seconds)
 pnpm performance:packaged
 ```
 
@@ -38,7 +40,8 @@ The M3 test suite covers:
 - Multi-page sync cursor commits, cancellation and resume, rejected page-token restart, and history-expiry full reconciliation.
 - Set-like command execution, provider result commits, restart-safe command claims, and ambiguous send review.
 - Gmail HTTP retry separation, draft create reconciliation, stable MIME identity, reply headers, and header-injection rejection.
-- Strict IPC schemas, authorization, external-link allowlisting, and renderer isolation.
+- Strict IPC schemas, authorization, external-link allowlisting, renderer isolation, attachment-export cancellation/success envelopes, archive/Undo ordering, manual-refresh deferred receipts, and retained-disconnect/delete/reconnect workflows.
+- Transport-safe mail contracts, disconnected-provider rejection, attachment cache/export ownership, atomic AI-acceptance delegation, and Gmail/fake provider capabilities, bounded attachment, reconciliation, and cancellation contracts.
 
 ## 100,000-message measurements
 

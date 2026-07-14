@@ -49,6 +49,7 @@ const config = {
         { entry: 'electron/main.ts', config: 'vite.main.config.ts' },
         { entry: 'electron/preload.ts', config: 'vite.preload.config.ts' },
         { entry: 'electron/database/database.worker.ts', config: 'vite.main.config.ts' },
+        { entry: 'electron/gmail-normalization.worker.ts', config: 'vite.main.config.ts' },
       ],
       renderer: [{ name: 'main_window', config: 'vite.renderer.config.ts' }],
     }),

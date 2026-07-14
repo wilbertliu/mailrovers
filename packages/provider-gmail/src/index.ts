@@ -1,6 +1,7 @@
 export * from './client.js'
 export * from './factory.js'
 export * from './mime.js'
+export * from './normalizer.js'
 export * from './oauth.js'
 export * from './provider.js'
 export * from './schemas.js'

@@ -51,7 +51,7 @@ MAILROVERS_GOOGLE_OAUTH_CLIENT_ID="your-client-id.apps.googleusercontent.com" \
   pnpm --filter @mailrovers/desktop dev
 ```
 
-Without `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID`, the application still opens local mail, but Gmail connection returns a configuration error. OAuth refresh tokens are encrypted through Electron `safeStorage` before SQLite persistence. They are never available through the renderer bridge.
+Without `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID`, the application still opens local mail, but Gmail connection returns a configuration error. OAuth refresh tokens are encrypted through Electron `safeStorage` before SQLite persistence. They are never available through the renderer bridge. The default database host is the Electron main process; set `MAILROVERS_DATABASE_HOST=worker` only for diagnostics, parity testing, or event-loop profiling.
 
 Configure AI separately for each mailbox from **AI provider** in the desktop sidebar. The default base URL is `https://api.openai.com/v1`; the model identifier and API key are required. MailRovers uses the OpenAI-compatible Chat Completions streaming endpoint. HTTPS is required except for loopback HTTP providers such as `http://localhost:11434/v1`. The API key is encrypted through `safeStorage`, cannot be read back, and is sent only to the configured provider origin.
 
@@ -71,7 +71,13 @@ pnpm test
 pnpm build
 ```
 
-The repository uses TypeScript 7, Oxlint, and Oxfmt. Oxfmt is configured for single quotes without semicolons.
+For packaged performance verification, use the short smoke command:
+
+```sh
+pnpm --filter @mailrovers/desktop exec tsx perf/smoke-packaged.ts --performance --idle-ms=1000 --mode=main
+```
+
+`pnpm performance:packaged` runs the full 60-second idle-memory gate. The repository uses TypeScript 7, Oxlint, and Oxfmt. Oxfmt is configured for single quotes without semicolons.
 
 ## Project structure
 

@@ -16,6 +16,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { migrate, openDatabase, SqliteMailStore } from '../src/index.js'
+import { acquireTestSyncFence } from './sync-fence.js'
 
 const timestamp = utcTimestamp('2026-07-13T12:00:00.000Z')
 const mailbox: Mailbox = {
@@ -74,10 +75,12 @@ beforeEach(async () => {
     checkpoint,
     encryptedRefreshToken: new Uint8Array([1, 2, 3]),
   })
+  const fence = await acquireTestSyncFence(store, mailbox.id, timestamp)
   await store.applyImportBatch({
     mailboxId: mailbox.id,
     batch: { messages: [normalizedMessage()] },
     updatedAt: timestamp,
+    fence,
   })
 })
 

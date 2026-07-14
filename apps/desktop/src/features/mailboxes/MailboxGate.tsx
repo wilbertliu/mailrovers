@@ -148,9 +148,13 @@ function ImportPage({
           setStatus(event.status)
           void onChanged()
           break
+        case 'events-overflowed':
+          void refreshStatus()
+          void onChanged()
+          break
       }
     },
-    [onChanged],
+    [onChanged, refreshStatus],
   )
 
   const start = useCallback(async () => {
@@ -176,10 +180,8 @@ function ImportPage({
           if (active)
             setError(caught instanceof Error ? caught.message : 'Unable to resume import.')
         })
-    const timer = setInterval(() => void refreshStatus(), 2_000)
     return () => {
       active = false
-      clearInterval(timer)
       unsubscribe?.()
     }
   }, [handleEvent, mailbox.syncState, refreshStatus, start])
@@ -296,7 +298,8 @@ export function MailboxGate() {
         {...(mailbox ? { onCancel: () => setShowConnect(false) } : {})}
       />
     )
-  if (mailbox.syncState !== 'ready') return <ImportPage mailbox={mailbox} onChanged={onChanged} />
+  if (mailbox.connectionState === 'connected' && mailbox.syncState !== 'ready')
+    return <ImportPage mailbox={mailbox} onChanged={onChanged} />
   return (
     <>
       <nav className="mailbox-nav" aria-label="Mailboxes">
@@ -317,7 +320,7 @@ export function MailboxGate() {
           Add Gmail account
         </button>
       </nav>
-      <MailWorkspace mailboxId={mailbox.id} />
+      <MailWorkspace mailbox={mailbox} onMailboxChanged={onChanged} />
     </>
   )
 }

@@ -7,6 +7,7 @@ import type {
   PullChangesResult,
   ResolvedProviderCommand,
 } from '@mailrovers/mail-application'
+import { GMAIL_CAPABILITIES } from '@mailrovers/mail-contracts'
 import {
   commandId,
   conversationId,
@@ -61,6 +62,12 @@ const normalized: NormalizedMessage = {
 class CommandProvider implements MailProvider {
   executions = 0
   receivedThreadId?: string | undefined
+  getCapabilities() {
+    return GMAIL_CAPABILITIES
+  }
+  async getAttachment(): Promise<never> {
+    throw new Error('Attachment download is not used by this test')
+  }
   async getCurrentCursor(): Promise<string> {
     return '1'
   }
@@ -180,11 +187,20 @@ describe('command executor', () => {
       },
       encryptedRefreshToken: new Uint8Array([1]),
     })
+    const seedLease = await store.acquireSyncLease({
+      mailboxId: mailbox.id,
+      ownerId: 'test-seed',
+      now,
+      expiresAt: utcTimestamp('2026-07-13T00:01:00.000Z'),
+    })
+    if (seedLease === undefined) throw new Error('Failed to acquire seed lease')
     await store.applyImportBatch({
       mailboxId: mailbox.id,
       batch: { messages: [normalized] },
       updatedAt: now,
+      fence: { ownerId: seedLease.ownerId, fencingToken: seedLease.fencingToken, now },
     })
+    await store.releaseSyncLease(seedLease)
     await store.enqueueCommand({
       id: commandId('archive'),
       mailboxId: mailbox.id,

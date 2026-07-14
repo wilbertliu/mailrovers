@@ -1,8 +1,13 @@
-import type { AiArtifactType, ConversationDetail, Draft } from '@mailrovers/mail-contracts'
+import type {
+  AiArtifactType,
+  ConversationDetail,
+  Draft,
+  MessageBody,
+} from '@mailrovers/mail-contracts'
 import type { AiSourceMessage } from './ai-runtime.js'
 
-const MAX_CONTEXT_MESSAGES = 32
-const MAX_CONTEXT_BYTES = 64 * 1024
+export const MAX_CONTEXT_MESSAGES = 32
+export const MAX_CONTEXT_BYTES = 64 * 1024
 const MAX_MESSAGE_BYTES = 16 * 1024
 
 function truncateUtf8(value: string, limit: number): { text: string; truncated: boolean } {
@@ -14,22 +19,36 @@ function truncateUtf8(value: string, limit: number): { text: string; truncated: 
   }
 }
 
-export function selectAiContext(
+function contextCandidates(conversation: ConversationDetail, artifactType: AiArtifactType) {
+  const indexed = conversation.messages.map((message, index) => ({ message, index }))
+  return artifactType === 'conversation_summary' && indexed.length > 1
+    ? [indexed[0]!, ...indexed.slice(1).reverse()]
+    : indexed.reverse()
+}
+
+export function aiContextMessageIds(
   conversation: ConversationDetail,
   artifactType: AiArtifactType,
+): ConversationDetail['messages'][number]['id'][] {
+  return contextCandidates(conversation, artifactType)
+    .slice(0, MAX_CONTEXT_MESSAGES)
+    .map((candidate) => candidate.message.id)
+}
+
+export function selectAiContext(
+  conversation: ConversationDetail,
+  bodies: MessageBody[],
+  artifactType: AiArtifactType,
 ): { messages: AiSourceMessage[]; truncated: boolean } {
-  const indexed = conversation.messages.map((message, index) => ({ message, index }))
-  const candidates =
-    artifactType === 'conversation_summary' && indexed.length > 1
-      ? [indexed[0], ...indexed.slice(1).reverse()]
-      : indexed.reverse()
+  const candidates = contextCandidates(conversation, artifactType)
+  const bodiesById = new Map(bodies.map((body) => [body.messageId, body]))
   const selected: Array<{ message: AiSourceMessage; index: number }> = []
   let bytes = 0
   let truncated = candidates.length > MAX_CONTEXT_MESSAGES
   for (const candidate of candidates) {
     if (!candidate || selected.length >= MAX_CONTEXT_MESSAGES) break
-    const body = candidate.message.textBody ?? candidate.message.sanitizedHtmlBody ?? ''
-    const bounded = truncateUtf8(body, MAX_MESSAGE_BYTES)
+    const body = bodiesById.get(candidate.message.id)
+    const bounded = truncateUtf8(body?.textBody ?? body?.sanitizedHtmlBody ?? '', MAX_MESSAGE_BYTES)
     const message: AiSourceMessage = {
       id: candidate.message.id,
       sender: candidate.message.sender,

@@ -1,4 +1,8 @@
-import type { MailStore } from '@mailrovers/mail-application'
+import type {
+  CommittedChangeListener,
+  CommittedChangeSet,
+  MailStore,
+} from '@mailrovers/mail-application'
 import { Worker } from 'node:worker_threads'
 import path from 'node:path'
 import type { DatabaseHost } from './database-host.js'
@@ -6,12 +10,14 @@ import type { DatabaseHost } from './database-host.js'
 type Pending = { resolve(value: unknown): void; reject(error: Error): void }
 type WorkerMessage =
   | { kind: 'ready' }
+  | { kind: 'committed-changes'; changes: CommittedChangeSet }
   | { kind: 'result'; id: number; result: unknown }
   | { kind: 'error'; id: number; message: string }
 
 export async function createWorkerDatabaseHost(dbPath: string): Promise<DatabaseHost> {
   const worker = new Worker(path.join(__dirname, 'database.worker.js'), { workerData: { dbPath } })
   const pending = new Map<number, Pending>()
+  const committedChangeListeners = new Set<CommittedChangeListener>()
   let nextId = 1
 
   const call = <Result>(method: keyof MailStore, input?: unknown): Promise<Result> => {
@@ -29,6 +35,15 @@ export async function createWorkerDatabaseHost(dbPath: string): Promise<Database
       if (message.kind === 'ready') {
         worker.off('error', startupError)
         resolve()
+        return
+      }
+      if (message.kind === 'committed-changes') {
+        for (const listener of committedChangeListeners)
+          try {
+            listener(message.changes)
+          } catch {
+            // A consumer cannot fail an already committed worker transaction.
+          }
         return
       }
       const request = pending.get(message.id)
@@ -55,6 +70,11 @@ export async function createWorkerDatabaseHost(dbPath: string): Promise<Database
     listConversations: (input) => call('listConversations', input),
     listLabels: (input) => call('listLabels', input),
     getConversation: (input) => call('getConversation', input),
+    getMessageBody: (input) => call('getMessageBody', input),
+    getAttachmentForExport: (input) => call('getAttachmentForExport', input),
+    markAttachmentCached: (input) => call('markAttachmentCached', input),
+    getMessageBodies: (input) => call('getMessageBodies', input),
+    loadAiSourceSnapshot: (input) => call('loadAiSourceSnapshot', input),
     searchMail: (input) => call('searchMail', input),
     backfillSearchIndex: (input) => call('backfillSearchIndex', input),
     getMailbox: (input) => call('getMailbox', input),
@@ -67,15 +87,22 @@ export async function createWorkerDatabaseHost(dbPath: string): Promise<Database
     setAiConfigurationValidated: (input) => call('setAiConfigurationValidated', input),
     findAiArtifact: (input) => call('findAiArtifact', input),
     getAiArtifact: (input) => call('getAiArtifact', input),
+    saveAiArtifactIfCurrent: (input) => call('saveAiArtifactIfCurrent', input),
     saveAiArtifact: (input) => call('saveAiArtifact', input),
+    acceptAiReply: (input) => call('acceptAiReply', input),
     reviewAiArtifact: (input) => call('reviewAiArtifact', input),
     getSyncCheckpoint: (input) => call('getSyncCheckpoint', input),
+    acquireSyncLease: (input) => call('acquireSyncLease', input),
+    renewSyncLease: (input) => call('renewSyncLease', input),
+    releaseSyncLease: (input) => call('releaseSyncLease', input),
     enqueueCommand: (input) => call('enqueueCommand', input),
+    enqueueInverseCommand: (input) => call('enqueueInverseCommand', input),
     enqueueDraftCommand: (input) => call('enqueueDraftCommand', input),
     claimNextCommand: (input) => call('claimNextCommand', input),
     resolveProviderCommand: (input) => call('resolveProviderCommand', input),
     completeCommand: (input) => call('completeCommand', input),
     setCommandState: (input) => call('setCommandState', input),
+    cancelMailboxCommands: (input) => call('cancelMailboxCommands', input),
     listCommandIssues: (input) => call('listCommandIssues', input),
     saveDraft: (input) => call('saveDraft', input),
     getDraft: (input) => call('getDraft', input),
@@ -96,10 +123,15 @@ export async function createWorkerDatabaseHost(dbPath: string): Promise<Database
     applyHistoryPage: (input) => call('applyHistoryPage', input),
     completeHistory: (input) => call('completeHistory', input),
     resetInitialImport: (input) => call('resetInitialImport', input),
+    runPostImportMaintenance: (input) => call('runPostImportMaintenance', input),
   }
 
   return {
     store,
+    subscribeCommittedChanges(listener) {
+      committedChangeListeners.add(listener)
+      return () => committedChangeListeners.delete(listener)
+    },
     close: async () => {
       await worker.terminate()
     },

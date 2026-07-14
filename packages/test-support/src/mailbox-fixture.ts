@@ -16,7 +16,10 @@ export function seedMailboxFixture(db: SqliteDatabase): FixtureManifest {
       now,
       now,
     )
-    db.prepare('INSERT OR IGNORE INTO mailboxes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+    db.prepare(`INSERT OR IGNORE INTO mailboxes
+      (id,workspace_id,provider,provider_account_id,email_address,display_name,sync_state,
+       last_successful_sync_at,created_at,updated_at,connection_state)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       FIXTURE_MAILBOX,
       FIXTURE_WORKSPACE,
       'gmail',
@@ -27,6 +30,7 @@ export function seedMailboxFixture(db: SqliteDatabase): FixtureManifest {
       now,
       now,
       now,
+      'connected',
     )
   })()
 

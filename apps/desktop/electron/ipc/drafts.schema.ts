@@ -2,6 +2,7 @@ import {
   commandId,
   conversationId,
   draftId,
+  draftRevisionFingerprint,
   mailboxId,
   messageId,
   operationId,
@@ -48,6 +49,10 @@ const draftSchema = z
     textBody: z.string(),
     htmlBody: z.string().optional(),
     version: z.number().int().positive(),
+    revisionFingerprint: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .transform(draftRevisionFingerprint),
     syncState: z.enum(['local', 'pending', 'synced', 'conflict', 'failed', 'sent']),
     updatedAt: z.string().datetime().transform(utcTimestamp),
   })

@@ -83,6 +83,35 @@ function retryable(status: number, reason?: string): boolean {
   )
 }
 
+async function boundedJson(response: Response, maximumBytes: number): Promise<unknown> {
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes <= 0 || maximumBytes > 64 * 1024 * 1024)
+    throw new Error('Invalid Gmail response size limit')
+  const declared = Number(response.headers.get('content-length'))
+  if (Number.isFinite(declared) && declared > maximumBytes)
+    throw new GmailApiError('Gmail response exceeded the safe size limit', 413)
+  if (response.body === null) return undefined
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  while (true) {
+    const result = await reader.read()
+    if (result.done) break
+    total += result.value.byteLength
+    if (total > maximumBytes) {
+      await reader.cancel()
+      throw new GmailApiError('Gmail response exceeded the safe size limit', 413)
+    }
+    chunks.push(result.value)
+  }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return JSON.parse(new TextDecoder().decode(bytes))
+}
+
 export class GmailHttpClient {
   private readonly fetchImplementation: typeof fetch
   private readonly gmailApi: string
@@ -105,6 +134,21 @@ export class GmailHttpClient {
     input: { signal: AbortSignal; allowNotFound?: boolean | undefined },
   ): Promise<unknown> {
     return this.performRequest(path, { ...input, method: 'GET', retrySafe: true })
+  }
+
+  async requestBounded(
+    path: string,
+    input: {
+      signal: AbortSignal
+      maximumResponseBytes: number
+      allowNotFound?: boolean | undefined
+    },
+  ): Promise<unknown> {
+    return this.performRequest(path, {
+      ...input,
+      method: 'GET',
+      retrySafe: true,
+    })
   }
 
   async mutateSetLike(
@@ -133,6 +177,7 @@ export class GmailHttpClient {
       method: 'GET' | 'POST' | 'PUT' | 'DELETE'
       body?: unknown
       allowNotFound?: boolean | undefined
+      maximumResponseBytes?: number | undefined
       retrySafe: boolean
     },
   ): Promise<unknown> {
@@ -151,7 +196,12 @@ export class GmailHttpClient {
           ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
           signal: input.signal,
         })
-        if (response.ok) return response.status === 204 ? undefined : await response.json()
+        if (response.ok)
+          return response.status === 204
+            ? undefined
+            : input.maximumResponseBytes === undefined
+              ? await response.json()
+              : await boundedJson(response, input.maximumResponseBytes)
         if (response.status === 404 && input.allowNotFound) return undefined
         if (response.status === 401 && !refreshed) {
           refreshed = true

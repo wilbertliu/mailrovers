@@ -1,6 +1,12 @@
 import type { CommandDispatcher, MailStore, SyncEngine } from '@mailrovers/mail-application'
 import { utcTimestamp } from '@mailrovers/mail-domain'
-import { ElectronSafeStorageSecretSealer } from '@mailrovers/platform-electron'
+import { SyncScheduler } from '@mailrovers/mail-sync'
+import {
+  createStructuredLogger,
+  ElectronSafeStorageSecretSealer,
+  redactedJson,
+  redactLogValue,
+} from '@mailrovers/platform-electron'
 import { app, BrowserWindow, shell } from 'electron'
 import { appendFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -14,39 +20,61 @@ import { createWorkerDatabaseHost } from './database/worker-database-host.js'
 import { allowedExternalUrl } from './external-links.js'
 import { DesktopEventBus } from './ipc/desktop-event-bus.js'
 import { registerMailApplication } from './ipc/register-mail-application.js'
-import {
-  isAllowedRendererUrl,
-  registerListConversations,
-} from './ipc/register-list-conversations.js'
+import { isAllowedRendererUrl } from './ipc/authorization.js'
+import { acquireSingleInstance } from './single-instance.js'
 
+let mainWindow: BrowserWindow | undefined
+let pendingSecondInstanceFocus = false
+const hasSingleInstanceLock = acquireSingleInstance(app, () => {
+  if (mainWindow === undefined) pendingSecondInstanceFocus = true
+  return mainWindow
+})
 const stages: Record<string, number> = { mainEntry: performance.now() }
 const smokeResultPath = process.env.MAILROVERS_SMOKE_RESULT_PATH
 const checkpointPath = process.env.MAILROVERS_SMOKE_CHECKPOINT_PATH
 const databaseHost = process.env.MAILROVERS_DATABASE_HOST === 'worker' ? 'worker' : 'main'
+let lastEventLoopTick = performance.now()
+let maxEventLoopStallMs = 0
+const eventLoopMonitor = smokeResultPath
+  ? setInterval(() => {
+      const current = performance.now()
+      maxEventLoopStallMs = Math.max(maxEventLoopStallMs, current - lastEventLoopTick - 10)
+      lastEventLoopTick = current
+    }, 10)
+  : undefined
+eventLoopMonitor?.unref()
 let host: DatabaseHost | undefined
 let syncEngine: SyncEngine | undefined
 let commandDispatcher: CommandDispatcher | undefined
+let unsubscribeCommittedChanges: (() => void) | undefined
+let unregisterIpc: (() => void) | undefined
+let shutdownNormalization: (() => Promise<void>) | undefined
+let syncScheduler: SyncScheduler | undefined
+let unsubscribeScheduler: (() => void) | undefined
 let shuttingDown = false
+const logger = createStructuredLogger({ component: 'desktop-main' })
 
 function checkpoint(stage: string, detail?: string): void {
   stages[stage] = performance.now()
-  const record = JSON.stringify({
+  const record = redactLogValue({
     stage,
     at: new Date().toISOString(),
     elapsedMs: stages[stage],
     ...(detail ? { detail } : {}),
   })
-  console.log(record)
-  if (checkpointPath) appendFileSync(checkpointPath, `${record}\n`)
+  logger.info('checkpoint', { stage, elapsedMs: stages[stage], ...(detail ? { detail } : {}) })
+  if (checkpointPath) appendFileSync(checkpointPath, `${JSON.stringify(record)}\n`)
 }
 
 function writeSmokeFailure(error: unknown): void {
-  const message = error instanceof Error ? (error.stack ?? error.message) : String(error)
-  checkpoint('failed', message)
+  if (eventLoopMonitor !== undefined) clearInterval(eventLoopMonitor)
+  const safeError = redactLogValue(error)
+  checkpoint('failed')
+  logger.error('smoke-failed', { code: 'INTERNAL_ERROR', error: safeError, databaseHost })
   if (smokeResultPath)
     writeFileSync(
       smokeResultPath,
-      JSON.stringify({ status: 'failed', databaseHost, error: message, stages }, null, 2),
+      redactedJson({ status: 'failed', databaseHost, error: safeError, stages }, 2),
     )
   if (smokeResultPath) setImmediate(() => app.exit(1))
 }
@@ -79,14 +107,19 @@ async function createWindow(): Promise<void> {
       ? await createWorkerDatabaseHost(dbPath)
       : createMainDatabaseHost(dbPath)
   checkpoint('databaseReady')
+  const database = host
   const eventBus = new DesktopEventBus()
   const composed = composeDesktopApplication({
-    store: host.store,
+    store: database.store,
+    subscribeCommittedChanges: (listener) => database.subscribeCommittedChanges(listener),
     publish: (event) => eventBus.publish(event),
+    applicationDataRoot: app.getPath('userData'),
   })
   const application = composed.application
   syncEngine = composed.syncEngine
   commandDispatcher = composed.commandDispatcher
+  unsubscribeCommittedChanges = () => composed.unsubscribeCommittedChanges()
+  shutdownNormalization = () => composed.shutdownNormalization()
 
   const packagedRendererPath = path.join(
     __dirname,
@@ -97,13 +130,28 @@ async function createWindow(): Promise<void> {
   const window = new BrowserWindow({
     width: 1200,
     height: 800,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      backgroundThrottling: process.env.MAILROVERS_PERFORMANCE !== '1',
     },
   })
+  mainWindow = window
+  const visible = new Promise<void>((resolve) => {
+    window.once('ready-to-show', () => {
+      window.show()
+      checkpoint('windowVisible')
+      resolve()
+    })
+  })
+  if (pendingSecondInstanceFocus) {
+    pendingSecondInstanceFocus = false
+    window.show()
+    window.focus()
+  }
   checkpoint('windowCreated')
   const windowContents = window.webContents
   eventBus.attach(windowContents)
@@ -130,12 +178,8 @@ async function createWindow(): Promise<void> {
     openAllowedExternalUrl(url)
     return { action: 'deny' }
   })
-  registerListConversations({
-    application,
-    webContents: window.webContents,
-    rendererUrl,
-  })
-  registerMailApplication({
+  unregisterIpc?.()
+  unregisterIpc = registerMailApplication({
     application,
     webContents: window.webContents,
     rendererUrl,
@@ -144,14 +188,26 @@ async function createWindow(): Promise<void> {
   checkpoint('beforeLoad')
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) await window.loadURL(rendererUrl)
   else await window.loadFile(packagedRendererPath)
+  await visible
   checkpoint('windowLoaded')
   void backfillSearch(host.store).catch((error: unknown) =>
-    console.error('Search indexing failed', error),
+    logger.error('search-indexing-failed', { code: 'INTERNAL_ERROR', error }),
   )
-  await syncEngine.resumeInterrupted()
-  const syncTimer = setInterval(() => void syncEngine?.startAll('timer'), 60_000)
-  window.on('focus', () => void syncEngine?.startAll('focus'))
-  window.once('closed', () => clearInterval(syncTimer))
+  syncScheduler?.dispose()
+  unsubscribeScheduler?.()
+  syncScheduler = new SyncScheduler({ store: database.store, syncEngine })
+  unsubscribeScheduler = database.subscribeCommittedChanges((changes) => {
+    if (changes.mailboxId !== undefined) void syncScheduler?.notifyMailboxChanged(changes.mailboxId)
+  })
+  await syncScheduler.start()
+  window.on('focus', () => syncScheduler?.focus())
+  window.once('closed', () => {
+    syncScheduler?.dispose()
+    unsubscribeScheduler?.()
+    syncScheduler = undefined
+    unsubscribeScheduler = undefined
+    if (mainWindow === window) mainWindow = undefined
+  })
 
   if (!smokeResultPath) return
   const performanceRequested = process.env.MAILROVERS_PERFORMANCE === '1'
@@ -161,54 +217,62 @@ async function createWindow(): Promise<void> {
     window.focus()
   }
   checkpoint('beforeProbe')
-  const rendererProbe: unknown = await window.webContents
+  const rendererReadiness: Record<string, unknown> = await window.webContents
     .executeJavaScript(`new Promise((resolve, reject) => {
     const deadline = Date.now() + 10000;
-    const inspect = async () => {
+    const inspect = () => {
       const rows = document.querySelectorAll('.conversation-row').length;
       if (rows > 0) {
-        const base = { rows, processType: typeof process, requireType: typeof require, bridgeKeys: Object.keys(window.mailrovers.v1) };
-        if (!${performanceRequested}) { resolve(base); return; }
-        const container = document.querySelector('[aria-label="Inbox"]');
-        if (!(container instanceof HTMLElement)) { reject(new Error('Inbox scroll container missing')); return; }
-        const timestamps = [];
-        const scrollStartedAt = performance.now();
-        await new Promise((scrollDone) => {
-          const frame = (now) => {
-            timestamps.push(now);
-            const elapsed = now - scrollStartedAt;
-            const progress = Math.min(1, elapsed / 5000);
-            const position = progress <= 0.5 ? progress * 2 : (1 - progress) * 2;
-            container.scrollTop = position * Math.max(0, container.scrollHeight - container.clientHeight);
-            if (elapsed < 5000) requestAnimationFrame(frame); else scrollDone();
-          };
-          requestAnimationFrame(frame);
-        });
-        const intervals = timestamps.slice(1).map((time, index) => time - timestamps[index]).sort((a, b) => a - b);
-        const durationMs = timestamps.at(-1) - timestamps[0];
-        const fps = (timestamps.length - 1) * 1000 / durationMs;
-        resolve({ ...base, scroll: { durationMs, frameCount: timestamps.length, fps, p95FrameMs: intervals[Math.floor(intervals.length * 0.95)], maxFrameMs: intervals.at(-1), framesOver20Ms: intervals.filter((interval) => interval > 20).length } });
+        resolve({ rows, processType: typeof process, requireType: typeof require, bridgeKeys: Object.keys(window.mailrovers.v1) });
       } else if (Date.now() > deadline) reject(new Error('Inbox did not render: ' + document.body.innerText.slice(0, 500)));
       else setTimeout(inspect, 50);
     };
     inspect();
   })`)
   checkpoint('inboxUsable')
+  lastEventLoopTick = performance.now()
+  maxEventLoopStallMs = 0
+  let rendererProbe: Record<string, unknown> = rendererReadiness
+  if (performanceRequested) {
+    const scroll: Record<string, unknown> = await window.webContents
+      .executeJavaScript(`new Promise((resolve, reject) => {
+      const container = document.querySelector('[aria-label="Inbox"]');
+      if (!(container instanceof HTMLElement)) { reject(new Error('Inbox scroll container missing')); return; }
+      const timestamps = [];
+      const frameTarget = 300;
+      let frameIndex = 0;
+      const frame = (now) => {
+        timestamps.push(now);
+        const progress = frameIndex / (frameTarget - 1);
+        const position = progress <= 0.5 ? progress * 2 : (1 - progress) * 2;
+        container.scrollTop = position * Math.max(0, container.scrollHeight - container.clientHeight);
+        frameIndex += 1;
+        if (frameIndex < frameTarget) requestAnimationFrame(frame);
+        else {
+          const intervals = timestamps.slice(1).map((time, index) => time - timestamps[index]).sort((a, b) => a - b);
+          const durationMs = timestamps.at(-1) - timestamps[0];
+          resolve({ durationMs, frameCount: timestamps.length, fps: (timestamps.length - 1) * 1000 / durationMs, p95FrameMs: intervals[Math.floor(intervals.length * 0.95)], maxFrameMs: intervals.at(-1), framesOver20Ms: intervals.filter((interval) => interval > 20).length });
+        }
+      };
+      requestAnimationFrame(frame);
+    })`)
+    rendererProbe = { ...rendererReadiness, scroll }
+    checkpoint('scrollComplete')
+  }
 
   const secretSealer = new ElectronSafeStorageSecretSealer()
   const secretProbeValue = `mailrovers-smoke-${crypto.randomUUID()}`
   const encryptedProbe = await secretSealer.seal(secretProbeValue)
   const decryptedProbe = await secretSealer.unseal(encryptedProbe)
-  const secretStorageProbe = {
+  const safeStorageProbe = {
     roundTrip: decryptedProbe === secretProbeValue,
     ciphertextContainsPlaintext: Buffer.from(encryptedProbe).includes(secretProbeValue),
   }
-  if (!secretStorageProbe.roundTrip || secretStorageProbe.ciphertextContainsPlaintext)
+  if (!safeStorageProbe.roundTrip || safeStorageProbe.ciphertextContainsPlaintext)
     throw new Error('safeStorage packaged probe failed')
 
   let packagedPerformance: unknown
   if (performanceRequested) {
-    checkpoint('scrollComplete')
     app.hide()
     const idleDelayMs = Number.parseInt(process.env.MAILROVERS_IDLE_DELAY_MS ?? '60000', 10)
     if (!Number.isFinite(idleDelayMs) || idleDelayMs < 0)
@@ -225,39 +289,50 @@ async function createWindow(): Promise<void> {
     packagedPerformance = { idleDelayMs, workingSetMb, processes }
     checkpoint('idleComplete')
   }
+  if (eventLoopMonitor !== undefined) clearInterval(eventLoopMonitor)
   writeFileSync(
     smokeResultPath,
-    JSON.stringify(
+    redactedJson(
       {
         status: 'passed',
         databaseHost,
         stages,
         rendererProbe,
-        secretStorageProbe,
+        mainEventLoopStallMs: maxEventLoopStallMs,
+        safeStorageProbe,
         ...(packagedPerformance ? { packagedPerformance } : {}),
       },
-      null,
       2,
     ),
   )
   app.quit()
 }
 
-app
-  .whenReady()
-  .then(async () => {
-    checkpoint('ready')
-    await createWindow()
+if (hasSingleInstanceLock) {
+  app
+    .whenReady()
+    .then(async () => {
+      checkpoint('ready')
+      await createWindow()
+    })
+    .catch(writeSmokeFailure)
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit()
   })
-  .catch(writeSmokeFailure)
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
-})
-app.on('before-quit', (event) => {
-  if (shuttingDown) return
-  event.preventDefault()
-  shuttingDown = true
-  void Promise.all([syncEngine?.shutdown(), commandDispatcher?.shutdown(), host?.close()]).finally(
-    () => app.exit(),
-  )
-})
+  app.on('before-quit', (event) => {
+    if (shuttingDown) return
+    event.preventDefault()
+    shuttingDown = true
+    unsubscribeCommittedChanges?.()
+    unsubscribeScheduler?.()
+    syncScheduler?.dispose()
+    unregisterIpc?.()
+    unregisterIpc = undefined
+    void Promise.all([
+      syncEngine?.shutdown(),
+      commandDispatcher?.shutdown(),
+      shutdownNormalization?.(),
+      host?.close(),
+    ]).finally(() => app.exit())
+  })
+}

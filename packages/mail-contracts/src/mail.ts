@@ -28,6 +28,20 @@ export type GetConversationInput = {
   conversationId: ConversationId
 }
 
+export type GetMessageBodyInput = {
+  requestId: OperationId
+  mailboxId: MailboxId
+  conversationId: ConversationId
+  messageId: MessageId
+}
+
+export type MessageBody = {
+  messageId: MessageId
+  textBody?: string | undefined
+  /** Provider HTML is sanitized before persistence; raw HTML is never returned. */
+  sanitizedHtmlBody?: string | undefined
+}
+
 export type MessageDetail = {
   id: MessageId
   conversationId: ConversationId
@@ -36,8 +50,7 @@ export type MessageDetail = {
   subject: string
   sentAt?: UtcTimestamp | undefined
   receivedAt: UtcTimestamp
-  textBody?: string | undefined
-  sanitizedHtmlBody?: string | undefined
+  bodyAvailable: boolean
   isDraft: boolean
   labelIds: LabelId[]
   attachments: Array<{
@@ -46,8 +59,20 @@ export type MessageDetail = {
     mediaType: string
     sizeBytes: number
     contentId?: string | undefined
+    availability: 'remote' | 'cached' | 'unavailable'
   }>
 }
+
+export type ExportAttachmentInput = {
+  requestId: OperationId
+  mailboxId: MailboxId
+  messageId: MessageId
+  attachmentId: AttachmentId
+}
+
+export type ExportAttachmentResult =
+  | { status: 'exported'; attachmentId: AttachmentId }
+  | { status: 'cancelled'; attachmentId: AttachmentId }
 
 export type ConversationDetail = {
   id: ConversationId

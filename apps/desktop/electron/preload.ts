@@ -1,3 +1,4 @@
+import type { DesktopBridge } from '@mailrovers/mail-contracts'
 import { contextBridge, ipcRenderer } from 'electron'
 import { z } from 'zod'
 import {
@@ -21,9 +22,10 @@ import {
   listCommandIssuesInputSchema,
   listCommandIssuesResultSchema,
   resolveCommandInputSchema,
+  undoCommandInputSchema,
 } from './ipc/commands.schema.js'
 import { type DesktopIpcEvent, desktopEventSchema } from './ipc/desktop-events.schema.js'
-import { splitUtf8 } from './ipc/event-batching.js'
+import { PreloadEventQueue } from './preload-event-queue.js'
 import {
   draftResultSchema,
   getDraftInputSchema,
@@ -35,12 +37,16 @@ import {
   sendDraftResultSchema,
 } from './ipc/drafts.schema.js'
 import {
-  conversationPageSchema,
+  conversationPageResultSchema,
   listConversationsInputSchema,
 } from './ipc/list-conversations.schema.js'
 import {
   getConversationInputSchema,
   getConversationResultSchema,
+  getMessageBodyInputSchema,
+  getMessageBodyResultSchema,
+  exportAttachmentInputSchema,
+  exportAttachmentResultSchema,
   listLabelsInputSchema,
   listLabelsResultSchema,
   searchMailInputSchema,
@@ -60,114 +66,19 @@ import {
   voidResultSchema,
 } from './ipc/mailboxes.schema.js'
 
-const MAX_DELTA_BATCH_BYTES = 8 * 1024
-const MAX_BUFFER_BYTES = 256 * 1024
-const DELTA_FLUSH_MS = 16
-const encoder = new TextEncoder()
-
 type EventListener = (event: DesktopIpcEvent) => void
-type EventState = {
-  listeners: Set<EventListener>
-  queue: DesktopIpcEvent[]
-  queuedBytes: number
-  timer?: ReturnType<typeof setTimeout> | undefined
-  terminal: boolean
-  cancelRequested: boolean
-}
 
-const eventStates = new Map<string, EventState>()
-
-function stateFor(requestId: string): EventState {
-  const existing = eventStates.get(requestId)
-  if (existing) return existing
-  const created: EventState = {
-    listeners: new Set(),
-    queue: [],
-    queuedBytes: 0,
-    terminal: false,
-    cancelRequested: false,
-  }
-  eventStates.set(requestId, created)
-  return created
-}
-
-function terminal(event: DesktopIpcEvent): boolean {
-  return (
-    event.kind === 'sync-completed' ||
-    event.kind === 'sync-failed' ||
-    event.kind === 'sync-cancelled' ||
-    event.kind === 'ai-completed' ||
-    event.kind === 'ai-failed' ||
-    event.kind === 'ai-cancelled'
-  )
-}
-
-function eventBytes(event: DesktopIpcEvent): number {
-  return encoder.encode(event.kind === 'ai-delta' ? event.text : JSON.stringify(event)).byteLength
-}
-
-function requestCancellation(requestId: string, state: EventState): void {
-  if (state.cancelRequested) return
-  state.cancelRequested = true
+const eventQueue = new PreloadEventQueue((requestId) => {
   const parsed = cancelOperationInputSchema.parse({ requestId, operationId: requestId })
   void ipcRenderer
     .invoke(channels.cancelOperation, parsed)
     .then((result: unknown) => voidResultSchema.parse(result))
     .catch(() => {})
-}
-
-function flush(requestId: string, state: EventState): void {
-  if (state.timer) clearTimeout(state.timer)
-  state.timer = undefined
-  if (state.listeners.size === 0) return
-  const events = state.queue.splice(0)
-  state.queuedBytes = 0
-  for (const event of events)
-    for (const listener of state.listeners)
-      try {
-        listener(event)
-      } catch {
-        requestCancellation(requestId, state)
-      }
-  if (state.terminal) eventStates.delete(requestId)
-}
-
-function scheduleFlush(requestId: string, state: EventState): void {
-  if (state.listeners.size === 0 || state.timer) return
-  state.timer = setTimeout(() => flush(requestId, state), DELTA_FLUSH_MS)
-}
-
-function enqueue(requestId: string, state: EventState, event: DesktopIpcEvent): void {
-  const bytes = eventBytes(event)
-  if (event.kind === 'ai-delta' && state.queuedBytes + bytes > MAX_BUFFER_BYTES) {
-    requestCancellation(requestId, state)
-    return
-  }
-  const previous = state.queue.at(-1)
-  if (
-    event.kind === 'ai-delta' &&
-    previous?.kind === 'ai-delta' &&
-    eventBytes(previous) + bytes <= MAX_DELTA_BATCH_BYTES
-  )
-    previous.text += event.text
-  else state.queue.push(event)
-  state.queuedBytes += bytes
-}
+})
 
 ipcRenderer.on(channels.event, (_event, unknownEvent) => {
   const parsed = desktopEventSchema.safeParse(unknownEvent)
-  if (!parsed.success) return
-  const event = parsed.data
-  const requestId = event.requestId
-  const state = stateFor(requestId)
-  if (event.kind === 'ai-delta')
-    for (const text of splitUtf8(event.text, MAX_DELTA_BATCH_BYTES))
-      enqueue(requestId, state, { ...event, text })
-  else enqueue(requestId, state, event)
-  if (terminal(event)) state.terminal = true
-  if (event.kind !== 'ai-delta' || state.queuedBytes >= MAX_DELTA_BATCH_BYTES)
-    flush(requestId, state)
-  else scheduleFlush(requestId, state)
+  if (parsed.success) eventQueue.enqueue(parsed.data)
 })
 
 function subscribe(
@@ -180,9 +91,7 @@ function subscribe(
   const mailboxId = aiOperation ? z.string().min(1).max(300).parse(mailboxIdValue) : undefined
   if (typeof callbackValue !== 'function') throw new Error('Event callback must be a function')
   const callback = callbackValue as EventListener
-  const state = stateFor(requestId)
-  state.listeners.add(callback)
-  flush(requestId, state)
+  const unsubscribe = eventQueue.subscribe(requestId, callback, aiOperation)
   if (aiOperation && mailboxId !== undefined) {
     const failSubscription = (message: string) => {
       const event = desktopEventSchema.parse({
@@ -197,9 +106,7 @@ function subscribe(
           userAction: 'retry',
         },
       })
-      enqueue(requestId, state, event)
-      state.terminal = true
-      flush(requestId, state)
+      eventQueue.enqueue(event)
     }
     const input = operationSubscribeInputSchema.parse({ requestId })
     void ipcRenderer
@@ -211,15 +118,7 @@ function subscribe(
       })
       .catch(() => failSubscription('The AI operation could not start. Try again.'))
   }
-  return () => {
-    state.listeners.delete(callback)
-    if (aiOperation && state.listeners.size === 0 && !state.terminal)
-      requestCancellation(requestId, state)
-    if (state.listeners.size === 0 && state.queue.length === 0) {
-      if (state.timer) clearTimeout(state.timer)
-      eventStates.delete(requestId)
-    }
-  }
+  return unsubscribe
 }
 
 const bridge = {
@@ -227,7 +126,7 @@ const bridge = {
     async listConversations(input: unknown) {
       const parsed = listConversationsInputSchema.parse(input)
       const result: unknown = await ipcRenderer.invoke(channels.listConversations, parsed)
-      return conversationPageSchema.parse(result)
+      return conversationPageResultSchema.parse(result)
     },
     async listLabels(input: unknown) {
       const parsed = listLabelsInputSchema.parse(input)
@@ -239,6 +138,16 @@ const bridge = {
       const result: unknown = await ipcRenderer.invoke(channels.getConversation, parsed)
       return getConversationResultSchema.parse(result)
     },
+    async getMessageBody(input: unknown) {
+      const parsed = getMessageBodyInputSchema.parse(input)
+      const result: unknown = await ipcRenderer.invoke(channels.getMessageBody, parsed)
+      return getMessageBodyResultSchema.parse(result)
+    },
+    async exportAttachment(input: unknown) {
+      const parsed = exportAttachmentInputSchema.parse(input)
+      const result: unknown = await ipcRenderer.invoke(channels.exportAttachment, parsed)
+      return exportAttachmentResultSchema.parse(result)
+    },
     async searchMail(input: unknown) {
       const parsed = searchMailInputSchema.parse(input)
       const result: unknown = await ipcRenderer.invoke(channels.searchMail, parsed)
@@ -247,6 +156,11 @@ const bridge = {
     async executeCommand(input: unknown) {
       const parsed = executeCommandInputSchema.parse(input)
       const result: unknown = await ipcRenderer.invoke(channels.executeCommand, parsed)
+      return commandReceiptResultSchema.parse(result)
+    },
+    async undoCommand(input: unknown) {
+      const parsed = undoCommandInputSchema.parse(input)
+      const result: unknown = await ipcRenderer.invoke(channels.undoCommand, parsed)
       return commandReceiptResultSchema.parse(result)
     },
     async listCommandIssues(input: unknown) {
@@ -356,5 +270,5 @@ const bridge = {
       return subscribe(requestId, mailboxId, callback, true)
     },
   },
-}
+} satisfies DesktopBridge
 contextBridge.exposeInMainWorld('mailrovers', bridge)

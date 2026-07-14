@@ -1,36 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import {
-  isAllowedRendererUrl,
-  isAuthorizedListConversationsRequest,
-} from '../electron/ipc/register-list-conversations.js'
+import { isAllowedRendererUrl, isAuthorizedRequest } from '../electron/ipc/authorization.js'
 
-describe('list-conversations authorization', () => {
+describe('IPC authorization', () => {
   it('requires the bound webContents, main frame, and packaged URL', () => {
     const mainFrame = { url: 'file:///Applications/MailRovers/index.html' }
     const webContents = { mainFrame }
     expect(
-      isAuthorizedListConversationsRequest(
+      isAuthorizedRequest(
         { sender: webContents, senderFrame: mainFrame },
         webContents,
         mainFrame.url,
       ),
     ).toBe(true)
     expect(
-      isAuthorizedListConversationsRequest(
+      isAuthorizedRequest(
         { sender: { mainFrame }, senderFrame: mainFrame },
         webContents,
         mainFrame.url,
       ),
     ).toBe(false)
     expect(
-      isAuthorizedListConversationsRequest(
+      isAuthorizedRequest(
         { sender: webContents, senderFrame: { url: mainFrame.url } },
         webContents,
         mainFrame.url,
       ),
     ).toBe(false)
     expect(
-      isAuthorizedListConversationsRequest(
+      isAuthorizedRequest(
         { sender: webContents, senderFrame: { url: 'file:///tmp/evil.html' } },
         webContents,
         mainFrame.url,

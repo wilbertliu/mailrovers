@@ -2,6 +2,7 @@ import {
   commandId,
   conversationId,
   draftId,
+  draftRevisionFingerprint,
   labelId,
   mailboxId,
   messageId,
@@ -50,14 +51,26 @@ export const executeCommandInputSchema = z
     command: mailCommandSchema,
   })
   .strict()
+export const undoCommandInputSchema = z
+  .object({
+    requestId,
+    mailboxId: mailbox,
+    sourceCommandId: z.string().min(1).max(500).transform(commandId),
+    idempotencyKey: z.string().min(1).max(300),
+  })
+  .strict()
+const draftCommand = {
+  draftId: draft,
+  expectedVersion: z.number().int().positive(),
+  outboundRevisionFingerprint: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .transform(draftRevisionFingerprint),
+}
 const durableCommandSchema = z.discriminatedUnion('kind', [
   ...mailCommandSchema.options,
-  z
-    .object({ kind: z.literal('sync-draft'), draftId: draft, version: z.number().int().positive() })
-    .strict(),
-  z
-    .object({ kind: z.literal('send-draft'), draftId: draft, version: z.number().int().positive() })
-    .strict(),
+  z.object({ kind: z.literal('sync-draft'), ...draftCommand }).strict(),
+  z.object({ kind: z.literal('send-draft'), ...draftCommand }).strict(),
 ])
 
 const commandReceiptSchema = z
@@ -92,6 +105,7 @@ export const resolveCommandInputSchema = z
   .strict()
 
 export type ExecuteCommandIpcInput = z.input<typeof executeCommandInputSchema>
+export type UndoCommandIpcInput = z.input<typeof undoCommandInputSchema>
 export type CommandReceiptIpcResult = z.output<typeof commandReceiptResultSchema>
 export type ListCommandIssuesIpcInput = z.input<typeof listCommandIssuesInputSchema>
 export type ListCommandIssuesIpcResult = z.output<typeof listCommandIssuesResultSchema>

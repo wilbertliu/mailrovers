@@ -17,6 +17,9 @@ export type MailboxSyncState =
   | 'auth_required'
   | 'failed'
 
+/** A retained mailbox can be read locally but must never contact its provider. */
+export type MailboxConnectionState = 'connected' | 'disconnected'
+
 export type ImportState =
   | 'pending'
   | 'importing_labels'
@@ -36,6 +39,7 @@ export type Mailbox = {
   emailAddress: string
   displayName: string
   syncState: MailboxSyncState
+  connectionState?: MailboxConnectionState | undefined
   lastSuccessfulSyncAt?: UtcTimestamp | undefined
   createdAt: UtcTimestamp
   updatedAt: UtcTimestamp
@@ -64,6 +68,31 @@ export type NormalizedAttachment = {
   disposition?: string | undefined
 }
 
+export type MimeBudgetDimension =
+  | 'parts'
+  | 'depth'
+  | 'encoded_bytes'
+  | 'decoded_utf8_bytes'
+  | 'sanitized_html_bytes'
+  | 'attachments'
+  | 'attachment_metadata_bytes'
+
+export type MimeNormalization =
+  | {
+      kind: 'complete'
+      usage: Record<MimeBudgetDimension, number>
+    }
+  | {
+      kind: 'metadata-only'
+      diagnostic: {
+        code: 'MIME_BUDGET_EXCEEDED'
+        dimension: MimeBudgetDimension
+        limit: number
+        observed: number
+      }
+      usage: Record<MimeBudgetDimension, number>
+    }
+
 export type NormalizedMessage = {
   id: MessageId
   workspaceId: WorkspaceId
@@ -89,6 +118,8 @@ export type NormalizedMessage = {
   isDraft: boolean
   providerLabelIds: string[]
   attachments: NormalizedAttachment[]
+  /** MIME normalization is atomic: metadata-only means no body or attachment subset is complete. */
+  mime?: MimeNormalization | undefined
   createdAt: UtcTimestamp
   updatedAt: UtcTimestamp
 }
@@ -100,6 +131,12 @@ export type NormalizedDraft = {
   conversationId?: ConversationId | undefined
   providerDraftId: string
   providerMessageId: string
+  providerThreadId?: string | undefined
+  internetMessageId: string
+  sender: MailAddress
+  inReplyTo?: string | undefined
+  references: string[]
+  providerFingerprint: import('./draft-revision-fingerprint.js').DraftRevisionFingerprint
   to: MailAddress[]
   cc: MailAddress[]
   bcc: MailAddress[]
@@ -135,5 +172,7 @@ export type SyncCheckpoint = {
   fullReconciliationGeneration?: string | undefined
   fullReconciliationPageToken?: string | undefined
   syncFailureCount?: number | undefined
+  /** Set only after production post-import ANALYZE completes successfully. */
+  postImportAnalyzedAt?: UtcTimestamp | undefined
   updatedAt: UtcTimestamp
 }

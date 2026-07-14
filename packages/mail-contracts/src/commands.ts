@@ -2,6 +2,7 @@ import type {
   CommandId,
   ConversationId,
   DraftId,
+  DraftRevisionFingerprint,
   LabelId,
   MailboxId,
   MessageId,
@@ -21,8 +22,18 @@ export type MailCommand =
     }
 
 export type DraftCommand =
-  | { kind: 'sync-draft'; draftId: DraftId; version: number }
-  | { kind: 'send-draft'; draftId: DraftId; version: number }
+  | {
+      kind: 'sync-draft'
+      draftId: DraftId
+      expectedVersion: number
+      outboundRevisionFingerprint: DraftRevisionFingerprint
+    }
+  | {
+      kind: 'send-draft'
+      draftId: DraftId
+      expectedVersion: number
+      outboundRevisionFingerprint: DraftRevisionFingerprint
+    }
 
 export type DurableCommand = MailCommand | DraftCommand
 
@@ -31,6 +42,13 @@ export type ExecuteMailCommandInput = {
   mailboxId: MailboxId
   idempotencyKey: string
   command: MailCommand
+}
+
+export type UndoMailCommandInput = {
+  requestId: OperationId
+  mailboxId: MailboxId
+  sourceCommandId: CommandId
+  idempotencyKey: string
 }
 
 export type CommandState =

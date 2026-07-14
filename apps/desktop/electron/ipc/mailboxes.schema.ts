@@ -1,3 +1,4 @@
+import { stableErrorCodes } from '@mailrovers/mail-contracts'
 import { mailboxId, operationId, utcTimestamp } from '@mailrovers/mail-domain'
 import { z } from 'zod'
 
@@ -6,7 +7,7 @@ const mailboxIdSchema = z.string().min(1).max(300).transform(mailboxId)
 
 export const applicationErrorSchema = z
   .object({
-    code: z.string().min(1).max(100),
+    code: z.enum(stableErrorCodes),
     message: z.string().min(1).max(1_000),
     retryable: z.boolean(),
     requestId: z.string().min(1).max(200),
@@ -21,6 +22,19 @@ export const mailboxSummarySchema = z
     emailAddress: z.string().email(),
     displayName: z.string(),
     syncState: z.enum(['importing', 'paused', 'reconciling', 'ready', 'auth_required', 'failed']),
+    connectionState: z.enum(['connected', 'disconnected']),
+    capabilities: z
+      .object({
+        threadArchive: z.boolean(),
+        threadRead: z.boolean(),
+        threadLabels: z.boolean(),
+        messageStar: z.boolean(),
+        drafts: z.boolean(),
+        send: z.boolean(),
+        search: z.boolean(),
+        attachmentExport: z.boolean(),
+      })
+      .strict(),
     importedMessageCount: z.number().int().nonnegative(),
     importTotalEstimate: z.number().int().nonnegative().optional(),
     lastSuccessfulSyncAt: z.string().datetime().transform(utcTimestamp).optional(),
@@ -51,9 +65,19 @@ export const syncStatusSchema = z
   })
   .strict()
 
-export const syncReceiptSchema = z
-  .object({ requestId: requestIdSchema, mailboxId: mailboxIdSchema })
-  .strict()
+export const syncReceiptSchema = z.discriminatedUnion('state', [
+  z
+    .object({ requestId: requestIdSchema, mailboxId: mailboxIdSchema, state: z.literal('active') })
+    .strict(),
+  z
+    .object({
+      requestId: requestIdSchema,
+      mailboxId: mailboxIdSchema,
+      state: z.literal('deferred'),
+      retryAt: z.string().datetime().transform(utcTimestamp),
+    })
+    .strict(),
+])
 
 export const connectGmailResultSchema = z
   .object({ mailbox: mailboxSummarySchema, sync: syncReceiptSchema })
@@ -71,14 +95,44 @@ export const disconnectMailboxInputSchema = z
   })
   .strict()
 export const startSyncInputSchema = z
-  .object({ requestId: requestIdSchema, mailboxId: mailboxIdSchema })
+  .object({
+    requestId: requestIdSchema,
+    mailboxId: mailboxIdSchema,
+    reason: z.enum(['manual', 'lifecycle']).optional(),
+  })
   .strict()
 export const getSyncStatusInputSchema = startSyncInputSchema
 export const cancelOperationInputSchema = z
   .object({ requestId: requestIdSchema, operationId: requestIdSchema })
   .strict()
 
+const committedChangesSchema = z
+  .object({
+    mailboxes: z.literal(true).optional(),
+    conversations: z.literal(true).optional(),
+    labels: z.literal(true).optional(),
+    drafts: z.literal(true).optional(),
+    outbox: z.literal(true).optional(),
+  })
+  .strict()
+  .refine((changes) => Object.keys(changes).length > 0)
+
 export const desktopEventSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('mail-changed'),
+      requestId: requestIdSchema,
+      mailboxId: mailboxIdSchema.optional(),
+      changes: committedChangesSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('events-overflowed'),
+      requestId: requestIdSchema,
+      mailboxId: mailboxIdSchema.optional(),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal('sync-progress'),

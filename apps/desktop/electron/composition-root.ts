@@ -7,6 +7,7 @@ import {
   type AiRuntimeEvent,
   type AiRuntimeFactory,
   type CommandDispatcher,
+  type CommittedChangeListener,
   type GmailConnector,
   type MailApplication,
   type MailApplicationOperations,
@@ -14,16 +15,30 @@ import {
   type MailStore,
   type SyncEngine,
 } from '@mailrovers/mail-application'
-import type { DesktopEvent } from '@mailrovers/mail-contracts'
+import { COMMITTED_CHANGES_REQUEST_ID, type DesktopEvent } from '@mailrovers/mail-contracts'
+import { operationId } from '@mailrovers/mail-domain'
 import { MailCommandExecutor, MailSyncEngine } from '@mailrovers/mail-sync'
 import { migrate, openDatabase, SqliteMailStore } from '@mailrovers/mail-store-sqlite'
-import { ElectronSafeStorageSecretSealer } from '@mailrovers/platform-electron'
+import {
+  ElectronAttachmentStorage,
+  ElectronSafeStorageSecretSealer,
+} from '@mailrovers/platform-electron'
 import { shell } from 'electron'
+import { WorkerGmailNormalizer } from './gmail-normalizer-host.js'
 
-export function composeStore(dbPath: string): { store: MailStore; close(): void } {
+export function composeStore(dbPath: string): {
+  store: MailStore
+  subscribeCommittedChanges(listener: CommittedChangeListener): () => void
+  close(): void
+} {
   const db = openDatabase(dbPath)
   migrate(db)
-  return { store: new SqliteMailStore(db), close: () => db.close() }
+  const store = new SqliteMailStore(db)
+  return {
+    store,
+    subscribeCommittedChanges: (listener) => store.subscribeCommittedChanges(listener),
+    close: () => db.close(),
+  }
 }
 
 function assertAiConfiguration(configuration: AiProviderConfiguration): void {
@@ -86,13 +101,19 @@ function unavailableProviderFactory(): MailProviderFactory {
 
 export function composeDesktopApplication(input: {
   store: MailStore
+  subscribeCommittedChanges(listener: CommittedChangeListener): () => void
   publish(event: DesktopEvent): void
+  applicationDataRoot: string
 }): {
   application: MailApplication & MailApplicationOperations
   syncEngine: SyncEngine
   commandDispatcher: CommandDispatcher
+  unsubscribeCommittedChanges(): void
+  shutdownNormalization(): Promise<void>
 } {
   const clientId = process.env.MAILROVERS_GOOGLE_OAUTH_CLIENT_ID
+  const gmailNormalizer =
+    clientId === undefined || clientId.length === 0 ? undefined : new WorkerGmailNormalizer()
   const secretSealer = new ElectronSafeStorageSecretSealer()
   const gmailConnector: GmailConnector =
     clientId === undefined || clientId.length === 0
@@ -115,9 +136,13 @@ export function composeDesktopApplication(input: {
       ? unavailableProviderFactory()
       : {
           async create(mailboxId) {
+            const mailbox = await input.store.getMailbox(mailboxId)
+            if (mailbox?.connectionState !== 'connected')
+              throw new Error('Mailbox is disconnected and cannot contact Gmail')
             const { GmailProviderFactory } = await import('@mailrovers/provider-gmail')
             return new GmailProviderFactory({
               clientId,
+              normalizer: gmailNormalizer,
               async getRefreshToken(id) {
                 const encrypted = await input.store.getEncryptedRefreshToken(id)
                 if (!encrypted) throw new Error('Gmail refresh token is unavailable')
@@ -126,6 +151,20 @@ export function composeDesktopApplication(input: {
             }).create(mailboxId)
           },
         }
+  const unsubscribeCommittedChanges = input.subscribeCommittedChanges((changes) =>
+    input.publish({
+      kind: 'mail-changed',
+      requestId: operationId(COMMITTED_CHANGES_REQUEST_ID),
+      ...(changes.mailboxId === undefined ? {} : { mailboxId: changes.mailboxId }),
+      changes: {
+        ...(changes.mailboxes ? { mailboxes: true } : {}),
+        ...(changes.conversations ? { conversations: true } : {}),
+        ...(changes.labels ? { labels: true } : {}),
+        ...(changes.drafts ? { drafts: true } : {}),
+        ...(changes.outbox ? { outbox: true } : {}),
+      },
+    }),
+  )
   const syncEngine = new MailSyncEngine({
     store: input.store,
     providers,
@@ -140,10 +179,16 @@ export function composeDesktopApplication(input: {
       secretSealer,
       syncEngine,
       commandDispatcher,
+      providers,
+      attachmentStorage: new ElectronAttachmentStorage({
+        applicationDataRoot: input.applicationDataRoot,
+      }),
       aiRuntimeFactory: new LazyAiRuntimeFactory(),
       publishAiEvent: (event) => input.publish(event),
     }),
     syncEngine,
     commandDispatcher,
+    unsubscribeCommittedChanges,
+    shutdownNormalization: async () => gmailNormalizer?.shutdown(),
   }
 }

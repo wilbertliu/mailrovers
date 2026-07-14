@@ -2,6 +2,7 @@ import {
   attachmentId,
   conversationId,
   draftId,
+  fingerprintDraftRevision,
   labelId,
   mailboxId,
   messageId,
@@ -17,6 +18,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { migrate, openDatabase, SqliteMailStore } from '../src/index.js'
 import { migration0001 } from '../src/migrations/0001-m1.js'
+import { acquireTestSyncFence } from './sync-fence.js'
 
 let db: ReturnType<typeof openDatabase> | undefined
 const now = utcTimestamp('2026-07-13T00:00:00.000Z')
@@ -102,6 +104,10 @@ describe('SQLite mail store', () => {
       { version: 2 },
       { version: 3 },
       { version: 4 },
+      { version: 5 },
+      { version: 6 },
+      { version: 7 },
+      { version: 8 },
     ])
     const backup: unknown = db
       .prepare('SELECT path,version,status,integrity_result FROM migration_backups')
@@ -124,12 +130,36 @@ describe('SQLite mail store', () => {
         id: mailbox.id,
         emailAddress: mailbox.emailAddress,
         syncState: 'importing',
+        connectionState: 'connected',
         importedMessageCount: 0,
       }),
     ])
     expect(await store.getEncryptedRefreshToken(mailbox.id)).toEqual(encrypted)
     expect(await store.getSyncCheckpoint(mailbox.id)).toEqual(
       expect.objectContaining({ historyStartCursor: '100', importState: 'pending' }),
+    )
+  })
+
+  it('retains readable mailbox data while persisting a disconnected state', async () => {
+    const store = setup()
+    await store.saveConnectedMailbox({
+      mailbox,
+      checkpoint,
+      encryptedRefreshToken: new Uint8Array([7]),
+    })
+
+    await store.removeMailbox({ mailboxId: mailbox.id, removeLocalData: false })
+
+    expect(await store.listMailboxes()).toEqual([
+      expect.objectContaining({
+        id: mailbox.id,
+        syncState: 'paused',
+        connectionState: 'disconnected',
+      }),
+    ])
+    expect(await store.getEncryptedRefreshToken(mailbox.id)).toBeUndefined()
+    expect(await store.getSyncCheckpoint(mailbox.id)).toEqual(
+      expect.objectContaining({ historyStartCursor: '100' }),
     )
   })
 
@@ -140,6 +170,7 @@ describe('SQLite mail store', () => {
       checkpoint,
       encryptedRefreshToken: new Uint8Array([7]),
     })
+    const fence = await acquireTestSyncFence(store, mailbox.id, now)
     const message = normalizedMessage()
     const batch = {
       labels: [
@@ -164,9 +195,10 @@ describe('SQLite mail store', () => {
         totalEstimate: 2,
       },
       updatedAt: now,
+      fence,
     })
     const first = await store.listConversations({ mailboxId: mailbox.id })
-    await store.applyImportBatch({ mailboxId: mailbox.id, batch, updatedAt: now })
+    await store.applyImportBatch({ mailboxId: mailbox.id, batch, updatedAt: now, fence })
     const second = await store.listConversations({ mailboxId: mailbox.id })
 
     expect(second).toEqual(first)
@@ -196,12 +228,28 @@ describe('SQLite mail store', () => {
       checkpoint,
       encryptedRefreshToken: new Uint8Array([7]),
     })
+    const fence = await acquireTestSyncFence(store, mailbox.id, now)
     const oldDraft = {
       id: draftId('gmail:account-1:draft:old'),
       workspaceId: mailbox.workspaceId,
       mailboxId: mailbox.id,
       providerDraftId: 'old',
       providerMessageId: 'old-message',
+      providerThreadId: 'old-thread',
+      internetMessageId: '<old@mailrovers.local>',
+      sender: { address: mailbox.emailAddress, name: mailbox.displayName },
+      references: [],
+      providerFingerprint: fingerprintDraftRevision({
+        internetMessageId: '<old@mailrovers.local>',
+        sender: { address: mailbox.emailAddress, name: mailbox.displayName },
+        to: [],
+        cc: [],
+        bcc: [],
+        subject: 'Old draft',
+        textBody: 'Old',
+        providerThreadId: 'old-thread',
+        references: [],
+      }),
       to: [],
       cc: [],
       bcc: [],
@@ -213,8 +261,13 @@ describe('SQLite mail store', () => {
       mailboxId: mailbox.id,
       batch: { drafts: [oldDraft] },
       updatedAt: now,
+      fence,
     })
-    await store.beginDraftReconciliation({ mailboxId: mailbox.id, generation: 'generation-1' })
+    await store.beginDraftReconciliation({
+      mailboxId: mailbox.id,
+      generation: 'generation-1',
+      fence,
+    })
     await store.stageDraftReconciliation({
       mailboxId: mailbox.id,
       generation: 'generation-1',
@@ -224,9 +277,23 @@ describe('SQLite mail store', () => {
           id: draftId('gmail:account-1:draft:new'),
           providerDraftId: 'new',
           providerMessageId: 'new-message',
+          providerThreadId: 'new-thread',
+          internetMessageId: '<new@mailrovers.local>',
+          providerFingerprint: fingerprintDraftRevision({
+            internetMessageId: '<new@mailrovers.local>',
+            sender: oldDraft.sender,
+            to: [],
+            cc: [],
+            bcc: [],
+            subject: 'New draft',
+            textBody: 'Old',
+            providerThreadId: 'new-thread',
+            references: [],
+          }),
           subject: 'New draft',
         },
       ],
+      fence,
     })
     if (!db) throw new Error('Database was not initialized')
     expect(
@@ -238,6 +305,7 @@ describe('SQLite mail store', () => {
       mailboxId: mailbox.id,
       generation: 'generation-1',
       completedAt: now,
+      fence,
     })
     expect(
       (db.prepare('SELECT provider_draft_id FROM drafts').get() as { provider_draft_id: string })
@@ -252,12 +320,14 @@ describe('SQLite mail store', () => {
       checkpoint,
       encryptedRefreshToken: new Uint8Array([7]),
     })
+    const fence = await acquireTestSyncFence(store, mailbox.id, now)
     await store.applyHistoryPage({
       mailboxId: mailbox.id,
       batch: {},
       nextPageToken: 'history-page-2',
       targetCursor: '150',
       updatedAt: now,
+      fence,
     })
     expect(await store.getSyncCheckpoint(mailbox.id)).toEqual(
       expect.objectContaining({
@@ -273,6 +343,7 @@ describe('SQLite mail store', () => {
       batch: {},
       providerCursor: '151',
       completedAt: now,
+      fence,
     })
     expect(await store.getSyncCheckpoint(mailbox.id)).toEqual(
       expect.objectContaining({ providerCursor: '151', importState: 'complete' }),

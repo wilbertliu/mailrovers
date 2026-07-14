@@ -22,6 +22,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { migrate, openDatabase, SqliteMailStore } from '../src/index.js'
+import { acquireTestSyncFence } from './sync-fence.js'
 
 const timestamp = utcTimestamp('2026-07-13T12:00:00.000Z')
 const mailbox: Mailbox = {
@@ -141,6 +142,7 @@ beforeEach(async () => {
     checkpoint,
     encryptedRefreshToken: new Uint8Array([1]),
   })
+  const fence = await acquireTestSyncFence(store, mailbox.id, timestamp)
   await store.applyImportBatch({
     mailboxId: mailbox.id,
     batch: {
@@ -150,7 +152,9 @@ beforeEach(async () => {
       ],
     },
     updatedAt: timestamp,
+    fence,
   })
+  await store.releaseSyncLease({ mailboxId: mailbox.id, ...fence })
   runtime = new FakeRuntime()
   events = []
   const factory: AiRuntimeFactory = { create: () => runtime }
@@ -195,6 +199,44 @@ describe('MailApplication AI operations', () => {
     expect(runtime.requests[0]?.messages.map((entry) => entry.id)).toEqual([
       messageId('selected-message'),
     ])
+    expect(runtime.requests[0]?.messages[0]?.text).toBe('Body selected-message')
+  })
+
+  it('loads only bounded bodies internally for a long conversation', async () => {
+    const fence = await acquireTestSyncFence(store, mailbox.id, timestamp)
+    await store.applyImportBatch({
+      mailboxId: mailbox.id,
+      batch: {
+        messages: Array.from({ length: 80 }, (_, index) => ({
+          ...message(selectedConversation, `long-${String(index).padStart(3, '0')}`),
+          textBody: `Body ${index} ${'x'.repeat(4_000)}`,
+        })),
+      },
+      updatedAt: timestamp,
+      fence,
+    })
+    await store.releaseSyncLease({ mailboxId: mailbox.id, ...fence })
+    const source = await store.getConversation({
+      requestId: operationId('long-source'),
+      mailboxId: mailbox.id,
+      conversationId: selectedConversation,
+    })
+    if (!source) throw new Error('Expected long conversation')
+    const requestId = operationId('long-summary')
+    await application.startConversationSummary({
+      requestId,
+      mailboxId: mailbox.id,
+      conversationId: selectedConversation,
+      sourceVersion: source.version,
+    })
+    application.subscribeOperation(requestId)
+    await expect.poll(() => runtime.requests.length).toBe(1)
+    expect(runtime.requests[0]?.messages.length).toBeGreaterThan(0)
+    expect(runtime.requests[0]?.messages.length).toBeLessThanOrEqual(32)
+    expect(runtime.requests[0]?.contextTruncated).toBe(true)
+    expect(Buffer.byteLength(JSON.stringify(runtime.requests[0]?.messages))).toBeLessThanOrEqual(
+      64 * 1024,
+    )
   })
 
   it('emits no deltas and saves no artifact after cancellation', async () => {
@@ -229,6 +271,53 @@ describe('MailApplication AI operations', () => {
     delayed.release()
     await expect.poll(() => delayed.finished).toBe(true)
     expect(delayedEvents.map((event) => event.kind)).toEqual(['ai-started', 'ai-cancelled'])
+    expect(
+      (database.prepare('SELECT count(*) AS count FROM ai_artifacts').get() as { count: number })
+        .count,
+    ).toBe(0)
+  })
+
+  it('rejects an artifact when its conversation changes during generation', async () => {
+    const delayed = new DelayedRuntime()
+    const delayedEvents: AiStreamEvent[] = []
+    const delayedApplication = createMailApplication({
+      store,
+      secretSealer: sealer,
+      aiRuntimeFactory: { create: () => delayed },
+      publishAiEvent: (event) => delayedEvents.push(event),
+      now: () => new Date(timestamp),
+    })
+    const source = await store.getConversation({
+      requestId: operationId('load-stale-source'),
+      mailboxId: mailbox.id,
+      conversationId: selectedConversation,
+    })
+    if (!source) throw new Error('Expected selected conversation')
+    const requestId = operationId('stale-summary')
+    await delayedApplication.startConversationSummary({
+      requestId,
+      mailboxId: mailbox.id,
+      conversationId: selectedConversation,
+      sourceVersion: source.version,
+    })
+    delayedApplication.subscribeOperation(requestId)
+    await delayed.started
+    const fence = await acquireTestSyncFence(store, mailbox.id, timestamp)
+    await store.applyHistoryPage({
+      mailboxId: mailbox.id,
+      batch: {
+        messages: [
+          { ...message(selectedConversation, 'selected-message'), textBody: 'Updated body' },
+        ],
+      },
+      nextPageToken: 'next',
+      targetCursor: '101',
+      updatedAt: timestamp,
+      fence,
+    })
+    await store.releaseSyncLease({ mailboxId: mailbox.id, ...fence })
+    delayed.release()
+    await expect.poll(() => delayedEvents.at(-1)?.kind).toBe('ai-failed')
     expect(
       (database.prepare('SELECT count(*) AS count FROM ai_artifacts').get() as { count: number })
         .count,
@@ -278,6 +367,10 @@ describe('MailApplication AI operations', () => {
     const commandKinds = database
       .prepare('SELECT command_kind FROM command_outbox ORDER BY sequence')
       .all()
+    expect(commandKinds).toContainEqual({ command_kind: 'sync-draft' })
     expect(commandKinds).not.toContainEqual({ command_kind: 'send-draft' })
+    expect(
+      database.prepare('SELECT accepted_at FROM ai_artifacts WHERE id=?').get(terminal.artifact.id),
+    ).toEqual({ accepted_at: timestamp })
   })
 })

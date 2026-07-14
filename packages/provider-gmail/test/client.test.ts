@@ -92,4 +92,33 @@ describe('Gmail HTTP client', () => {
     ).rejects.toMatchObject({ status: 500 })
     expect(unsafeCalls).toBe(1)
   })
+
+  it('bounds attachment metadata responses before buffering them', async () => {
+    let calls = 0
+    const client = new GmailHttpClient({
+      accessTokens: tokenSource(),
+      endpoints: {
+        authorization: 'https://accounts.example.test/authorize',
+        token: 'https://accounts.example.test/token',
+        tokenInfo: 'https://accounts.example.test/tokeninfo',
+        gmailApi: 'https://gmail.example.test/v1',
+      },
+      wait: async () => undefined,
+      fetch: async () => {
+        calls += 1
+        return new Response(JSON.stringify({ data: 'oversized' }), {
+          status: 200,
+          headers: { 'content-length': '1000' },
+        })
+      },
+    })
+
+    await expect(
+      client.requestBounded('/users/me/messages/message/attachments/attachment', {
+        signal: new AbortController().signal,
+        maximumResponseBytes: 32,
+      }),
+    ).rejects.toThrow('exceeded the safe size limit')
+    expect(calls).toBe(1)
+  })
 })

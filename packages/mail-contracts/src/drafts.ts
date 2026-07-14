@@ -24,6 +24,7 @@ export type Draft = {
   textBody: string
   htmlBody?: string | undefined
   version: number
+  revisionFingerprint: import('@mailrovers/mail-domain').DraftRevisionFingerprint
   syncState: DraftSyncState
   updatedAt: UtcTimestamp
 }

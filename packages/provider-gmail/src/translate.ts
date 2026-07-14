@@ -2,11 +2,14 @@ import {
   attachmentId,
   conversationId,
   draftId,
+  fingerprintDraftRevision,
   labelId,
   messageId,
   utcTimestamp,
   type MailAddress,
   type MailboxId,
+  type MimeBudgetDimension,
+  type MimeNormalization,
   type NormalizedAttachment,
   type NormalizedDraft,
   type NormalizedLabel,
@@ -52,8 +55,8 @@ function headers(part: GmailMessagePart): Map<string, string> {
   return result
 }
 
-function decode(data: string | undefined): string | undefined {
-  if (!data || data.length > 28_000_000) return undefined
+function decode(data: string): string | undefined {
+  if (!/^[A-Za-z0-9_-]*={0,2}$/.test(data)) return undefined
   try {
     return Buffer.from(data, 'base64url').toString('utf8')
   } catch {
@@ -61,8 +64,8 @@ function decode(data: string | undefined): string | undefined {
   }
 }
 
-function cleanHtml(value: string): string {
-  return sanitizeHtml(value, {
+function cleanHtml(value: string): string | undefined {
+  const cleaned = sanitizeHtml(value, {
     allowedTags: [
       'a',
       'abbr',
@@ -102,64 +105,155 @@ function cleanHtml(value: string): string {
     allowProtocolRelative: false,
     disallowedTagsMode: 'discard',
   })
+  return cleaned === '' ? undefined : cleaned
 }
 
 type BodyParts = { text?: string | undefined; html?: string | undefined }
 
-function collectBodyParts(
-  part: GmailMessagePart,
-  result: BodyParts,
-  depth = 0,
-  budget = { remaining: 2_000 },
-): void {
-  if (depth > 32 || budget.remaining <= 0) return
-  budget.remaining -= 1
-  const filename = part.filename ?? ''
-  if (filename.length === 0) {
-    const value = decode(part.body?.data)
-    if (value !== undefined && part.mimeType === 'text/plain' && result.text === undefined)
-      result.text = value
-    if (value !== undefined && part.mimeType === 'text/html' && result.html === undefined)
-      result.html = cleanHtml(value)
-  }
-  for (const child of part.parts ?? []) collectBodyParts(child, result, depth + 1, budget)
+/**
+ * Conservative defaults cap one Gmail payload before decoding or sanitizing. The single iterative
+ * walk is atomic: crossing any limit discards all body and attachment results as incomplete.
+ */
+export const DEFAULT_MIME_BUDGET = {
+  parts: 1_000,
+  depth: 32,
+  encoded_bytes: 8 * 1024 * 1024,
+  decoded_utf8_bytes: 8 * 1024 * 1024,
+  sanitized_html_bytes: 4 * 1024 * 1024,
+  attachments: 500,
+  attachment_metadata_bytes: 512 * 1024,
+} as const satisfies Record<MimeBudgetDimension, number>
+
+export type MimeBudget = Record<MimeBudgetDimension, number>
+
+type MimeCollection = {
+  body: BodyParts
+  attachments: NormalizedAttachment[]
+  mime: MimeNormalization
 }
 
-function collectAttachments(
-  mailbox: MailboxId,
-  providerMessageId: string,
-  localMessageId: ReturnType<typeof messageId>,
-  part: GmailMessagePart,
-  result: NormalizedAttachment[],
-  depth = 0,
-): void {
-  if (depth > 32 || result.length >= 2_000) return
-  const partHeaders = headers(part)
-  const filename = part.filename ?? ''
-  const disposition = partHeaders.get('content-disposition')
-  const isAttachment =
-    filename.length > 0 ||
-    part.body?.attachmentId !== undefined ||
-    disposition?.toLowerCase().includes('attachment') === true
-  if (isAttachment) {
-    const partIdentity = part.partId ?? String(result.length)
-    result.push({
-      id: attachmentId(`gmail:${mailbox}:message:${providerMessageId}:part:${partIdentity}`),
-      messageId: localMessageId,
-      ...(part.body?.attachmentId === undefined
-        ? {}
-        : { providerAttachmentId: part.body.attachmentId }),
-      filename,
-      mediaType: part.mimeType ?? 'application/octet-stream',
-      sizeBytes: part.body?.size ?? 0,
-      ...(partHeaders.get('content-id') === undefined
-        ? {}
-        : { contentId: partHeaders.get('content-id') }),
-      ...(disposition === undefined ? {} : { disposition }),
-    })
+function abortIfRequested(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new DOMException('MIME normalization was cancelled', 'AbortError')
+}
+
+function collectMime(input: {
+  mailboxId: MailboxId
+  providerMessageId: string
+  localMessageId: ReturnType<typeof messageId>
+  root: GmailMessagePart
+  budget: MimeBudget
+  signal?: AbortSignal | undefined
+}): MimeCollection {
+  const usage: Record<MimeBudgetDimension, number> = {
+    parts: 0,
+    depth: 0,
+    encoded_bytes: 0,
+    decoded_utf8_bytes: 0,
+    sanitized_html_bytes: 0,
+    attachments: 0,
+    attachment_metadata_bytes: 0,
   }
-  for (const child of part.parts ?? [])
-    collectAttachments(mailbox, providerMessageId, localMessageId, child, result, depth + 1)
+  const body: BodyParts = {}
+  const attachments: NormalizedAttachment[] = []
+  const stack: Array<{ part: GmailMessagePart; depth: number }> = [{ part: input.root, depth: 0 }]
+  const overflow = (dimension: MimeBudgetDimension, observed: number): MimeCollection => ({
+    body: {},
+    attachments: [],
+    mime: {
+      kind: 'metadata-only',
+      diagnostic: {
+        code: 'MIME_BUDGET_EXCEEDED',
+        dimension,
+        limit: input.budget[dimension],
+        observed,
+      },
+      usage: { ...usage, [dimension]: observed },
+    },
+  })
+  const add = (dimension: MimeBudgetDimension, amount: number): MimeCollection | undefined => {
+    const observed = usage[dimension] + amount
+    usage[dimension] = observed
+    return observed > input.budget[dimension] ? overflow(dimension, observed) : undefined
+  }
+
+  while (stack.length > 0) {
+    abortIfRequested(input.signal)
+    const current = stack.pop()!
+    const partOverflow = add('parts', 1)
+    if (partOverflow) return partOverflow
+    usage.depth = Math.max(usage.depth, current.depth)
+    if (current.depth > input.budget.depth) return overflow('depth', current.depth)
+
+    const part = current.part
+    const partHeaders = headers(part)
+    const filename = part.filename ?? ''
+    const disposition = partHeaders.get('content-disposition')
+    const isAttachment =
+      filename.length > 0 ||
+      part.body?.attachmentId !== undefined ||
+      disposition?.toLowerCase().includes('attachment') === true
+    if (isAttachment) {
+      const attachmentOverflow = add('attachments', 1)
+      if (attachmentOverflow) return attachmentOverflow
+      const providerAttachmentId = part.body?.attachmentId
+      const mediaType = part.mimeType ?? 'application/octet-stream'
+      const contentId = partHeaders.get('content-id')
+      const metadataBytes =
+        Buffer.byteLength(part.partId ?? '') +
+        Buffer.byteLength(filename) +
+        Buffer.byteLength(mediaType) +
+        Buffer.byteLength(providerAttachmentId ?? '') +
+        Buffer.byteLength(contentId ?? '') +
+        Buffer.byteLength(disposition ?? '') +
+        16
+      const metadataOverflow = add('attachment_metadata_bytes', metadataBytes)
+      if (metadataOverflow) return metadataOverflow
+      const partIdentity = part.partId ?? String(attachments.length)
+      attachments.push({
+        id: attachmentId(
+          `gmail:${input.mailboxId}:message:${input.providerMessageId}:part:${partIdentity}`,
+        ),
+        messageId: input.localMessageId,
+        ...(providerAttachmentId === undefined ? {} : { providerAttachmentId }),
+        filename,
+        mediaType,
+        sizeBytes: part.body?.size ?? 0,
+        ...(contentId === undefined ? {} : { contentId }),
+        ...(disposition === undefined ? {} : { disposition }),
+      })
+    }
+
+    const data = part.body?.data
+    if (data !== undefined) {
+      const encodedOverflow = add('encoded_bytes', Buffer.byteLength(data))
+      if (encodedOverflow) return encodedOverflow
+      if (!isAttachment && (part.mimeType === 'text/plain' || part.mimeType === 'text/html')) {
+        const value = decode(data)
+        if (value !== undefined) {
+          const decodedBytes = Buffer.byteLength(value)
+          const decodedOverflow = add('decoded_utf8_bytes', decodedBytes)
+          if (decodedOverflow) return decodedOverflow
+          if (part.mimeType === 'text/plain' && body.text === undefined) body.text = value
+          if (part.mimeType === 'text/html') {
+            abortIfRequested(input.signal)
+            const cleaned = cleanHtml(value)
+            const sanitizedBytes = Buffer.byteLength(cleaned ?? '')
+            const sanitizedOverflow = add('sanitized_html_bytes', sanitizedBytes)
+            if (sanitizedOverflow) return sanitizedOverflow
+            if (body.html === undefined) body.html = cleaned
+          }
+        }
+      }
+    }
+
+    const children = part.parts ?? []
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      const child = children[index]
+      if (child !== undefined) stack.push({ part: child, depth: current.depth + 1 })
+    }
+  }
+  abortIfRequested(input.signal)
+  return { body, attachments, mime: { kind: 'complete', usage } }
 }
 
 export function translateMessage(input: {
@@ -167,22 +261,22 @@ export function translateMessage(input: {
   mailboxId: MailboxId
   message: GmailMessage
   now: ReturnType<typeof utcTimestamp>
+  budget?: MimeBudget | undefined
+  signal?: AbortSignal | undefined
 }): NormalizedMessage {
   const messageHeaders = headers(input.message.payload)
   const receivedAt = utcTimestamp(new Date(Number(input.message.internalDate)).toISOString())
   const dateHeader = messageHeaders.get('date')
   const parsedSentAt = dateHeader === undefined ? Number.NaN : Date.parse(dateHeader)
   const localMessageId = messageId(`gmail:${input.mailboxId}:message:${input.message.id}`)
-  const body: BodyParts = {}
-  collectBodyParts(input.message.payload, body)
-  const attachments: NormalizedAttachment[] = []
-  collectAttachments(
-    input.mailboxId,
-    input.message.id,
+  const collected = collectMime({
+    mailboxId: input.mailboxId,
+    providerMessageId: input.message.id,
     localMessageId,
-    input.message.payload,
-    attachments,
-  )
+    root: input.message.payload,
+    budget: input.budget ?? DEFAULT_MIME_BUDGET,
+    ...(input.signal === undefined ? {} : { signal: input.signal }),
+  })
   return {
     id: localMessageId,
     workspaceId: input.workspaceId,
@@ -210,12 +304,13 @@ export function translateMessage(input: {
       : { sentAt: utcTimestamp(new Date(parsedSentAt).toISOString()) }),
     receivedAt,
     snippet: input.message.snippet,
-    ...(body.text === undefined ? {} : { textBody: body.text }),
-    ...(body.html === undefined ? {} : { sanitizedHtmlBody: body.html }),
+    ...(collected.body.text === undefined ? {} : { textBody: collected.body.text }),
+    ...(collected.body.html === undefined ? {} : { sanitizedHtmlBody: collected.body.html }),
     sizeBytes: input.message.sizeEstimate,
     isDraft: input.message.labelIds.includes('DRAFT'),
     providerLabelIds: input.message.labelIds,
-    attachments,
+    attachments: collected.attachments,
+    mime: collected.mime,
     createdAt: input.now,
     updatedAt: input.now,
   }
@@ -227,8 +322,34 @@ export function translateDraft(input: {
   providerDraftId: string
   message: GmailMessage
   now: ReturnType<typeof utcTimestamp>
+  budget?: MimeBudget | undefined
+  signal?: AbortSignal | undefined
 }): NormalizedDraft {
   const normalized = translateMessage(input)
+  const messageHeaders = headers(input.message.payload)
+  const internetMessageId =
+    messageHeaders.get('message-id') ?? `<gmail-draft-${input.providerDraftId}@mailrovers.local>`
+  const sender = normalized.sender
+  const inReplyTo = messageHeaders.get('in-reply-to')
+  const references = (messageHeaders.get('references') ?? '')
+    .split(/\s+/)
+    .map((value) => value.trim())
+    .filter(Boolean)
+  const revision = {
+    internetMessageId,
+    sender,
+    to: normalized.recipients.to,
+    cc: normalized.recipients.cc,
+    bcc: normalized.recipients.bcc,
+    subject: normalized.subject,
+    textBody: normalized.textBody ?? '',
+    ...(normalized.sanitizedHtmlBody === undefined
+      ? {}
+      : { htmlBody: normalized.sanitizedHtmlBody }),
+    providerThreadId: input.message.threadId,
+    ...(inReplyTo === undefined ? {} : { inReplyTo }),
+    references,
+  }
   return {
     id: draftId(`gmail:${input.mailboxId}:draft:${input.providerDraftId}`),
     workspaceId: input.workspaceId,
@@ -236,6 +357,12 @@ export function translateDraft(input: {
     conversationId: normalized.conversationId,
     providerDraftId: input.providerDraftId,
     providerMessageId: input.message.id,
+    providerThreadId: input.message.threadId,
+    internetMessageId,
+    sender,
+    ...(inReplyTo === undefined ? {} : { inReplyTo }),
+    references,
+    providerFingerprint: fingerprintDraftRevision(revision),
     to: normalized.recipients.to,
     cc: normalized.recipients.cc,
     bcc: normalized.recipients.bcc,

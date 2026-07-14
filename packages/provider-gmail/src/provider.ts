@@ -6,12 +6,19 @@ import type {
   ResolvedProviderCommand,
   PullChangesResult,
 } from '@mailrovers/mail-application'
-import { utcTimestamp, type MailboxId, type WorkspaceId } from '@mailrovers/mail-domain'
+import { GMAIL_CAPABILITIES, type ProviderCapabilities } from '@mailrovers/mail-contracts'
+import {
+  fingerprintDraftRevision,
+  utcTimestamp,
+  type MailboxId,
+  type WorkspaceId,
+} from '@mailrovers/mail-domain'
 import { GmailHttpClient } from './client.js'
 import {
   parseGmailDraft,
   parseGmailMessage,
   gmailThreadSchema,
+  gmailAttachmentSchema,
   historyResponseSchema,
   listDraftsSchema,
   listLabelsSchema,
@@ -20,7 +27,29 @@ import {
   type GmailMessage,
 } from './schemas.js'
 import { base64UrlMime, serializeDraft } from './mime.js'
-import { translateDraft, translateLabel, translateMessage } from './translate.js'
+import { InlineGmailNormalizer, type GmailNormalizer } from './normalizer.js'
+import { translateDraft, translateLabel } from './translate.js'
+
+function exactDraftFingerprint(
+  draft: ReturnType<typeof translateDraft>,
+  outbound: NonNullable<ResolvedProviderCommand['outboundRevision']>,
+) {
+  return fingerprintDraftRevision({
+    internetMessageId: draft.internetMessageId,
+    sender: draft.sender,
+    to: draft.to,
+    cc: draft.cc,
+    bcc: draft.bcc,
+    subject: draft.subject,
+    textBody: draft.textBody,
+    ...(draft.htmlBody === undefined ? {} : { htmlBody: draft.htmlBody }),
+    ...(outbound.providerThreadId === undefined || draft.providerThreadId === undefined
+      ? {}
+      : { providerThreadId: draft.providerThreadId }),
+    ...(draft.inReplyTo === undefined ? {} : { inReplyTo: draft.inReplyTo }),
+    references: draft.references,
+  })
+}
 
 function query(parameters: Record<string, string | undefined>): string {
   const values = new URLSearchParams()
@@ -58,6 +87,8 @@ async function mapConcurrent<Input, Output>(
 }
 
 export class GmailProvider implements MailProvider {
+  private readonly normalizer: GmailNormalizer
+
   constructor(
     private readonly input: {
       client: GmailHttpClient
@@ -65,11 +96,57 @@ export class GmailProvider implements MailProvider {
       now?: (() => Date) | undefined
       detailBatchSize?: number | undefined
       detailConcurrency?: number | undefined
+      normalizer?: GmailNormalizer | undefined
     },
-  ) {}
+  ) {
+    this.normalizer = input.normalizer ?? new InlineGmailNormalizer()
+  }
 
   private now(): ReturnType<typeof utcTimestamp> {
     return utcTimestamp((this.input.now?.() ?? new Date()).toISOString())
+  }
+
+  private normalizationConcurrency(): number {
+    return Math.max(1, Math.min(this.input.detailConcurrency ?? 5, 5))
+  }
+
+  getCapabilities(): ProviderCapabilities {
+    return GMAIL_CAPABILITIES
+  }
+
+  async getAttachment(
+    input: Parameters<MailProvider['getAttachment']>[0],
+  ): Promise<ReadableStream<Uint8Array>> {
+    const maximumAttachmentBytes = 32 * 1024 * 1024
+    if (
+      !Number.isSafeInteger(input.expectedSizeBytes) ||
+      input.expectedSizeBytes < 0 ||
+      input.expectedSizeBytes > maximumAttachmentBytes
+    )
+      throw new Error('Attachment exceeds the safe download size limit')
+    const value = await this.input.client.requestBounded(
+      `/users/me/messages/${encodeURIComponent(input.providerMessageId)}/attachments/${encodeURIComponent(input.providerAttachmentId)}`,
+      {
+        signal: input.signal,
+        maximumResponseBytes: 45 * 1024 * 1024,
+        allowNotFound: true,
+      },
+    )
+    if (value === undefined) throw new Error('Attachment is no longer available')
+    const response = gmailAttachmentSchema.parse(value)
+    const bytes = await this.normalizer.decodeAttachment({
+      encoded: response.data,
+      declaredSizeBytes: response.size,
+      expectedSizeBytes: input.expectedSizeBytes,
+      maximumSizeBytes: maximumAttachmentBytes,
+      signal: input.signal,
+    })
+    return new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(bytes)
+        controller.close()
+      },
+    })
   }
 
   async getCurrentCursor(signal: AbortSignal): Promise<string> {
@@ -89,11 +166,12 @@ export class GmailProvider implements MailProvider {
     input: ResolvedProviderCommand & { signal: AbortSignal },
   ): Promise<ProviderCommandResult> {
     const translate = (message: GmailMessage) =>
-      translateMessage({
+      this.normalizer.normalizeMessage({
         workspaceId: this.input.workspaceId,
         mailboxId: input.mailboxId,
         message,
         now: this.now(),
+        signal: input.signal,
       })
     switch (input.command.kind) {
       case 'set-thread-archived':
@@ -127,7 +205,11 @@ export class GmailProvider implements MailProvider {
         const thread = gmailThreadSchema.parse(value)
         return {
           changes: {
-            messages: thread.messages.map((message) => translate(parseGmailMessage(message))),
+            messages: await mapConcurrent(
+              thread.messages,
+              this.normalizationConcurrency(),
+              (message) => translate(parseGmailMessage(message)),
+            ),
           },
         }
       }
@@ -144,7 +226,9 @@ export class GmailProvider implements MailProvider {
           },
         )
         const message = await this.getMessage(input.providerMessageId, input.signal)
-        return { changes: message === undefined ? {} : { messages: [translate(message)] } }
+        return {
+          changes: message === undefined ? {} : { messages: [await translate(message)] },
+        }
       }
       case 'sync-draft': {
         if (
@@ -153,6 +237,12 @@ export class GmailProvider implements MailProvider {
           input.internetMessageId === undefined
         )
           throw new Error('Draft snapshot is required')
+        if (
+          input.outboundRevision === undefined ||
+          fingerprintDraftRevision(input.outboundRevision) !==
+            input.command.outboundRevisionFingerprint
+        )
+          throw new Error('Draft revision fingerprint mismatch')
         const raw = base64UrlMime(
           serializeDraft({
             draft: input.draft,
@@ -180,19 +270,25 @@ export class GmailProvider implements MailProvider {
           },
         )
         const saved = parseGmailDraft(value)
-        const draft = translateDraft({
+        const translatedDraft = await this.normalizer.normalizeDraft({
           workspaceId: this.input.workspaceId,
           mailboxId: input.mailboxId,
           providerDraftId: saved.id,
           message: saved.message,
           now: this.now(),
+          signal: input.signal,
         })
+        const draft = {
+          ...translatedDraft,
+          providerFingerprint: exactDraftFingerprint(translatedDraft, input.outboundRevision),
+        }
         return {
           changes: { drafts: [draft] },
           draftIdentity: {
             draftId: input.command.draftId,
             providerDraftId: saved.id,
             providerMessageId: saved.message.id,
+            providerFingerprint: draft.providerFingerprint,
           },
         }
       }
@@ -206,7 +302,7 @@ export class GmailProvider implements MailProvider {
         })
         const sent = parseGmailMessage(value)
         return {
-          changes: { messages: [translate(sent)] },
+          changes: { messages: [await translate(sent)] },
           sentDraftId: input.command.draftId,
         }
       }
@@ -219,13 +315,19 @@ export class GmailProvider implements MailProvider {
     if (input.command.kind !== 'sync-draft' && input.command.kind !== 'send-draft')
       return { kind: 'not-applied' }
     if (input.internetMessageId === undefined) return { kind: 'uncertain' }
+    if (
+      input.outboundRevision === undefined ||
+      fingerprintDraftRevision(input.outboundRevision) !== input.command.outboundRevisionFingerprint
+    )
+      return { kind: 'uncertain' }
     const search = `rfc822msgid:${input.internetMessageId}`
     if (input.command.kind === 'sync-draft') {
       const value = await this.input.client.request(
-        `/users/me/drafts${query({ maxResults: '20', q: search })}`,
+        `/users/me/drafts${query({ maxResults: '20', q: `in:drafts ${search}` })}`,
         { signal: input.signal },
       )
       const drafts = listDraftsSchema.parse(value).drafts
+      const matches: Array<ReturnType<typeof translateDraft>> = []
       for (const candidate of drafts) {
         const detail = await this.input.client.request(
           `/users/me/drafts/${encodeURIComponent(candidate.id)}?format=full`,
@@ -237,32 +339,39 @@ export class GmailProvider implements MailProvider {
           (header) => header.name.toLowerCase() === 'message-id',
         )?.value
         if (messageId !== input.internetMessageId) continue
-        const draft = translateDraft({
+        const draft = await this.normalizer.normalizeDraft({
           workspaceId: this.input.workspaceId,
           mailboxId: input.mailboxId,
           providerDraftId: found.id,
           message: found.message,
           now: this.now(),
+          signal: input.signal,
         })
-        return {
-          kind: 'applied',
-          result: {
-            changes: { drafts: [draft] },
-            draftIdentity: {
-              draftId: input.command.draftId,
-              providerDraftId: found.id,
-              providerMessageId: found.message.id,
-            },
-          },
-        }
+        const providerFingerprint = exactDraftFingerprint(draft, input.outboundRevision)
+        if (providerFingerprint === input.command.outboundRevisionFingerprint)
+          matches.push({ ...draft, providerFingerprint })
       }
-      return { kind: 'uncertain' }
+      if (matches.length !== 1) return { kind: 'uncertain' }
+      const draft = matches[0]!
+      return {
+        kind: 'applied',
+        result: {
+          changes: { drafts: [draft] },
+          draftIdentity: {
+            draftId: input.command.draftId,
+            providerDraftId: draft.providerDraftId,
+            providerMessageId: draft.providerMessageId,
+            providerFingerprint: draft.providerFingerprint,
+          },
+        },
+      }
     }
     const value = await this.input.client.request(
       `/users/me/messages${query({ maxResults: '20', q: `in:sent ${search}` })}`,
       { signal: input.signal },
     )
     const candidates = listMessagesSchema.parse(value).messages
+    const matches: GmailMessage[] = []
     for (const candidate of candidates) {
       const found = await this.getMessage(candidate.id, input.signal)
       if (found === undefined) continue
@@ -270,24 +379,39 @@ export class GmailProvider implements MailProvider {
         (header) => header.name.toLowerCase() === 'message-id',
       )?.value
       if (messageId !== input.internetMessageId) continue
-      return {
-        kind: 'applied',
-        result: {
-          changes: {
-            messages: [
-              translateMessage({
-                workspaceId: this.input.workspaceId,
-                mailboxId: input.mailboxId,
-                message: found,
-                now: this.now(),
-              }),
-            ],
-          },
-          sentDraftId: input.command.draftId,
-        },
-      }
+      const revision = await this.normalizer.normalizeDraft({
+        workspaceId: this.input.workspaceId,
+        mailboxId: input.mailboxId,
+        providerDraftId: `sent:${found.id}`,
+        message: found,
+        now: this.now(),
+        signal: input.signal,
+      })
+      if (
+        exactDraftFingerprint(revision, input.outboundRevision) ===
+        input.command.outboundRevisionFingerprint
+      )
+        matches.push(found)
     }
-    return { kind: 'uncertain' }
+    if (matches.length !== 1) return { kind: 'uncertain' }
+    const found = matches[0]!
+    return {
+      kind: 'applied',
+      result: {
+        changes: {
+          messages: [
+            await this.normalizer.normalizeMessage({
+              workspaceId: this.input.workspaceId,
+              mailboxId: input.mailboxId,
+              message: found,
+              now: this.now(),
+              signal: input.signal,
+            }),
+          ],
+        },
+        sentDraftId: input.command.draftId,
+      },
+    }
   }
 
   async *importMailbox(input: {
@@ -338,16 +462,18 @@ export class GmailProvider implements MailProvider {
         const details = await mapConcurrent(group, this.input.detailConcurrency ?? 5, ({ id }) =>
           this.getMessage(id, input.signal),
         )
-        const messages = details
-          .filter((message): message is GmailMessage => message !== undefined)
-          .map((message) =>
-            translateMessage({
+        const messages = await mapConcurrent(
+          details.filter((message): message is GmailMessage => message !== undefined),
+          this.normalizationConcurrency(),
+          (message) =>
+            this.normalizer.normalizeMessage({
               workspaceId: this.input.workspaceId,
               mailboxId: input.mailboxId,
               message,
               now: this.now(),
+              signal: input.signal,
             }),
-          )
+        )
         const pageComplete = index === groups.length - 1
         yield {
           changes: { messages },
@@ -392,17 +518,19 @@ export class GmailProvider implements MailProvider {
           return parseGmailDraft(detail)
         },
       )
-      const normalized = drafts
-        .filter((draft): draft is NonNullable<typeof draft> => draft !== undefined)
-        .map((draft) =>
-          translateDraft({
+      const normalized = await mapConcurrent(
+        drafts.filter((draft): draft is NonNullable<typeof draft> => draft !== undefined),
+        this.normalizationConcurrency(),
+        (draft) =>
+          this.normalizer.normalizeDraft({
             workspaceId: this.input.workspaceId,
             mailboxId: input.mailboxId,
             providerDraftId: draft.id,
             message: draft.message,
             now: this.now(),
+            signal: input.signal,
           }),
-        )
+      )
       const pageComplete = index === groups.length - 1
       yield {
         changes: { drafts: normalized },
@@ -442,16 +570,18 @@ export class GmailProvider implements MailProvider {
     const details = await mapConcurrent([...changed], this.input.detailConcurrency ?? 5, (id) =>
       this.getMessage(id, input.signal),
     )
-    const messages = details
-      .filter((message): message is GmailMessage => message !== undefined)
-      .map((message) =>
-        translateMessage({
+    const messages = await mapConcurrent(
+      details.filter((message): message is GmailMessage => message !== undefined),
+      this.normalizationConcurrency(),
+      (message) =>
+        this.normalizer.normalizeMessage({
           workspaceId: this.input.workspaceId,
           mailboxId: input.mailboxId,
           message,
           now: this.now(),
+          signal: input.signal,
         }),
-      )
+    )
     return {
       changes: { messages, deletedProviderMessageIds: [...deleted] },
       historyId: response.historyId,

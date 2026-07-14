@@ -35,22 +35,24 @@ pnpm check
 pnpm fixture:seed
 pnpm --filter @mailrovers/desktop perf
 pnpm smoke:packaged
+pnpm --filter @mailrovers/desktop exec tsx perf/smoke-packaged.ts --performance --idle-ms=1000 --mode=main
+# Full idle-memory gate (60 seconds)
 pnpm performance:packaged
 ```
 
 Reference verification on the development Mac:
 
-| Measurement                    |    Result |
-| ------------------------------ | --------: |
-| Automated tests                | 65 passed |
-| Cached inbox query p95         |   0.13 ms |
-| Cached conversation query p95  |   0.10 ms |
-| Local FTS query p95            |   2.25 ms |
-| Packaged main-host scroll      |  60.0 FPS |
-| Scroll p95 frame               |   18.6 ms |
-| Frames over 20 ms              |         0 |
-| Packaged idle working set      |  128.5 MB |
-| Main and worker packaged smoke |    Passed |
+| Measurement                    |           Result |
+| ------------------------------ | ---------------: |
+| Automated tests                | Run `pnpm check` |
+| Cached inbox query p95         |          0.13 ms |
+| Cached conversation query p95  |          0.10 ms |
+| Local FTS query p95            |          2.25 ms |
+| Packaged main-host scroll      |         60.0 FPS |
+| Scroll p95 frame               |          18.6 ms |
+| Frames over 20 ms              |                0 |
+| Packaged idle working set      |         128.5 MB |
+| Main and worker packaged smoke |           Passed |
 
 The desktop composition root lazy-loads `mail-ai`; loading the provider runtime on startup exceeded the memory target during verification even before the user requested an AI operation.
 
@@ -66,7 +68,7 @@ The Milestone 4 tests cover:
 - Tool-call rejection and safe provider error mapping.
 - Provider streams remaining dormant until subscription.
 - Selected-conversation isolation.
-- Reply acceptance saving a draft without enqueueing send.
+- Reply acceptance atomically delegated to the store, saving a draft without enqueueing send.
 - Strict AI IPC schemas and API-key readback prevention.
 
 ## Packaged UI check

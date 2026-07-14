@@ -1,5 +1,5 @@
 import type { Draft } from '@mailrovers/mail-contracts'
-import { draftId, mailboxId, utcTimestamp } from '@mailrovers/mail-domain'
+import { draftId, fingerprintDraftRevision, mailboxId, utcTimestamp } from '@mailrovers/mail-domain'
 import { describe, expect, it } from 'vitest'
 import { base64UrlMime, serializeDraft } from '../src/index.js'
 
@@ -13,6 +13,18 @@ const draft: Draft = {
   textBody: 'Thanks for the notes.',
   htmlBody: '<p>Thanks for the <strong>notes</strong>.</p>',
   version: 1,
+  revisionFingerprint: fingerprintDraftRevision({
+    internetMessageId: '<stable@mailrovers.local>',
+    sender: { address: 'owner@example.test', name: 'Owner' },
+    to: [{ name: 'Ada Lovelace', address: 'ada@example.test' }],
+    cc: [],
+    bcc: [],
+    subject: 'Re: Engine ✓',
+    textBody: 'Thanks for the notes.',
+    htmlBody: '<p>Thanks for the <strong>notes</strong>.</p>',
+    inReplyTo: '<parent@example.test>',
+    references: ['<parent@example.test>'],
+  }),
   syncState: 'local',
   updatedAt: utcTimestamp('2026-07-13T00:00:00.000Z'),
 }
@@ -37,6 +49,16 @@ describe('outbound MIME', () => {
     expect(first).toContain('References: <parent@example.test>')
     expect(first).toContain('Content-Type: multipart/alternative')
     expect(base64UrlMime(first)).toMatch(/^[A-Za-z0-9_-]+$/)
+  })
+
+  it('omits an empty HTML body, matching revision fingerprint canonicalization', () => {
+    const raw = serializeDraft({
+      draft: { ...draft, htmlBody: '' },
+      sender: { address: 'owner@example.test', name: 'Owner' },
+      internetMessageId: '<stable@mailrovers.local>',
+      replyInternetMessageId: '<parent@example.test>',
+    })
+    expect(raw).not.toContain('Content-Type: text/html')
   })
 
   it('rejects header injection', () => {

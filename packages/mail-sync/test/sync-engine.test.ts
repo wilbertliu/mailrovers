@@ -4,7 +4,7 @@ import type {
   ProviderImportBatch,
   PullChangesResult,
 } from '@mailrovers/mail-application'
-import type { DesktopEvent } from '@mailrovers/mail-contracts'
+import { GMAIL_CAPABILITIES, type DesktopEvent } from '@mailrovers/mail-contracts'
 import {
   conversationId,
   mailboxId,
@@ -65,6 +65,14 @@ class FakeProvider implements MailProvider {
   readonly secondPageStarted = new Promise<void>((resolve) => {
     this.secondPageStartedResolve = resolve
   })
+
+  getCapabilities() {
+    return GMAIL_CAPABILITIES
+  }
+
+  async getAttachment(): Promise<never> {
+    throw new Error('Attachment download is not used by this test')
+  }
 
   async getCurrentCursor(): Promise<string> {
     return '100'
@@ -129,9 +137,38 @@ class FakeProvider implements MailProvider {
 }
 
 class FakeFactory implements MailProviderFactory {
+  creations = 0
   constructor(private readonly provider: MailProvider) {}
   async create(): Promise<MailProvider> {
+    this.creations += 1
     return this.provider
+  }
+}
+
+class BlockingLabelsProvider extends FakeProvider {
+  private enteredResolve?: (() => void) | undefined
+  private releaseResolve?: (() => void) | undefined
+  readonly entered = new Promise<void>((resolve) => {
+    this.enteredResolve = resolve
+  })
+  private readonly released = new Promise<void>((resolve) => {
+    this.releaseResolve = resolve
+  })
+
+  release(): void {
+    this.releaseResolve?.()
+  }
+
+  override async *importMailbox(input: {
+    phase: 'labels' | 'messages' | 'drafts'
+    pageToken?: string | undefined
+    signal: AbortSignal
+  }): AsyncIterable<ProviderImportBatch> {
+    if (input.phase === 'labels') {
+      this.enteredResolve?.()
+      await this.released
+    }
+    for await (const batch of super.importMailbox(input)) yield batch
   }
 }
 
@@ -205,6 +242,93 @@ class ExpiredCursorProvider extends FakeProvider {
     return { changes: {}, historyId: '300' }
   }
 }
+
+describe('synchronization lease fencing', () => {
+  it('allows only one of two engines to perform provider work for a mailbox', async () => {
+    const provider = new BlockingLabelsProvider()
+    const first = await setup(provider)
+    const secondFactory = new FakeFactory(new FakeProvider())
+    const secondEvents: DesktopEvent[] = []
+    const secondEngine = new MailSyncEngine({
+      store: first.store,
+      providers: secondFactory,
+      ownerId: 'engine-2',
+      now: () => new Date(now),
+      publish: (event) => secondEvents.push(event),
+    })
+
+    await first.engine.start({ mailboxId: mailbox.id, requestId: operationId('engine-1') })
+    await provider.entered
+    await secondEngine.start({ mailboxId: mailbox.id, requestId: operationId('engine-2') })
+    await secondEngine.shutdown()
+
+    expect(secondFactory.creations).toBe(0)
+    expect(secondEvents).toEqual([])
+
+    provider.release()
+    await first.terminal
+    await first.engine.shutdown()
+    expect(first.events.at(-1)?.kind).toBe('sync-completed')
+  })
+
+  it('aborts a stale engine after deterministic expiry and suppresses stale completion events', async () => {
+    const staleProvider = new BlockingLabelsProvider()
+    database = openDatabase(join(mkdtempSync(join(tmpdir(), 'mailrovers-sync-')), 'mail.sqlite'))
+    migrate(database)
+    const store = new SqliteMailStore(database)
+    await store.saveConnectedMailbox({
+      mailbox,
+      checkpoint: {
+        mailboxId: mailbox.id,
+        historyStartCursor: '100',
+        importState: 'pending',
+        importedMessageCount: 0,
+        importedDraftCount: 0,
+        updatedAt: now,
+      },
+      encryptedRefreshToken: new Uint8Array([1]),
+    })
+    let clock = new Date(now)
+    const staleEvents: DesktopEvent[] = []
+    const staleEngine = new MailSyncEngine({
+      store,
+      providers: new FakeFactory(staleProvider),
+      ownerId: 'stale-engine',
+      syncLeaseTtlMs: 10_000,
+      now: () => clock,
+      publish: (event) => staleEvents.push(event),
+    })
+    await staleEngine.start({ mailboxId: mailbox.id, requestId: operationId('stale-engine') })
+    await staleProvider.entered
+
+    clock = new Date('2026-07-13T00:00:11.000Z')
+    let winnerResolve: (() => void) | undefined
+    const winnerTerminal = new Promise<void>((resolve) => {
+      winnerResolve = resolve
+    })
+    const winnerEvents: DesktopEvent[] = []
+    const winnerEngine = new MailSyncEngine({
+      store,
+      providers: new FakeFactory(new FakeProvider()),
+      ownerId: 'winner-engine',
+      syncLeaseTtlMs: 10_000,
+      now: () => clock,
+      publish(event) {
+        winnerEvents.push(event)
+        if (event.kind !== 'sync-progress') winnerResolve?.()
+      },
+    })
+    await winnerEngine.start({ mailboxId: mailbox.id, requestId: operationId('winner-engine') })
+    await winnerTerminal
+    await winnerEngine.shutdown()
+
+    staleProvider.release()
+    await staleEngine.shutdown()
+
+    expect(winnerEvents.at(-1)?.kind).toBe('sync-completed')
+    expect(staleEvents.some((event) => event.kind !== 'sync-progress')).toBe(false)
+  })
+})
 
 describe('resumable Gmail import', () => {
   it('imports pages and advances history only on the final page', async () => {

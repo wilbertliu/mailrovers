@@ -12,8 +12,11 @@ function setup(): ReturnType<typeof openDatabase> {
   migrate(database)
   database.prepare('INSERT INTO workspaces VALUES (?,?,?,?)').run('w', 'W', now, now)
   database
-    .prepare('INSERT INTO mailboxes VALUES (?,?,?,?,?,?,?,?,?,?)')
-    .run('m', 'w', 'fixture', 'a', 'a@example.test', 'A', 'ready', now, now, now)
+    .prepare(`INSERT INTO mailboxes
+      (id,workspace_id,provider,provider_account_id,email_address,display_name,sync_state,
+       last_successful_sync_at,created_at,updated_at,connection_state)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+    .run('m', 'w', 'fixture', 'a', 'a@example.test', 'A', 'ready', now, now, now, 'connected')
   db = database
   return database
 }

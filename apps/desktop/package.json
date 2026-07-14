@@ -5,14 +5,14 @@
   "main": ".vite/build/main.js",
   "scripts": {
     "dev": "electron-forge start",
-    "build": "electron-forge package",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -b tsconfig.json --force && electron-forge package",
+    "typecheck": "tsc -b tsconfig.json --force",
     "test": "vitest run --passWithNoTests",
     "fixture:seed": "tsx perf/seed.ts",
     "perf": "tsx perf/query.ts",
     "package:mac": "electron-forge package --platform=darwin && codesign --force --deep --sign - out/MailRovers-darwin-$(uname -m)/MailRovers.app",
     "smoke:packaged": "tsx perf/smoke-packaged.ts",
-    "performance:packaged": "tsx perf/smoke-packaged.ts --performance --idle-ms=60000 --mode=main"
+    "performance:packaged": "pnpm build && tsx perf/smoke-packaged.ts --performance --idle-ms=60000 --mode=main"
   },
   "dependencies": {
     "@mailrovers/mail-ai": "workspace:*",

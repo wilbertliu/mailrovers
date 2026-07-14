@@ -1,6 +1,7 @@
 import type { AiStreamEvent } from './ai.js'
 import type {
   MailboxId,
+  MailboxConnectionState,
   MailboxSyncState,
   OperationId,
   UtcTimestamp,
@@ -8,12 +9,61 @@ import type {
 
 export type ListMailboxesInput = { requestId: OperationId }
 
+export const stableErrorCodes = [
+  'AI_ARTIFACT_STALE',
+  'AI_AUTHENTICATION_FAILED',
+  'AI_CONFIGURATION_INVALID',
+  'AI_CONTEXT_STALE',
+  'AI_OPERATION_EXPIRED',
+  'AI_PROVIDER_THROTTLED',
+  'AI_PROVIDER_UNAVAILABLE',
+  'AI_RESPONSE_INVALID',
+  'AI_UNSAFE_OUTPUT',
+  'APPLICATION_ERROR',
+  'AUTHENTICATION_REQUIRED',
+  'DRAFT_VERSION_CONFLICT',
+  'GMAIL_CONFIGURATION_REQUIRED',
+  'INTERNAL_ERROR',
+  'INVALID_REQUEST',
+  'INVALID_RESPONSE',
+  'OPERATION_CANCELLED',
+  'PROVIDER_THROTTLED',
+  'SYNC_FAILED',
+  'UNAUTHORIZED_REQUEST',
+] as const
+
+export type StableErrorCode = (typeof stableErrorCodes)[number]
+
+export type ProviderCapabilities = {
+  threadArchive: boolean
+  threadRead: boolean
+  threadLabels: boolean
+  messageStar: boolean
+  drafts: boolean
+  send: boolean
+  search: boolean
+  attachmentExport: boolean
+}
+
+export const GMAIL_CAPABILITIES: ProviderCapabilities = {
+  threadArchive: true,
+  threadRead: true,
+  threadLabels: true,
+  messageStar: true,
+  drafts: true,
+  send: true,
+  search: true,
+  attachmentExport: true,
+}
+
 export type MailboxSummary = {
   id: MailboxId
   provider: 'gmail'
   emailAddress: string
   displayName: string
   syncState: MailboxSyncState
+  connectionState: MailboxConnectionState
+  capabilities: ProviderCapabilities
   importedMessageCount: number
   importTotalEstimate?: number | undefined
   lastSuccessfulSyncAt?: UtcTimestamp | undefined
@@ -38,9 +88,17 @@ export type DisconnectMailboxInput = {
 export type StartSyncInput = {
   requestId: OperationId
   mailboxId: MailboxId
+  reason?: 'manual' | 'lifecycle' | undefined
 }
 
-export type SyncReceipt = { requestId: OperationId; mailboxId: MailboxId }
+export type SyncReceipt =
+  | { requestId: OperationId; mailboxId: MailboxId; state: 'active' }
+  | {
+      requestId: OperationId
+      mailboxId: MailboxId
+      state: 'deferred'
+      retryAt: UtcTimestamp
+    }
 
 export type GetSyncStatusInput = { requestId: OperationId; mailboxId: MailboxId }
 
@@ -96,10 +154,36 @@ export type SyncTerminalEvent =
       status: SyncStatus
     }
 
-export type DesktopEvent = SyncProgressEvent | SyncTerminalEvent | AiStreamEvent
+export const COMMITTED_CHANGES_REQUEST_ID = 'mailrovers:committed-changes'
+
+export type CommittedChangesEvent = {
+  kind: 'mail-changed'
+  requestId: OperationId
+  mailboxId?: MailboxId | undefined
+  changes: {
+    mailboxes?: true | undefined
+    conversations?: true | undefined
+    labels?: true | undefined
+    drafts?: true | undefined
+    outbox?: true | undefined
+  }
+}
+
+export type EventRecoveryRequired = {
+  kind: 'events-overflowed'
+  requestId: OperationId
+  mailboxId?: MailboxId | undefined
+}
+
+export type DesktopEvent =
+  | SyncProgressEvent
+  | SyncTerminalEvent
+  | AiStreamEvent
+  | CommittedChangesEvent
+  | EventRecoveryRequired
 
 export type ApplicationError = {
-  code: string
+  code: StableErrorCode
   message: string
   retryable: boolean
   requestId: string

@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": []
+  },
+  "include": ["electron/preload.ts", "electron/preload-event-queue.ts", "electron/ipc/**/*.ts"],
+  "exclude": ["electron/ipc/register-*.ts", "electron/ipc/validated-handler.ts"]
+}

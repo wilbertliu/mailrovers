@@ -1,5 +1,12 @@
 import { z } from 'zod'
 
+export const gmailAttachmentSchema = z
+  .object({
+    size: z.number().int().nonnegative(),
+    data: z.string().regex(/^[A-Za-z0-9_-]*={0,2}$/),
+  })
+  .passthrough()
+
 const headerSchema = z.object({ name: z.string(), value: z.string() }).passthrough()
 
 export type GmailMessagePart = {

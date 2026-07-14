@@ -1,21 +1,38 @@
-import type { Draft, MailCommand } from '@mailrovers/mail-contracts'
-import type { ConversationId, LabelId, MailboxId, MessageId } from '@mailrovers/mail-domain'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import type {
+  CommandReceipt,
+  DesktopEvent,
+  Draft,
+  MailCommand,
+  MailboxSummary,
+} from '@mailrovers/mail-contracts'
+import type { ConversationId, LabelId, MessageId } from '@mailrovers/mail-domain'
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { AiSettings } from '../ai/AiSettings.js'
 import { Composer } from '../composer/Composer.js'
 import { ConversationReader } from '../conversation/ConversationReader.js'
 import { InboxPage } from '../inbox/InboxPage.js'
+import { SearchResults } from '../inbox/SearchResults.js'
+import { useSearchPages } from '../inbox/useSearchPages.js'
 
-export function MailWorkspace({ mailboxId }: { mailboxId: MailboxId }) {
-  const queryClient = useQueryClient()
+export function MailWorkspace({
+  mailbox,
+  onMailboxChanged,
+}: {
+  mailbox: MailboxSummary
+  onMailboxChanged: () => Promise<void>
+}) {
+  const mailboxId = mailbox.id
   const [labelId, setLabelId] = useState<LabelId>()
   const [selectedConversation, setSelectedConversation] = useState<ConversationId>()
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [showDrafts, setShowDrafts] = useState(false)
   const [showAiSettings, setShowAiSettings] = useState(false)
+  const [refreshStatus, setRefreshStatus] = useState<string>()
+  const [refreshing, setRefreshing] = useState(false)
+  const [archiveUndo, setArchiveUndo] = useState<CommandReceipt>()
   const [composer, setComposer] = useState<{
     draft?: Draft | undefined
     conversationId?: ConversationId | undefined
@@ -47,26 +64,68 @@ export function MailWorkspace({ mailboxId }: { mailboxId: MailboxId }) {
     if (labelId === undefined && inbox !== undefined) setLabelId(inbox.id)
   }, [inbox, labelId])
   const executeCommand = async (command: MailCommand) => {
-    await desktopBridge.executeCommand({
+    const receipt = await desktopBridge.executeCommand({
       mailboxId,
       idempotencyKey: crypto.randomUUID(),
       command,
     })
-    if (command.kind === 'set-thread-archived' && command.archived)
+    if (command.kind === 'set-thread-archived' && command.archived) {
+      setArchiveUndo(receipt)
       setSelectedConversation(undefined)
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['conversations', mailboxId] }),
-      queryClient.invalidateQueries({ queryKey: ['conversation', mailboxId] }),
-      queryClient.invalidateQueries({ queryKey: ['labels', mailboxId] }),
-    ])
+    }
+  }
+  const refresh = async () => {
+    const requestId = desktopBridge.createRequestId()
+    setRefreshing(true)
+    setRefreshStatus('Refreshing…')
+    let unsubscribe = desktopBridge.subscribe(requestId, (event: DesktopEvent) => {
+      if (event.kind === 'sync-completed') {
+        setRefreshStatus('Refresh complete.')
+        setRefreshing(false)
+      } else if (event.kind === 'sync-failed') {
+        setRefreshStatus(event.error.message)
+        setRefreshing(false)
+      } else if (event.kind === 'sync-cancelled') {
+        setRefreshStatus('Refresh cancelled.')
+        setRefreshing(false)
+      }
+    })
+    try {
+      const receipt = await desktopBridge.startSync({ requestId, mailboxId, reason: 'manual' })
+      if (receipt.state === 'deferred') {
+        unsubscribe()
+        setRefreshStatus(`Refresh deferred until ${new Date(receipt.retryAt).toLocaleString()}.`)
+        setRefreshing(false)
+      } else if (receipt.requestId !== requestId) {
+        unsubscribe()
+        unsubscribe = desktopBridge.subscribe(receipt.requestId, () => {})
+        setRefreshStatus('Refresh already active.')
+      }
+    } catch (error) {
+      unsubscribe()
+      setRefreshStatus(error instanceof Error ? error.message : 'Refresh failed.')
+      setRefreshing(false)
+    }
+  }
+  const disconnect = async () => {
+    const choice = window.prompt(
+      'Type KEEP to disconnect Gmail while retaining readable local mail, or DELETE to remove all local mailbox data. Cancel to stay connected.',
+    )
+    if (choice === null) return
+    const normalized = choice.trim().toUpperCase()
+    if (normalized !== 'KEEP' && normalized !== 'DELETE') {
+      setRefreshStatus('Disconnect cancelled: enter KEEP or DELETE.')
+      return
+    }
+    await desktopBridge.disconnectMailbox({
+      requestId: desktopBridge.createRequestId(),
+      mailboxId,
+      removeLocalData: normalized === 'DELETE',
+    })
+    await onMailboxChanged()
   }
   const issue = issues.data?.[0]
-  const search = useQuery({
-    queryKey: ['search', mailboxId, searchQuery],
-    queryFn: () => desktopBridge.searchMail({ mailboxId, query: searchQuery, limit: 50 }),
-    enabled: searchQuery.length > 0,
-    staleTime: 30_000,
-  })
+  const search = useSearchPages(mailboxId, searchQuery)
 
   return (
     <main className="mail-workspace">
@@ -77,6 +136,23 @@ export function MailWorkspace({ mailboxId }: { mailboxId: MailboxId }) {
           </span>
           <strong>MailRovers</strong>
         </div>
+        <div className="button-row">
+          <button
+            type="button"
+            className="secondary"
+            disabled={refreshing || mailbox.connectionState === 'disconnected'}
+            onClick={() => void refresh()}
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+          <button type="button" className="text-button" onClick={() => void disconnect()}>
+            Disconnect
+          </button>
+        </div>
+        {mailbox.connectionState === 'disconnected' ? (
+          <output>Offline cache retained. Reconnect Gmail to refresh, send, or edit Gmail.</output>
+        ) : null}
+        {refreshStatus ? <output>{refreshStatus}</output> : null}
         <button type="button" className="compose-button" onClick={() => setComposer({})}>
           Compose
         </button>
@@ -195,42 +271,21 @@ export function MailWorkspace({ mailboxId }: { mailboxId: MailboxId }) {
         </section>
       ) : searchQuery ? (
         <section className="conversation-list-panel" aria-label="Search results">
-          <header className="list-header">
-            <div>
-              <h1>Search</h1>
-              <p>{search.data?.items.length ?? 0} local results</p>
-            </div>
-            <button
-              className="text-button"
-              type="button"
-              onClick={() => {
-                setSearchInput('')
-                setSearchQuery('')
-              }}
-            >
-              Clear
-            </button>
-          </header>
-          {search.data?.indexing ? <p className="indexing-note">Indexing older mail…</p> : null}
-          <div className="search-results">
-            {search.isPending ? <p className="list-state">Searching…</p> : null}
-            {search.data?.items.map((hit) => (
-              <button
-                type="button"
-                className={
-                  selectedConversation === hit.conversationId
-                    ? 'search-result selected'
-                    : 'search-result'
-                }
-                key={hit.messageId}
-                onClick={() => setSelectedConversation(hit.conversationId)}
-              >
-                <strong>{hit.subject || '(No subject)'}</strong>
-                <span>{hit.excerpt}</span>
-                <small>{hit.sender.name || hit.sender.address}</small>
-              </button>
-            ))}
-          </div>
+          <SearchResults
+            pages={search.data}
+            selectedConversation={selectedConversation}
+            hasNextPage={search.hasNextPage}
+            isFetchingNextPage={search.isFetchingNextPage}
+            isError={search.isError}
+            onClear={() => {
+              setSearchInput('')
+              setSearchQuery('')
+            }}
+            onLoadMore={() => {
+              if (search.hasNextPage && !search.isFetchingNextPage) void search.fetchNextPage()
+            }}
+            onSelect={setSelectedConversation}
+          />
         </section>
       ) : (
         <InboxPage
@@ -300,6 +355,28 @@ export function MailWorkspace({ mailboxId }: { mailboxId: MailboxId }) {
               await issues.refetch()
             }}
           >
+            Dismiss
+          </button>
+        </aside>
+      ) : null}
+      {archiveUndo ? (
+        <aside className="command-issue">
+          <output>Conversation archived.</output>
+          <button
+            type="button"
+            onClick={async () => {
+              const source = archiveUndo
+              setArchiveUndo(undefined)
+              await desktopBridge.undoCommand({
+                mailboxId,
+                sourceCommandId: source.id,
+                idempotencyKey: crypto.randomUUID(),
+              })
+            }}
+          >
+            Undo archive
+          </button>
+          <button type="button" className="secondary" onClick={() => setArchiveUndo(undefined)}>
             Dismiss
           </button>
         </aside>

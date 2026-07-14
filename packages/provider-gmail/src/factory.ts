@@ -1,6 +1,7 @@
 import type { MailProvider, MailProviderFactory } from '@mailrovers/mail-application'
 import { workspaceId, type MailboxId } from '@mailrovers/mail-domain'
 import { GmailHttpClient, RefreshTokenAccessTokenSource } from './client.js'
+import type { GmailNormalizer } from './normalizer.js'
 import type { GmailOAuthEndpoints } from './oauth.js'
 import { GmailProvider } from './provider.js'
 
@@ -12,6 +13,7 @@ export class GmailProviderFactory implements MailProviderFactory {
       fetch?: typeof fetch | undefined
       endpoints?: GmailOAuthEndpoints | undefined
       now?: (() => Date) | undefined
+      normalizer?: GmailNormalizer | undefined
     },
   ) {}
 
@@ -31,6 +33,7 @@ export class GmailProviderFactory implements MailProviderFactory {
       client,
       workspaceId: workspaceId('workspace-personal'),
       ...(this.input.now === undefined ? {} : { now: this.input.now }),
+      ...(this.input.normalizer === undefined ? {} : { normalizer: this.input.normalizer }),
     })
   }
 }

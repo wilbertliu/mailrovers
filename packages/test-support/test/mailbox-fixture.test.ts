@@ -14,7 +14,10 @@ describe('M1 fixture', () => {
     db = openDatabase(join(mkdtempSync(join(tmpdir(), 'mailrovers-fixture-')), 'mail.sqlite'))
     migrate(db)
     db.prepare('INSERT INTO workspaces VALUES (?,?,?,?)').run('other-workspace', 'Other', now, now)
-    db.prepare('INSERT INTO mailboxes VALUES (?,?,?,?,?,?,?,?,?,?)').run(
+    db.prepare(`INSERT INTO mailboxes
+      (id,workspace_id,provider,provider_account_id,email_address,display_name,sync_state,
+       last_successful_sync_at,created_at,updated_at,connection_state)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
       'other-mailbox',
       'other-workspace',
       'fixture',
@@ -25,6 +28,7 @@ describe('M1 fixture', () => {
       now,
       now,
       now,
+      'connected',
     )
     db.prepare('INSERT INTO conversations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(
       'other-conversation',

@@ -1,3 +1,4 @@
+import { GMAIL_CAPABILITIES } from '@mailrovers/mail-contracts'
 import { describe, expect, it } from 'vitest'
 import {
   connectGmailInputSchema,
@@ -18,7 +19,7 @@ describe('mailbox IPC contracts', () => {
     ).toThrow('Unrecognized key')
   })
 
-  it('requires safe result envelopes', () => {
+  it('requires safe result envelopes and explicit mailbox connection state', () => {
     expect(
       listMailboxesResultSchema.parse({
         ok: false,
@@ -38,6 +39,24 @@ describe('mailbox IPC contracts', () => {
         requestId: 'request-1',
       },
     })
+    const mailbox = {
+      id: 'mailbox-1',
+      provider: 'gmail',
+      emailAddress: 'person@example.test',
+      displayName: 'Person',
+      syncState: 'paused',
+      capabilities: GMAIL_CAPABILITIES,
+      importedMessageCount: 10,
+    }
+    expect(
+      listMailboxesResultSchema.parse({
+        ok: true,
+        value: [{ ...mailbox, connectionState: 'disconnected' }],
+      }),
+    ).toMatchObject({ ok: true, value: [{ connectionState: 'disconnected' }] })
+    expect(() => listMailboxesResultSchema.parse({ ok: true, value: [mailbox] })).toThrow(
+      'Required',
+    )
   })
 
   it('rejects malformed progress events', () => {
@@ -49,5 +68,26 @@ describe('mailbox IPC contracts', () => {
         status: { phase: 'importing_messages' },
       }),
     ).toThrow('Required')
+  })
+
+  it('accepts only compact, content-free committed change sets', () => {
+    expect(
+      desktopEventSchema.parse({
+        kind: 'mail-changed',
+        requestId: 'mailrovers:committed-changes',
+        mailboxId: 'mailbox-1',
+        changes: { conversations: true, drafts: true, outbox: true },
+      }),
+    ).toMatchObject({ changes: { conversations: true, drafts: true, outbox: true } })
+    for (const leaked of ['subject', 'body', 'address', 'providerMessageId'])
+      expect(() =>
+        desktopEventSchema.parse({
+          kind: 'mail-changed',
+          requestId: 'mailrovers:committed-changes',
+          mailboxId: 'mailbox-1',
+          changes: { conversations: true },
+          [leaked]: 'must-not-cross-ipc',
+        }),
+      ).toThrow('Unrecognized key')
   })
 })

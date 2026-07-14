@@ -6,6 +6,7 @@ import {
   utcTimestamp,
 } from '@mailrovers/mail-domain'
 import { z } from 'zod'
+import { resultSchema } from './mailboxes.schema.js'
 
 const cursor = z.string().min(1).max(512)
 export const listConversationsInputSchema = z
@@ -36,5 +37,6 @@ export const conversationPageSchema = z
     nextCursor: cursor.optional(),
   })
   .strict()
+export const conversationPageResultSchema = resultSchema(conversationPageSchema)
 export type ListConversationsIpcInput = z.input<typeof listConversationsInputSchema>
-export type ConversationPageIpcOutput = z.output<typeof conversationPageSchema>
+export type ConversationPageIpcResult = z.output<typeof conversationPageResultSchema>
