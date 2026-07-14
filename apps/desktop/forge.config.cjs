@@ -40,7 +40,10 @@ const config = {
       },
     ],
   },
-  rebuildConfig: {},
+  rebuildConfig: {
+    force: true,
+    onlyModules: ['better-sqlite3'],
+  },
   makers: [],
   plugins: [
     new AutoUnpackNativesPlugin({}),
