@@ -8,7 +8,7 @@
     "build": "tsc -b tsconfig.json --force && electron-forge package",
     "typecheck": "tsc -b tsconfig.json --force",
     "test": "vitest run --passWithNoTests",
-    "fixture:seed": "tsx perf/seed.ts",
+    "fixture:seed": "ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/seed.ts",
     "perf": "tsx perf/query.ts",
     "package:mac": "electron-forge package --platform=darwin && codesign --force --deep --sign - out/MailRovers-darwin-$(uname -m)/MailRovers.app",
     "smoke:packaged": "tsx perf/smoke-packaged.ts",
