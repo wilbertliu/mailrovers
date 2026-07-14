@@ -7,6 +7,6 @@
     "moduleResolution": "Bundler",
     "types": ["node"]
   },
-  "include": ["electron/**/*.ts", "vite.*.config.ts"],
+  "include": ["electron/**/*.ts", "vite.*.config.ts", "src/development-csp.ts"],
   "exclude": ["electron/preload.ts"]
 }
