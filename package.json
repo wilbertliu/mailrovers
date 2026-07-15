@@ -7,7 +7,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm native:check && pnpm -r test",
     "native:check": "ELECTRON_RUN_AS_NODE=1 electron scripts/check-native-abi.cjs",
-    "lint": "oxlint --type-aware --deny-warnings .",
+    "lint": "oxlint --type-aware --deny-warnings . && node scripts/check-styles.mjs",
     "lint:fix": "oxlint --type-aware --deny-warnings --fix .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",

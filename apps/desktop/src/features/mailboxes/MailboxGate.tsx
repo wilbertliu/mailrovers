@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { MailAccount01Icon } from '@hugeicons/core-free-icons'
 import { Button } from '@/components/ui/button.js'
+import { NativeSelect } from '@/components/ui/native-select.js'
 import {
   Card,
   CardContent,
@@ -411,13 +412,13 @@ export function MailboxGate() {
   return (
     <>
       <nav
-        className="flex h-14 items-center justify-between border-b border-[#dfe3e8] bg-[#eef1ec] px-4 py-2"
+        className="flex h-14 items-center justify-between border-b border-border bg-panel px-4 py-2"
         aria-label="Mailboxes"
       >
-        <label className="flex items-center gap-2.5 text-xs font-semibold text-[#687169]">
+        <label className="flex items-center gap-2.5 text-xs font-semibold text-muted-foreground">
           <span>Mailbox</span>
-          <select
-            className="min-w-55 rounded-lg border border-[#cfd5ce] bg-white py-1.5 pr-7 pl-2.5 text-[#263129] outline-none focus-visible:ring-2 focus-visible:ring-[#4d735b]"
+          <NativeSelect
+            className="min-w-55 rounded-lg border border-border bg-surface py-1.5 pr-7 pl-2.5 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             value={mailbox.id}
             onChange={(event) => setSelectedMailbox(mailboxes.data[event.target.selectedIndex]?.id)}
           >
@@ -426,7 +427,7 @@ export function MailboxGate() {
                 {item.emailAddress}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <Button type="button" variant="secondary" size="sm" onClick={() => setShowConnect(true)}>
           Add Gmail account

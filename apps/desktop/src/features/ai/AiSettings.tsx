@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button.js'
 import { desktopBridge } from '../../desktop-bridge.js'
+import { Input } from '@/components/ui/input.js'
 
 export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClose: () => void }) {
   const queryClient = useQueryClient()
@@ -65,15 +66,15 @@ export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClo
 
   return (
     <section
-      className="min-w-0 overflow-hidden border-e border-[#e0e4e1] bg-white"
+      className="min-w-0 overflow-hidden border-e border-border bg-surface"
       aria-labelledby="ai-settings-title"
     >
-      <header className="flex h-19 items-center justify-between border-b border-[#e1e5e2] bg-white px-4.5 py-4">
+      <header className="flex h-19 items-center justify-between border-b border-border bg-surface px-4.5 py-4">
         <div>
-          <h1 className="truncate text-lg leading-tight text-[#202722]" id="ai-settings-title">
+          <h1 className="truncate text-lg leading-tight text-foreground" id="ai-settings-title">
             AI provider
           </h1>
-          <p className="mt-1 text-xs text-[#687169]">Configured for this mailbox</p>
+          <p className="mt-1 text-xs text-muted-foreground">Configured for this mailbox</p>
         </div>
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>
           Done
@@ -86,10 +87,14 @@ export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClo
           void save()
         }}
       >
-        <label className="mb-4 flex flex-col gap-1.5 text-xs font-semibold text-[#4e5951]">
+        <label
+          htmlFor="ai-base-url"
+          className="mb-4 flex flex-col gap-1.5 text-xs font-semibold text-foreground"
+        >
           <span>Base URL</span>
-          <input
-            className="w-full rounded-lg border border-[#cbd1cb] bg-white px-2.5 py-2 font-normal text-[#202722] outline-none focus-visible:ring-2 focus-visible:ring-[#4d735b]"
+          <Input
+            id="ai-base-url"
+            className="w-full rounded-lg border border-border bg-surface px-2.5 py-2 font-normal text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             type="url"
             required
             value={baseUrl}
@@ -97,20 +102,28 @@ export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClo
             placeholder="https://api.openai.com/v1"
           />
         </label>
-        <label className="mb-4 flex flex-col gap-1.5 text-xs font-semibold text-[#4e5951]">
+        <label
+          htmlFor="ai-model"
+          className="mb-4 flex flex-col gap-1.5 text-xs font-semibold text-foreground"
+        >
           <span>Model</span>
-          <input
-            className="w-full rounded-lg border border-[#cbd1cb] bg-white px-2.5 py-2 font-normal text-[#202722] outline-none focus-visible:ring-2 focus-visible:ring-[#4d735b]"
+          <Input
+            id="ai-model"
+            className="w-full rounded-lg border border-border bg-surface px-2.5 py-2 font-normal text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             required
             value={model}
             onChange={(event) => setModel(event.target.value)}
             placeholder="Provider model identifier"
           />
         </label>
-        <label className="mb-4 flex flex-col gap-1.5 text-xs font-semibold text-[#4e5951]">
+        <label
+          htmlFor="ai-api-key"
+          className="mb-4 flex flex-col gap-1.5 text-xs font-semibold text-foreground"
+        >
           <span>API key</span>
-          <input
-            className="w-full rounded-lg border border-[#cbd1cb] bg-white px-2.5 py-2 font-normal text-[#202722] outline-none focus-visible:ring-2 focus-visible:ring-[#4d735b]"
+          <Input
+            id="ai-api-key"
+            className="w-full rounded-lg border border-border bg-surface px-2.5 py-2 font-normal text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             type="password"
             autoComplete="off"
             value={apiKey}
@@ -120,12 +133,12 @@ export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClo
             }
           />
         </label>
-        <p className="max-w-[48ch] text-xs leading-5 text-[#657068]">
+        <p className="max-w-[48ch] text-xs leading-5 text-muted-foreground">
           MailRovers sends only the selected conversation to this provider. The key is encrypted on
           this Mac and cannot be read back.
         </p>
         {error ? (
-          <p className="mt-3 text-[#a1382c]" role="alert">
+          <p className="mt-3 text-destructive" role="alert">
             {error}
           </p>
         ) : null}
@@ -150,7 +163,7 @@ export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClo
             {status === 'testing' ? 'Testing…' : 'Test connection'}
           </Button>
         </div>
-        <output className="mt-3 block min-h-4.5 text-xs text-[#42664d]" aria-live="polite">
+        <output className="mt-3 block min-h-4.5 text-xs text-success" aria-live="polite">
           {status === 'valid' || configuration.data?.state === 'valid'
             ? 'Connection verified.'
             : status === 'saved'
@@ -163,7 +176,7 @@ export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClo
           <Button
             type="button"
             variant="ghost"
-            className="mt-4.5 px-0 text-[#8b3c33]"
+            className="mt-4.5 px-0 text-destructive"
             onClick={() => void clear()}
           >
             Remove AI configuration

@@ -1,3 +1,4 @@
+import { Input } from '@/components/ui/input.js'
 import type {
   CommandReceipt,
   DesktopEvent,
@@ -130,11 +131,11 @@ export function MailWorkspace({
   const search = useSearchPages(mailboxId, searchQuery)
 
   return (
-    <main className="grid h-[calc(100vh-56px)] min-w-220 grid-cols-[208px_minmax(320px,390px)_minmax(360px,1fr)] overflow-hidden bg-white max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]">
-      <aside className="overflow-y-auto border-e border-[#dfe3de] bg-[#f1f3f0] px-3 py-4.5 max-[980px]:hidden">
+    <main className="grid h-[calc(100vh-56px)] min-w-220 grid-cols-[208px_minmax(320px,390px)_minmax(360px,1fr)] overflow-hidden bg-surface max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]">
+      <aside className="overflow-y-auto border-e border-border bg-panel px-3 py-4.5 max-[980px]:hidden">
         <div className="flex items-center gap-2.5 px-2 pb-4.5">
           <span
-            className="grid size-6.5 place-items-center rounded-lg bg-[#31553f] text-[13px] font-bold text-white"
+            className="grid size-6.5 place-items-center rounded-lg bg-primary text-detail font-bold text-primary-foreground"
             aria-hidden="true"
           >
             M
@@ -163,14 +164,14 @@ export function MailWorkspace({
         {refreshStatus ? (
           <output className="mt-2 block text-xs text-muted-foreground">{refreshStatus}</output>
         ) : null}
-        <Button className="mt-3 mb-3 w-full bg-[#31553f]" onClick={() => setComposer({})}>
+        <Button className="mt-3 mb-3 w-full bg-primary" onClick={() => setComposer({})}>
           Compose
         </Button>
-        <button
+        <Button
           type="button"
           className={cn(
-            'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-start text-[13px] font-medium text-[#3f4942] hover:bg-[#e2e6e1] focus-visible:ring-2 focus-visible:ring-[#4d735b] focus-visible:outline-none',
-            showDrafts && 'bg-[#d7e2da] font-bold text-[#173e28]',
+            'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-start text-detail font-medium text-foreground hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+            showDrafts && 'bg-selection font-bold text-selection-foreground',
           )}
           onClick={() => {
             setShowDrafts(true)
@@ -182,14 +183,14 @@ export function MailWorkspace({
         >
           <span>Local drafts</span>
           {drafts.data?.length ? (
-            <small className="text-[11px] text-[#657068]">{drafts.data.length}</small>
+            <small className="text-xs text-muted-foreground">{drafts.data.length}</small>
           ) : null}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           className={cn(
-            'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-start text-[13px] font-medium text-[#3f4942] hover:bg-[#e2e6e1] focus-visible:ring-2 focus-visible:ring-[#4d735b] focus-visible:outline-none',
-            showAiSettings && 'bg-[#d7e2da] font-bold text-[#173e28]',
+            'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-start text-detail font-medium text-foreground hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+            showAiSettings && 'bg-selection font-bold text-selection-foreground',
           )}
           onClick={() => {
             setShowAiSettings(true)
@@ -200,7 +201,7 @@ export function MailWorkspace({
           }}
         >
           <span>AI provider</span>
-        </button>
+        </Button>
         <form
           className="mt-1"
           aria-label="Search mail"
@@ -215,8 +216,8 @@ export function MailWorkspace({
           <label className="sr-only" htmlFor="mail-search">
             Search mail
           </label>
-          <input
-            className="w-full rounded-lg border border-[#cbd1cb] bg-white px-2.5 py-2 text-[#202722] outline-none focus:border-[#4d735b] focus:ring-2 focus:ring-[#4d735b]/20"
+          <Input
+            className="w-full rounded-lg border border-border bg-surface px-2.5 py-2 text-foreground outline-none focus:border-border focus:ring-2 focus:ring-ring/20"
             id="mail-search"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
@@ -225,15 +226,17 @@ export function MailWorkspace({
         </form>
         <nav aria-label="Labels" className="mt-4.5 flex flex-col gap-0.5">
           {labels.isPending ? (
-            <p className="p-2 text-[13px] text-[#5d675f]">Loading labels…</p>
+            <p className="p-2 text-detail text-muted-foreground">Loading labels…</p>
           ) : null}
           {labels.data?.map((label) => (
-            <button
+            <Button
               type="button"
               key={label.id}
               className={cn(
-                'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-start text-[13px] font-medium text-[#3f4942] hover:bg-[#e2e6e1] focus-visible:ring-2 focus-visible:ring-[#4d735b] focus-visible:outline-none',
-                label.id === labelId && !searchQuery && 'bg-[#d7e2da] font-bold text-[#173e28]',
+                'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-start text-detail font-medium text-foreground hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                label.id === labelId &&
+                  !searchQuery &&
+                  'bg-selection font-bold text-selection-foreground',
               )}
               onClick={() => {
                 setLabelId(label.id)
@@ -246,9 +249,9 @@ export function MailWorkspace({
             >
               <span>{label.name}</span>
               {label.unreadCount > 0 ? (
-                <small className="text-[11px] text-[#657068]">{label.unreadCount}</small>
+                <small className="text-xs text-muted-foreground">{label.unreadCount}</small>
               ) : null}
-            </button>
+            </Button>
           ))}
         </nav>
       </aside>
@@ -257,22 +260,22 @@ export function MailWorkspace({
         <AiSettings mailboxId={mailboxId} onClose={() => setShowAiSettings(false)} />
       ) : showDrafts ? (
         <section
-          className="min-w-0 overflow-hidden border-e border-[#e0e4e1] bg-white"
+          className="min-w-0 overflow-hidden border-e border-border bg-surface"
           aria-label="Local drafts"
         >
-          <header className="flex h-19 items-center justify-between border-b border-[#e1e5e2] bg-white px-4.5 py-4">
+          <header className="flex h-19 items-center justify-between border-b border-border bg-surface px-4.5 py-4">
             <div>
-              <h1 className="truncate text-lg leading-tight text-[#202722]">Local drafts</h1>
-              <p className="mt-1 text-xs text-[#687169]">
+              <h1 className="truncate text-lg leading-tight text-foreground">Local drafts</h1>
+              <p className="mt-1 text-xs text-muted-foreground">
                 {drafts.data?.length ?? 0} saved on this Mac
               </p>
             </div>
           </header>
           <div className="h-[calc(100vh-132px)] overflow-y-auto">
             {drafts.data?.map((draft) => (
-              <button
+              <Button
                 type="button"
-                className="flex w-full flex-col items-start gap-1.5 border-b border-[#e9ece9] bg-white px-4 py-3 text-start text-[#26302a] hover:bg-[#e8efea] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4d735b] focus-visible:outline-none"
+                className="flex w-full flex-col items-start gap-1.5 border-b border-border bg-surface px-4 py-3 text-start text-foreground hover:bg-selection focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none"
                 key={draft.id}
                 onClick={() => {
                   void (async () => {
@@ -293,20 +296,20 @@ export function MailWorkspace({
                 }}
               >
                 <strong>{draft.subject || '(No subject)'}</strong>
-                <span className="max-w-full truncate text-[#59635c]">
+                <span className="max-w-full truncate text-muted-foreground">
                   {draft.textBody || 'Empty draft'}
                 </span>
-                <small className="text-[#748078]">{draft.syncState}</small>
-              </button>
+                <small className="text-muted-foreground">{draft.syncState}</small>
+              </Button>
             ))}
             {drafts.data?.length === 0 ? (
-              <p className="px-4.5 py-6 text-[#5d675f]">No local drafts.</p>
+              <p className="px-4.5 py-6 text-muted-foreground">No local drafts.</p>
             ) : null}
           </div>
         </section>
       ) : searchQuery ? (
         <section
-          className="min-w-0 overflow-hidden border-e border-[#e0e4e1] bg-white"
+          className="min-w-0 overflow-hidden border-e border-border bg-surface"
           aria-label="Search results"
         >
           <SearchResults
@@ -351,10 +354,10 @@ export function MailWorkspace({
           }
         />
       ) : (
-        <section className="grid place-items-center bg-[#f7f8f6] p-12 text-center text-[#58625b]">
+        <section className="grid place-items-center bg-panel p-12 text-center text-muted-foreground">
           <div>
-            <strong className="text-[#29312c]">Select a conversation</strong>
-            <p className="mt-2 max-w-[40ch] text-[13px] leading-6">
+            <strong className="text-foreground">Select a conversation</strong>
+            <p className="mt-2 max-w-[40ch] text-detail leading-6">
               Messages stay on this Mac and open from the local cache.
             </p>
           </div>
@@ -362,7 +365,7 @@ export function MailWorkspace({
       )}
       {issue ? (
         <aside
-          className="fixed top-17 left-1/2 z-45 flex w-[min(620px,calc(100vw-36px))] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-[#d8b66b] bg-[#fff8e5] px-3.5 py-3 text-[#4d3b17]"
+          className="fixed top-17 left-1/2 z-45 flex w-[min(620px,calc(100vw-36px))] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-border bg-warning px-3.5 py-3 text-warning-foreground"
           role="alert"
         >
           <div className="min-w-0 flex-1">
@@ -405,7 +408,7 @@ export function MailWorkspace({
         </aside>
       ) : null}
       {archiveUndo ? (
-        <aside className="fixed top-17 left-1/2 z-45 flex w-[min(620px,calc(100vw-36px))] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-[#d8b66b] bg-[#fff8e5] px-3.5 py-3 text-[#4d3b17]">
+        <aside className="fixed top-17 left-1/2 z-45 flex w-[min(620px,calc(100vw-36px))] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-border bg-warning px-3.5 py-3 text-warning-foreground">
           <output className="min-w-0 flex-1">Conversation archived.</output>
           <Button
             type="button"

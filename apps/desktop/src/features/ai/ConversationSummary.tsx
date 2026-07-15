@@ -108,10 +108,10 @@ export function ConversationSummary({
 
   return (
     <section
-      className="mx-3.5 mt-3.5 rounded-xl border border-[#ccd8cf] bg-[#eef4ef]"
+      className="mx-3.5 mt-3.5 rounded-xl border border-border bg-selection"
       aria-label="Conversation summary"
     >
-      <header className="flex min-h-10.5 items-center justify-between border-b border-[#d9e3dc] bg-transparent px-3 py-2">
+      <header className="flex min-h-10.5 items-center justify-between border-b border-border bg-transparent px-3 py-2">
         <strong>AI summary</strong>
         <div>
           {status === 'streaming' ? (
@@ -126,12 +126,12 @@ export function ConversationSummary({
         </div>
       </header>
       {error ? (
-        <p role="alert" className="whitespace-pre-wrap p-3 text-[13px] leading-5 text-[#a1382c]">
+        <p role="alert" className="whitespace-pre-wrap p-3 text-detail leading-5 text-destructive">
           {error}
         </p>
       ) : (
         <p
-          className="whitespace-pre-wrap p-3 text-[13px] leading-5 text-[#29362d]"
+          className="whitespace-pre-wrap p-3 text-detail leading-5 text-foreground"
           aria-live="polite"
         >
           {content || 'Writing summary…'}

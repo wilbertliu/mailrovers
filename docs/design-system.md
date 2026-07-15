@@ -4,7 +4,13 @@ Mailrovers adopts the product design system implemented in the authenticated Rin
 
 ## Source of truth
 
-Until Mailrovers has equivalent shared tokens and components, the Rinhelp implementation remains the reference. The main sources are:
+MailRovers now owns the runtime source of truth for its design system:
+
+- `apps/desktop/src/styles.css` defines the supported Tailwind theme and semantic tokens.
+- `apps/desktop/src/components/ui` owns control appearance and typed variants.
+- `scripts/check-styles.mjs` enforces feature boundaries as part of `pnpm lint`.
+
+The original Rinhelp references remain useful historical context:
 
 - [Global tokens and fonts](../../rinhelp/apps/web/src/styles.css)
 - [Component registry configuration](../../rinhelp/apps/web/components.json)
@@ -16,6 +22,8 @@ Until Mailrovers has equivalent shared tokens and components, the Rinhelp implem
 
 The adopted system uses Tailwind CSS 4 and shadcn's `base-maia` style with Base UI primitives. CSS variables carry the product colors. Component variants use Class Variance Authority, and `cn()` combines conditional classes.
 
+The dependency direction is strict: `tokens → UI primitives → typed variants → product components → features`. Feature code may use Tailwind for layout, dimensions, overflow, positioning, responsive behavior, and the established spacing scale. It must not import Base UI or Radix directly, render raw controls when a shared control exists, use palette utilities, or introduce arbitrary visual or spacing values.
+
 ## Design character
 
 The product UI is quiet and utilitarian. Neutral surfaces hold the structure, blue marks primary actions, and color appears sparingly for status or data. Rounded controls and restrained borders soften dense operational screens without making them feel decorative.
@@ -26,10 +34,10 @@ The product UI is quiet and utilitarian. Neutral surfaces hold the structure, bl
 
 The product system uses two font families.
 
-| Role | Family | Use |
-| --- | --- | --- |
-| Interface and headings | `DM Sans Variable`, sans-serif | Body copy, labels, navigation, buttons, and headings |
-| Code and tabular values | `JetBrains Mono` | Code examples, API payloads, and chart values |
+| Role                    | Family                         | Use                                                  |
+| ----------------------- | ------------------------------ | ---------------------------------------------------- |
+| Interface and headings  | `DM Sans Variable`, sans-serif | Body copy, labels, navigation, buttons, and headings |
+| Code and tabular values | `JetBrains Mono`               | Code examples, API payloads, and chart values        |
 
 `--font-heading` currently resolves to the same family as `--font-sans`. Product pages therefore create hierarchy through size, weight, spacing, and color rather than switching families.
 
@@ -47,17 +55,19 @@ Use sentence case. Keep labels short. Error, empty, loading, and pending text sh
 
 The product palette uses OKLCH semantic variables. Components should consume semantic Tailwind classes such as `bg-background`, `text-foreground`, and `border-border`, not copy raw color values.
 
-| Token | Light | Dark | Purpose |
-| --- | --- | --- | --- |
-| `background` | `oklch(1 0 0)` | `oklch(0.141 0.005 285.823)` | App canvas |
-| `foreground` | `oklch(0.141 0.005 285.823)` | `oklch(0.985 0 0)` | Primary text and icons |
-| `card` | `oklch(1 0 0)` | `oklch(0.21 0.006 285.885)` | Raised content surfaces |
-| `primary` | `oklch(0.488 0.243 264.376)` | `oklch(0.424 0.199 265.638)` | Primary actions and selected emphasis |
-| `secondary` / `muted` / `accent` | `oklch(0.967 0.001 286.375)` | `oklch(0.274 0.006 286.033)` | Quiet fills, hover states, secondary controls |
-| `muted-foreground` | `oklch(0.552 0.016 285.938)` | `oklch(0.705 0.015 286.067)` | Supporting text |
-| `destructive` | `oklch(0.577 0.245 27.325)` | `oklch(0.704 0.191 22.216)` | Errors and destructive actions |
-| `border` / `input` | neutral 92% lightness | translucent white at 10% / 15% | Boundaries and control fills |
-| `ring` | `oklch(0.705 0.015 286.067)` | `oklch(0.552 0.016 285.938)` | Keyboard focus |
+| Token                            | Light                        | Dark                           | Purpose                                       |
+| -------------------------------- | ---------------------------- | ------------------------------ | --------------------------------------------- |
+| `background`                     | `oklch(1 0 0)`               | `oklch(0.141 0.005 285.823)`   | App canvas                                    |
+| `foreground`                     | `oklch(0.141 0.005 285.823)` | `oklch(0.985 0 0)`             | Primary text and icons                        |
+| `card`                           | `oklch(1 0 0)`               | `oklch(0.21 0.006 285.885)`    | Raised content surfaces                       |
+| `primary`                        | `oklch(0.488 0.243 264.376)` | `oklch(0.424 0.199 265.638)`   | Primary actions and selected emphasis         |
+| `secondary` / `muted` / `accent` | `oklch(0.967 0.001 286.375)` | `oklch(0.274 0.006 286.033)`   | Quiet fills, hover states, secondary controls |
+| `muted-foreground`               | `oklch(0.552 0.016 285.938)` | `oklch(0.705 0.015 286.067)`   | Supporting text                               |
+| `destructive`                    | `oklch(0.577 0.245 27.325)`  | `oklch(0.704 0.191 22.216)`    | Errors and destructive actions                |
+| `border` / `input`               | neutral 92% lightness        | translucent white at 10% / 15% | Boundaries and control fills                  |
+| `ring`                           | `oklch(0.705 0.015 286.067)` | `oklch(0.552 0.016 285.938)`   | Keyboard focus                                |
+
+MailRovers additionally defines `surface`, `panel`, `control`, `selection`, `success`, and `warning` semantic roles. These preserve the desktop application's existing neutral-green appearance without exposing raw palette choices to features.
 
 Five cyan chart tokens run from light to dark. Charts may define series-specific theme colors through `ChartConfig`, but axes, grids, cursors, and tooltips should continue to use semantic tokens.
 
@@ -101,14 +111,14 @@ Use the shared `ConsoleShell` for authenticated routes. It keeps navigation, con
 
 Buttons are 14px medium-weight pills with a visible 3px focus ring, a 1px active press shift, and 50% opacity when disabled.
 
-| Variant | Use |
-| --- | --- |
-| `default` | The main action in a view or form |
-| `secondary` | A lower-priority action that still needs a filled control |
-| `outline` | A quiet alternative or disclosure control |
-| `ghost` | Toolbar, sidebar, and icon actions |
-| `destructive` | Irreversible or harmful actions |
-| `link` | Action visually embedded in prose |
+| Variant       | Use                                                       |
+| ------------- | --------------------------------------------------------- |
+| `default`     | The main action in a view or form                         |
+| `secondary`   | A lower-priority action that still needs a filled control |
+| `outline`     | A quiet alternative or disclosure control                 |
+| `ghost`       | Toolbar, sidebar, and icon actions                        |
+| `destructive` | Irreversible or harmful actions                           |
+| `link`        | Action visually embedded in prose                         |
 
 Heights are 24px for `xs`, 32px for `sm`, 36px by default, and 40px for `lg`. Matching square icon sizes are available. Use the smallest size that still fits the density and input method. Give icon-only buttons an accessible name.
 
@@ -169,6 +179,8 @@ Use semantic variables for all new product UI so dark mode works without compone
 - Preserve a logical DOM and tab order when layouts rearrange at breakpoints.
 
 ## Applying the system
+
+`pnpm lint` runs Oxlint first and then the style-boundary checker. Structural arbitrary values are intentionally allowed for viewport calculations, responsive breakpoints, complex grid tracks, and virtualized positioning. New exceptions should remain structural; a visual exception belongs in a typed `components/ui` variant instead.
 
 For a new product screen:
 

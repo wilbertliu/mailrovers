@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { ConversationSummary } from '../ai/ConversationSummary.js'
 import { EmailFrame } from './EmailFrame.js'
+import { NativeSelect } from '@/components/ui/native-select.js'
 
 export function shouldLoadMessageBody(expanded: boolean, bodyAvailable: boolean): boolean {
   return expanded && bodyAvailable
@@ -38,35 +39,35 @@ function MessageCard({
   })
   return (
     <details
-      className="mb-2 overflow-hidden rounded-xl border border-[#dfe3df] bg-white"
+      className="mb-2 overflow-hidden rounded-xl border border-border bg-surface"
       open={expanded}
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
       <summary className="flex min-h-14.5 cursor-pointer list-inside items-center justify-between gap-4 px-3.5 py-3">
         <span className="flex min-w-0 flex-col">
           <strong className="truncate">{addressLabel(message.sender)}</strong>
-          <small className="truncate text-xs text-[#69736b]">
+          <small className="truncate text-xs text-muted-foreground">
             to {message.recipients.to.map(addressLabel).join(', ') || 'me'}
           </small>
         </span>
-        <time className="text-xs text-[#69736b]">
+        <time className="text-xs text-muted-foreground">
           {new Date(message.receivedAt).toLocaleString()}
         </time>
       </summary>
-      <div className="border-t border-[#edf0ed] px-4 pt-2 pb-4.5">
+      <div className="border-t border-border px-4 pt-2 pb-4.5">
         {body.data?.sanitizedHtmlBody ? (
           <EmailFrame
             html={body.data.sanitizedHtmlBody}
             title={`Message from ${message.sender.address}`}
           />
         ) : body.data?.textBody ? (
-          <pre className="m-0 wrap-anywhere whitespace-pre-wrap text-sm leading-6 text-[#202722]">
+          <pre className="m-0 wrap-anywhere whitespace-pre-wrap text-sm leading-6 text-foreground">
             {body.data.textBody}
           </pre>
         ) : body.isPending && message.bodyAvailable ? (
           <p>Loading message…</p>
         ) : (
-          <pre className="m-0 wrap-anywhere whitespace-pre-wrap text-sm leading-6 text-[#202722]">
+          <pre className="m-0 wrap-anywhere whitespace-pre-wrap text-sm leading-6 text-foreground">
             This message has no readable body.
           </pre>
         )}
@@ -74,11 +75,11 @@ function MessageCard({
           <ul className="mt-4.5 flex list-none flex-wrap gap-2 p-0" aria-label="Attachments">
             {message.attachments.map((attachment) => (
               <li
-                className="flex flex-col gap-0.5 rounded-lg border border-[#dfe3df] px-2.5 py-2"
+                className="flex flex-col gap-0.5 rounded-lg border border-border px-2.5 py-2"
                 key={attachment.id}
               >
                 <span>{attachment.filename}</span>
-                <small className="text-[#69736b]">{attachment.mediaType}</small>
+                <small className="text-muted-foreground">{attachment.mediaType}</small>
                 <Button
                   type="button"
                   variant="secondary"
@@ -146,13 +147,13 @@ export function ConversationReader({
   })
   if (query.isPending)
     return (
-      <section className="px-4.5 py-6 text-[#5d675f]" aria-live="polite">
+      <section className="px-4.5 py-6 text-muted-foreground" aria-live="polite">
         Loading conversation…
       </section>
     )
   if (query.isError || !query.data)
     return (
-      <section className="px-4.5 py-6 text-[#5d675f]" role="alert">
+      <section className="px-4.5 py-6 text-muted-foreground" role="alert">
         Unable to open this conversation.
       </section>
     )
@@ -160,13 +161,15 @@ export function ConversationReader({
   const conversation = query.data
   const latestMessage = conversation.messages.at(-1)
   return (
-    <section className="min-w-0 overflow-auto bg-[#f7f8f6]" aria-label={conversation.subject}>
-      <header className="sticky top-0 z-2 flex min-h-19 items-center justify-between border-b border-[#e1e5e2] bg-white px-4.5 py-4">
+    <section className="min-w-0 overflow-auto bg-panel" aria-label={conversation.subject}>
+      <header className="sticky top-0 z-2 flex min-h-19 items-center justify-between border-b border-border bg-surface px-4.5 py-4">
         <div className="min-w-0">
-          <h1 className="truncate text-lg leading-tight text-[#202722]">
+          <h1 className="truncate text-lg leading-tight text-foreground">
             {conversation.subject || '(No subject)'}
           </h1>
-          <p className="mt-1 text-xs text-[#687169]">{conversation.messages.length} messages</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {conversation.messages.length} messages
+          </p>
         </div>
         <div className="flex items-center gap-1.5">
           {latestMessage ? (
@@ -222,8 +225,8 @@ export function ConversationReader({
               Star
             </Button>
           ) : null}
-          <select
-            className="rounded-lg border border-[#d2d8d3] bg-[#f1f3f0] px-2.5 py-1.5 text-xs text-[#344038] outline-none focus-visible:ring-2 focus-visible:ring-[#4d735b]"
+          <NativeSelect
+            className="rounded-lg border border-border bg-panel px-2.5 py-1.5 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="Add label"
             defaultValue=""
             onChange={(event) => {
@@ -246,7 +249,7 @@ export function ConversationReader({
                   {label.name}
                 </option>
               ))}
-          </select>
+          </NativeSelect>
         </div>
       </header>
       <ConversationSummary
