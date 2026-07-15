@@ -51,6 +51,8 @@ MAILROVERS_GOOGLE_OAUTH_CLIENT_ID="your-client-id.apps.googleusercontent.com" \
   pnpm --filter @mailrovers/desktop dev
 ```
 
+Installation rebuilds `better-sqlite3` for the Electron version pinned by the desktop app. Database scripts and Vitest run through Electron's Node runtime so they use the same native ABI as the application. Keep the Electron version in `native:rebuild` aligned with the desktop dependency when upgrading Electron.
+
 Without `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID`, the application still opens local mail, but Gmail connection returns a configuration error. OAuth refresh tokens are encrypted through Electron `safeStorage` before SQLite persistence. They are never available through the renderer bridge. The default database host is the Electron main process; set `MAILROVERS_DATABASE_HOST=worker` only for diagnostics, parity testing, or event-loop profiling.
 
 Configure AI separately for each mailbox from **AI provider** in the desktop sidebar. The default base URL is `https://api.openai.com/v1`; the model identifier and API key are required. MailRovers uses the OpenAI-compatible Chat Completions streaming endpoint. HTTPS is required except for loopback HTTP providers such as `http://localhost:11434/v1`. The API key is encrypted through `safeStorage`, cannot be read back, and is sent only to the configured provider origin.

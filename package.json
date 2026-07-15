@@ -2,9 +2,11 @@
   "name": "mailrovers",
   "private": true,
   "scripts": {
+    "postinstall": "pnpm --filter @mailrovers/desktop native:rebuild",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "test": "pnpm native:check && pnpm -r test",
+    "native:check": "ELECTRON_RUN_AS_NODE=1 electron scripts/check-native-abi.cjs",
     "lint": "oxlint --type-aware --deny-warnings .",
     "lint:fix": "oxlint --type-aware --deny-warnings --fix .",
     "format": "oxfmt .",

@@ -7,12 +7,13 @@
     "dev": "electron-forge start",
     "build": "tsc -b tsconfig.json --force && electron-forge package",
     "typecheck": "tsc -b tsconfig.json --force",
-    "test": "vitest run --passWithNoTests",
+    "test": "ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/vitest/vitest.mjs run --passWithNoTests",
+    "native:rebuild": "electron-rebuild -f -w better-sqlite3 -m ../.. -v 43.1.0",
     "fixture:seed": "ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/seed.ts",
-    "perf": "tsx perf/query.ts",
+    "perf": "ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/query.ts",
     "package:mac": "electron-forge package --platform=darwin && codesign --force --deep --sign - out/MailRovers-darwin-$(uname -m)/MailRovers.app",
-    "smoke:packaged": "tsx perf/smoke-packaged.ts",
-    "performance:packaged": "pnpm build && tsx perf/smoke-packaged.ts --performance --idle-ms=60000 --mode=main"
+    "smoke:packaged": "ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/smoke-packaged.ts",
+    "performance:packaged": "pnpm build && ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/smoke-packaged.ts --performance --idle-ms=60000 --mode=main"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

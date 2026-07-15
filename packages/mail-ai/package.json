@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/vitest/vitest.mjs run --passWithNoTests"
   },
   "dependencies": {
     "@mailrovers/mail-application": "workspace:*"
