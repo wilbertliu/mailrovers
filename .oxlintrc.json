@@ -1,6 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y", "import", "vitest"],
+  "jsPlugins": ["eslint-plugin-better-tailwindcss"],
   "categories": {
     "correctness": "error"
   },
@@ -15,5 +16,60 @@
   },
   "env": {
     "builtin": true
-  }
+  },
+  "overrides": [
+    {
+      "files": ["apps/desktop/src/**/*.{ts,tsx}"],
+      "excludeFiles": ["apps/desktop/src/components/ui/**/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@base-ui/**", "@radix-ui/**"],
+                "message": "Import UI foundations through components/ui."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/desktop/src/features/**/*.{ts,tsx}"],
+      "rules": {
+        "better-tailwindcss/no-restricted-classes": [
+          "error",
+          {
+            "entryPoint": "apps/desktop/src/styles.css",
+            "restrict": [
+              {
+                "pattern": "^(?:[^:]+:)*(?:bg|border|decoration|divide|fill|from|outline|ring|shadow|stroke|text|to|via)-(?:amber|blue|cyan|emerald|fuchsia|gray|green|indigo|lime|neutral|orange|pink|purple|red|rose|sky|slate|stone|teal|violet|yellow|zinc)-",
+                "message": "Use a semantic theme token."
+              },
+              {
+                "pattern": "^(?:[^:]+:)*(?:bg|border|decoration|fill|font|leading|outline|ring|rounded|shadow|stroke|text)-\\[",
+                "message": "Arbitrary visual values are forbidden."
+              },
+              {
+                "pattern": "^(?:[^:]+:)*(?:m[trblexy]?|p[trblexy]?|gap|space-[xy])-\\[",
+                "message": "Arbitrary spacing is forbidden."
+              }
+            ]
+          }
+        ],
+        "react/forbid-elements": [
+          "error",
+          {
+            "forbid": [
+              { "element": "button", "message": "Use the shared Button component." },
+              { "element": "input", "message": "Use the shared Input component." },
+              { "element": "select", "message": "Use the shared select component." },
+              { "element": "textarea", "message": "Use the shared Textarea component." }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

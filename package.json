@@ -7,7 +7,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm native:check && pnpm -r test",
     "native:check": "ELECTRON_RUN_AS_NODE=1 electron scripts/check-native-abi.cjs",
-    "lint": "oxlint --type-aware --deny-warnings . && node scripts/check-styles.mjs",
+    "lint": "oxlint --type-aware --deny-warnings .",
     "lint:fix": "oxlint --type-aware --deny-warnings --fix .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@types/node": "22.15.3",
+    "eslint-plugin-better-tailwindcss": "4.6.1",
     "oxfmt": "0.58.0",
     "oxlint": "1.73.0",
     "oxlint-tsgolint": "0.24.0",

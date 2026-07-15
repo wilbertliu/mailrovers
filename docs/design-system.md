@@ -8,7 +8,7 @@ MailRovers now owns the runtime source of truth for its design system:
 
 - `apps/desktop/src/styles.css` defines the supported Tailwind theme and semantic tokens.
 - `apps/desktop/src/components/ui` owns control appearance and typed variants.
-- `scripts/check-styles.mjs` enforces feature boundaries as part of `pnpm lint`.
+- Oxlint and `eslint-plugin-better-tailwindcss` enforce feature boundaries as part of `pnpm lint`.
 
 The original Rinhelp references remain useful historical context:
 
@@ -180,7 +180,7 @@ Use semantic variables for all new product UI so dark mode works without compone
 
 ## Applying the system
 
-`pnpm lint` runs Oxlint first and then the style-boundary checker. Structural arbitrary values are intentionally allowed for viewport calculations, responsive breakpoints, complex grid tracks, and virtualized positioning. New exceptions should remain structural; a visual exception belongs in a typed `components/ui` variant instead.
+`pnpm lint` runs Oxlint with the Better Tailwind CSS plugin. Structural arbitrary values are intentionally allowed for viewport calculations, responsive breakpoints, complex grid tracks, and virtualized positioning. New exceptions should remain structural; a visual exception belongs in a typed `components/ui` variant instead.
 
 For a new product screen:
 
