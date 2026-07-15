@@ -6,6 +6,7 @@
     "jsx": "react-jsx",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "paths": { "@/*": ["./src/*"] },
     "types": ["node", "vitest/globals"]
   },
   "include": ["test/**/*.ts", "electron/**/*.ts", "src/**/*.ts", "src/**/*.tsx", "perf/**/*.ts"]

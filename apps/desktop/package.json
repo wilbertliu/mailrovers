@@ -15,6 +15,11 @@
     "performance:packaged": "pnpm build && tsx perf/smoke-packaged.ts --performance --idle-ms=60000 --mode=main"
   },
   "dependencies": {
+    "@base-ui/react": "^1.6.0",
+    "@fontsource-variable/dm-sans": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@hugeicons/core-free-icons": "^4.2.2",
+    "@hugeicons/react": "^1.1.9",
     "@mailrovers/mail-ai": "workspace:*",
     "@mailrovers/mail-application": "workspace:*",
     "@mailrovers/mail-contracts": "workspace:*",
@@ -27,8 +32,12 @@
     "@tanstack/react-query": "5.74.9",
     "@tanstack/react-virtual": "3.13.9",
     "better-sqlite3": "12.11.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "tailwind-merge": "^3.6.0",
+    "tailwindcss": "^4.3.2",
     "zod": "3.24.3"
   },
   "devDependencies": {
@@ -37,10 +46,12 @@
     "@electron-forge/plugin-auto-unpack-natives": "7.8.0",
     "@electron-forge/plugin-vite": "7.8.0",
     "@electron/rebuild": "3.7.2",
+    "@tailwindcss/vite": "^4.3.2",
     "@types/react": "19.1.2",
     "@types/react-dom": "19.1.2",
     "@vitejs/plugin-react": "4.4.1",
     "electron": "43.1.0",
+    "shadcn": "^4.13.0",
     "tsx": "4.19.3",
     "vite": "6.3.4",
     "vitest": "3.1.3"

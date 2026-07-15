@@ -8,3 +8,4 @@ artifacts/
 *.log
 *.sqlite
 *.sqlite-*
+*.tsbuildinfo

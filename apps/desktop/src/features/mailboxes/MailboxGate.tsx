@@ -2,16 +2,47 @@ import type { DesktopEvent, MailboxSummary, SyncStatus } from '@mailrovers/mail-
 import type { MailboxId, OperationId } from '@mailrovers/mail-domain'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { MailAccount01Icon } from '@hugeicons/core-free-icons'
+import { Button } from '@/components/ui/button.js'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card.js'
+import { FieldError } from '@/components/ui/field.js'
+import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress.js'
+import { Spinner } from '@/components/ui/spinner.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
 
-function LoadingPage({ message }: { message: string }) {
+function LoadingPage({ message, error = false }: { message: string; error?: boolean }) {
   return (
-    <main className="centered-page">
-      <section className="panel" aria-live="polite">
-        <h1>MailRovers</h1>
-        <p>{message}</p>
-      </section>
+    <main className="grid min-h-screen place-items-center bg-muted/40 p-6">
+      <Card className="w-full max-w-lg" aria-live={error ? undefined : 'polite'}>
+        <CardHeader>
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <HugeiconsIcon icon={MailAccount01Icon} strokeWidth={2} className="size-6" />
+          </div>
+          <CardTitle>
+            <h1 className="text-2xl font-semibold tracking-tight">MailRovers</h1>
+          </CardTitle>
+          {!error ? (
+            <CardDescription className="flex items-center gap-2 text-pretty">
+              <Spinner aria-hidden="true" />
+              {message}
+            </CardDescription>
+          ) : null}
+        </CardHeader>
+        {error ? (
+          <CardContent>
+            <FieldError>{message}</FieldError>
+          </CardContent>
+        ) : null}
+      </Card>
     </main>
   )
 }
@@ -23,14 +54,14 @@ function ConnectPage({
   onConnected: (mailboxId: MailboxId) => Promise<void>
   onCancel?: (() => void) | undefined
 }) {
-  const [connecting, setConnecting] = useState(false)
+  const [pendingAction, setPendingAction] = useState<'connect' | 'cancel'>()
   const [operation, setOperation] = useState<OperationId>()
   const [error, setError] = useState<string>()
 
   const connect = async () => {
     const requestId = desktopBridge.createRequestId()
     setOperation(requestId)
-    setConnecting(true)
+    setPendingAction('connect')
     setError(undefined)
     try {
       const result = await desktopBridge.connectGmail({ requestId })
@@ -38,48 +69,70 @@ function ConnectPage({
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Gmail connection failed.')
     } finally {
-      setConnecting(false)
+      setPendingAction(undefined)
       setOperation(undefined)
     }
   }
 
   const cancel = async () => {
     if (!operation) return
-    await desktopBridge.cancelOperation({
-      requestId: desktopBridge.createRequestId(),
-      operationId: operation,
-    })
+    setPendingAction('cancel')
+    setError(undefined)
+    try {
+      await desktopBridge.cancelOperation({
+        requestId: desktopBridge.createRequestId(),
+        operationId: operation,
+      })
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to cancel Gmail connection.')
+      setPendingAction('connect')
+    }
   }
 
+  const connecting = pendingAction !== undefined
+
   return (
-    <main className="centered-page">
-      <section className="panel connect-panel">
-        <p className="eyebrow">Local-first email</p>
-        <h1>Connect Gmail</h1>
-        <p>
-          MailRovers stores your mail on this Mac. Google authorization opens in your default
-          browser.
-        </p>
-        {error ? (
-          <p role="alert" className="error-message">
-            {error}
+    <main className="grid min-h-screen place-items-center bg-muted/40 p-6">
+      <Card className="w-full max-w-lg">
+        <CardHeader>
+          <p className="text-xs font-medium tracking-wider text-primary uppercase">
+            Local-first email
           </p>
+          <CardTitle>
+            <h1 className="text-2xl font-semibold tracking-tight text-balance">Connect Gmail</h1>
+          </CardTitle>
+          <CardDescription className="text-pretty">
+            MailRovers stores your mail on this Mac. Google authorization opens in your default
+            browser.
+          </CardDescription>
+        </CardHeader>
+        {error ? (
+          <CardContent>
+            <FieldError>{error}</FieldError>
+          </CardContent>
         ) : null}
-        <div className="button-row">
-          <button type="button" onClick={() => void connect()} disabled={connecting}>
-            {connecting ? 'Waiting for Google…' : 'Connect Gmail'}
-          </button>
+        <CardFooter className="gap-2">
+          <Button type="button" onClick={() => void connect()} disabled={connecting}>
+            {pendingAction === 'connect' ? <Spinner data-icon="inline-start" /> : null}
+            {pendingAction === 'connect' ? 'Waiting for Google…' : 'Connect Gmail'}
+          </Button>
           {connecting ? (
-            <button type="button" className="secondary" onClick={() => void cancel()}>
-              Cancel
-            </button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void cancel()}
+              disabled={pendingAction === 'cancel'}
+            >
+              {pendingAction === 'cancel' ? <Spinner data-icon="inline-start" /> : null}
+              {pendingAction === 'cancel' ? 'Cancelling…' : 'Cancel'}
+            </Button>
           ) : onCancel ? (
-            <button type="button" className="secondary" onClick={onCancel}>
+            <Button type="button" variant="secondary" onClick={onCancel}>
               Back
-            </button>
+            </Button>
           ) : null}
-        </div>
-      </section>
+        </CardFooter>
+      </Card>
     </main>
   )
 }
@@ -124,6 +177,7 @@ function ImportPage({
   const [status, setStatus] = useState<SyncStatus>()
   const [operation, setOperation] = useState<OperationId>()
   const [error, setError] = useState<string>()
+  const [pendingAction, setPendingAction] = useState<'pause' | 'resume' | 'disconnect'>()
 
   const refreshStatus = useCallback(async () => {
     const value = await desktopBridge.getSyncStatus({
@@ -187,35 +241,58 @@ function ImportPage({
   }, [handleEvent, mailbox.syncState, refreshStatus, start])
 
   const pause = async () => {
-    const activeOperation = operation ?? (await start())
-    await desktopBridge.cancelOperation({
-      requestId: desktopBridge.createRequestId(),
-      operationId: activeOperation,
-    })
-    await refreshStatus()
-    await onChanged()
+    setPendingAction('pause')
+    setError(undefined)
+    try {
+      const activeOperation = operation ?? (await start())
+      await desktopBridge.cancelOperation({
+        requestId: desktopBridge.createRequestId(),
+        operationId: activeOperation,
+      })
+      await refreshStatus()
+      await onChanged()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to pause the import.')
+    } finally {
+      setPendingAction(undefined)
+    }
   }
 
   const resume = async () => {
+    setPendingAction('resume')
     setError(undefined)
-    const requestId = await start()
-    desktopBridge.subscribe(requestId, handleEvent)
-    await onChanged()
+    try {
+      const requestId = await start()
+      desktopBridge.subscribe(requestId, handleEvent)
+      await onChanged()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to resume the import.')
+    } finally {
+      setPendingAction(undefined)
+    }
   }
 
   const disconnect = async () => {
     if (!window.confirm('Disconnect Gmail and remove its local MailRovers data?')) return
-    if (operation)
-      await desktopBridge.cancelOperation({
+    setPendingAction('disconnect')
+    setError(undefined)
+    try {
+      if (operation)
+        await desktopBridge.cancelOperation({
+          requestId: desktopBridge.createRequestId(),
+          operationId: operation,
+        })
+      await desktopBridge.disconnectMailbox({
         requestId: desktopBridge.createRequestId(),
-        operationId: operation,
+        mailboxId: mailbox.id,
+        removeLocalData: true,
       })
-    await desktopBridge.disconnectMailbox({
-      requestId: desktopBridge.createRequestId(),
-      mailboxId: mailbox.id,
-      removeLocalData: true,
-    })
-    await onChanged()
+      await onChanged()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to disconnect Gmail.')
+    } finally {
+      setPendingAction(undefined)
+    }
   }
 
   const imported = status?.importedMessageCount ?? mailbox.importedMessageCount
@@ -225,43 +302,74 @@ function ImportPage({
   const failed = status?.phase === 'failed' || mailbox.syncState === 'failed'
 
   return (
-    <main className="centered-page">
-      <section className="panel progress-panel">
-        <p className="eyebrow">{mailbox.emailAddress}</p>
-        <h1>{progressLabel(status, mailbox)}</h1>
-        <p>
-          {imported.toLocaleString()} messages imported
-          {total === undefined ? '' : ` of about ${total.toLocaleString()}`}
-        </p>
-        <progress
-          className="progress-track"
-          aria-label="Gmail import progress"
-          max={100}
-          {...(progress === undefined ? {} : { value: progress })}
-        />
-        {error ? (
-          <p role="alert" className="error-message">
-            {error}
+    <main className="grid min-h-screen place-items-center bg-muted/40 p-6">
+      <Card className="w-full max-w-lg">
+        <CardHeader>
+          <p className="truncate text-xs font-medium tracking-wider text-primary uppercase">
+            {mailbox.emailAddress}
           </p>
-        ) : null}
-        <div className="button-row">
+          <CardTitle>
+            <h1 className="text-2xl font-semibold tracking-tight text-balance">
+              {progressLabel(status, mailbox)}
+            </h1>
+          </CardTitle>
+          <CardDescription className="text-pretty">
+            {imported.toLocaleString()} messages imported
+            {total === undefined ? '' : ` of about ${total.toLocaleString()}`}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <Progress value={progress ?? null} aria-label="Gmail import progress">
+            <ProgressLabel>Import progress</ProgressLabel>
+            <ProgressValue>
+              {(_formattedValue, value) =>
+                value === null ? 'Estimating…' : `${Math.round(value)}%`
+              }
+            </ProgressValue>
+          </Progress>
+          {error ? <FieldError>{error}</FieldError> : null}
+        </CardContent>
+        <CardFooter className="flex-wrap gap-2">
           {paused || failed ? (
-            <button type="button" onClick={() => void resume()}>
-              {failed ? 'Retry import' : 'Resume import'}
-            </button>
+            <Button
+              type="button"
+              onClick={() => void resume()}
+              disabled={pendingAction !== undefined}
+            >
+              {pendingAction === 'resume' ? <Spinner data-icon="inline-start" /> : null}
+              {pendingAction === 'resume'
+                ? failed
+                  ? 'Retrying…'
+                  : 'Resuming…'
+                : failed
+                  ? 'Retry import'
+                  : 'Resume import'}
+            </Button>
           ) : (
-            <button type="button" className="secondary" onClick={() => void pause()}>
-              Pause import
-            </button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void pause()}
+              disabled={pendingAction !== undefined}
+            >
+              {pendingAction === 'pause' ? <Spinner data-icon="inline-start" /> : null}
+              {pendingAction === 'pause' ? 'Pausing…' : 'Pause import'}
+            </Button>
           )}
-          <button type="button" className="text-button" onClick={() => void disconnect()}>
-            Disconnect
-          </button>
-        </div>
-        <p className="fine-print">
-          You can close MailRovers. The import resumes when you reopen it.
-        </p>
-      </section>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={() => void disconnect()}
+            disabled={pendingAction !== undefined}
+          >
+            {pendingAction === 'disconnect' ? <Spinner data-icon="inline-start" /> : null}
+            {pendingAction === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
+          </Button>
+          <p className="basis-full pt-3 text-xs text-muted-foreground">
+            You can close MailRovers. The import resumes when you reopen it.
+          </p>
+        </CardFooter>
+      </Card>
     </main>
   )
 }
@@ -289,7 +397,7 @@ export function MailboxGate() {
 
   if (mailboxes.isPending) return <LoadingPage message="Opening your local mailbox…" />
   if (mailboxes.isError)
-    return <LoadingPage message="MailRovers could not open its local mailbox." />
+    return <LoadingPage message="MailRovers could not open its local mailbox." error />
   const mailbox = mailboxes.data.find((item) => item.id === selectedMailbox) ?? mailboxes.data[0]
   if (!mailbox || showConnect)
     return (
