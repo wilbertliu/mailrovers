@@ -1,6 +1,7 @@
 import type { AiArtifact, Draft } from '@mailrovers/mail-contracts'
 import type { ConversationId, MailboxId, MessageId, OperationId } from '@mailrovers/mail-domain'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button } from '../../components/ui/button.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 
 type ComposerSeed = {
@@ -234,21 +235,26 @@ export function Composer({
     seed?.sourceVersion !== undefined
 
   return (
-    <section className="composer" aria-label={seed?.replyToMessageId ? 'Reply' : 'New message'}>
-      <header>
+    <section
+      className="fixed right-4.5 bottom-4.5 z-40 flex h-[min(560px,calc(100vh-92px))] w-[min(520px,calc(100vw-36px))] flex-col overflow-hidden rounded-xl border border-[#cfd5d0] bg-white shadow-[0_6px_8px_rgb(30_40_33/14%)]"
+      aria-label={seed?.replyToMessageId ? 'Reply' : 'New message'}
+    >
+      <header className="flex h-12 items-center justify-between border-b border-[#e2e6e2] bg-[#f1f3f0] py-2 pr-3 pl-4">
         <strong>{seed?.replyToMessageId ? 'Reply' : 'New message'}</strong>
-        <button
+        <Button
           type="button"
-          className="text-button"
+          variant="ghost"
+          size="sm"
           onClick={() => void close()}
           aria-label="Close composer"
         >
           Close
-        </button>
+        </Button>
       </header>
-      <label>
-        <span>To</span>
+      <label className="flex min-h-11.5 items-center gap-2.5 border-b border-[#e8ebe8] px-3.5">
+        <span className="w-13.5 text-xs text-[#657068]">To</span>
         <input
+          className="min-w-0 flex-1 border-0 text-[#202722] outline-none"
           type="email"
           multiple
           value={to}
@@ -256,65 +262,90 @@ export function Composer({
           placeholder="name@example.com"
         />
       </label>
-      <label>
-        <span>Subject</span>
-        <input value={subject} onChange={(event) => setSubject(event.target.value)} />
+      <label className="flex min-h-11.5 items-center gap-2.5 border-b border-[#e8ebe8] px-3.5">
+        <span className="w-13.5 text-xs text-[#657068]">Subject</span>
+        <input
+          className="min-w-0 flex-1 border-0 text-[#202722] outline-none"
+          value={subject}
+          onChange={(event) => setSubject(event.target.value)}
+        />
       </label>
       <textarea
+        className="min-h-45 flex-1 resize-none border-0 p-4 text-sm leading-6 text-[#202722] outline-none"
         aria-label="Message"
         value={body}
         onChange={(event) => setBody(event.target.value)}
         placeholder="Write a message…"
       />
       {aiStatus !== 'idle' ? (
-        <section className="ai-reply-suggestion" aria-label="AI reply suggestion">
-          <header>
+        <section
+          className="max-h-57.5 overflow-y-auto border-t border-[#d7e0d9] bg-[#f0f5f1]"
+          aria-label="AI reply suggestion"
+        >
+          <header className="flex min-h-10.5 items-center justify-between border-b border-[#d9e3dc] bg-transparent px-3 py-2">
             <strong>AI suggestion</strong>
-            {aiStatus === 'streaming' ? <span>Drafting…</span> : null}
+            {aiStatus === 'streaming' ? (
+              <span className="text-xs text-[#647068]">Drafting…</span>
+            ) : null}
           </header>
           {aiError ? (
-            <p role="alert" className="error-message">
+            <p role="alert" className="px-3.5 py-2.5 text-[13px] leading-5 text-[#a1382c]">
               {aiError}
             </p>
           ) : (
-            <p aria-live="polite">{suggestion || 'Starting…'}</p>
+            <p
+              className="whitespace-pre-wrap px-3.5 py-2.5 text-[13px] leading-5 text-[#29362d]"
+              aria-live="polite"
+            >
+              {suggestion || 'Starting…'}
+            </p>
           )}
-          <div className="button-row">
+          <div className="flex items-center gap-2 px-3.5 pb-3">
             {aiStatus === 'ready' ? (
               <>
-                <button type="button" onClick={() => void acceptSuggestion()}>
+                <Button type="button" size="sm" onClick={() => void acceptSuggestion()}>
                   Use suggestion
-                </button>
-                <button type="button" className="secondary" onClick={() => void rejectSuggestion()}>
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void rejectSuggestion()}
+                >
                   Discard
-                </button>
+                </Button>
               </>
             ) : aiStatus === 'streaming' ? (
-              <button type="button" className="secondary" onClick={() => void cancelAi()}>
+              <Button type="button" variant="secondary" size="sm" onClick={() => void cancelAi()}>
                 Cancel
-              </button>
+              </Button>
             ) : (
-              <button type="button" className="secondary" onClick={() => void generateReply()}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void generateReply()}
+              >
                 Try again
-              </button>
+              </Button>
             )}
           </div>
         </section>
       ) : null}
-      <footer>
-        <button
+      <footer className="flex min-h-14.5 items-center gap-3 border-t border-[#e2e6e2] px-3.5 py-2.5">
+        <Button
           type="button"
           onClick={() => void send()}
           disabled={status === 'sending' || aiStatus === 'streaming' || !to}
         >
           {status === 'sending' ? 'Queueing…' : 'Send'}
-        </button>
+        </Button>
         {canGenerateReply && aiStatus === 'idle' ? (
-          <button type="button" className="secondary" onClick={() => void generateReply()}>
+          <Button type="button" variant="secondary" onClick={() => void generateReply()}>
             Draft with AI
-          </button>
+          </Button>
         ) : null}
-        <output>
+        <output className="text-xs text-[#667169]">
           {status === 'saving'
             ? 'Saving locally…'
             : status === 'saved'

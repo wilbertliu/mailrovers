@@ -8,6 +8,8 @@ import type {
 import type { ConversationId, LabelId, MessageId } from '@mailrovers/mail-domain'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
+import { Button } from '../../components/ui/button.js'
+import { cn } from '../../lib/utils.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { AiSettings } from '../ai/AiSettings.js'
 import { Composer } from '../composer/Composer.js'
@@ -128,37 +130,48 @@ export function MailWorkspace({
   const search = useSearchPages(mailboxId, searchQuery)
 
   return (
-    <main className="mail-workspace">
-      <aside className="label-sidebar">
-        <div className="brand-lockup">
-          <span className="brand-mark" aria-hidden="true">
+    <main className="grid h-[calc(100vh-56px)] min-w-220 grid-cols-[208px_minmax(320px,390px)_minmax(360px,1fr)] overflow-hidden bg-white max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]">
+      <aside className="overflow-y-auto border-e border-[#dfe3de] bg-[#f1f3f0] px-3 py-4.5 max-[980px]:hidden">
+        <div className="flex items-center gap-2.5 px-2 pb-4.5">
+          <span
+            className="grid size-6.5 place-items-center rounded-lg bg-[#31553f] text-[13px] font-bold text-white"
+            aria-hidden="true"
+          >
             M
           </span>
           <strong>MailRovers</strong>
         </div>
-        <div className="button-row">
-          <button
+        <div className="mt-6.5 flex items-center gap-2">
+          <Button
             type="button"
-            className="secondary"
+            variant="secondary"
+            size="sm"
             disabled={refreshing || mailbox.connectionState === 'disconnected'}
             onClick={() => void refresh()}
           >
             {refreshing ? 'Refreshing…' : 'Refresh'}
-          </button>
-          <button type="button" className="text-button" onClick={() => void disconnect()}>
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => void disconnect()}>
             Disconnect
-          </button>
+          </Button>
         </div>
         {mailbox.connectionState === 'disconnected' ? (
-          <output>Offline cache retained. Reconnect Gmail to refresh, send, or edit Gmail.</output>
+          <output className="mt-2 block text-xs text-muted-foreground">
+            Offline cache retained. Reconnect Gmail to refresh, send, or edit Gmail.
+          </output>
         ) : null}
-        {refreshStatus ? <output>{refreshStatus}</output> : null}
-        <button type="button" className="compose-button" onClick={() => setComposer({})}>
+        {refreshStatus ? (
+          <output className="mt-2 block text-xs text-muted-foreground">{refreshStatus}</output>
+        ) : null}
+        <Button className="mt-3 mb-3 w-full bg-[#31553f]" onClick={() => setComposer({})}>
           Compose
-        </button>
+        </Button>
         <button
           type="button"
-          className={showDrafts ? 'label-button active' : 'label-button'}
+          className={cn(
+            'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-start text-[13px] font-medium text-[#3f4942] hover:bg-[#e2e6e1] focus-visible:ring-2 focus-visible:ring-[#4d735b] focus-visible:outline-none',
+            showDrafts && 'bg-[#d7e2da] font-bold text-[#173e28]',
+          )}
           onClick={() => {
             setShowDrafts(true)
             setShowAiSettings(false)
@@ -168,11 +181,16 @@ export function MailWorkspace({
           }}
         >
           <span>Local drafts</span>
-          {drafts.data?.length ? <small>{drafts.data.length}</small> : null}
+          {drafts.data?.length ? (
+            <small className="text-[11px] text-[#657068]">{drafts.data.length}</small>
+          ) : null}
         </button>
         <button
           type="button"
-          className={showAiSettings ? 'label-button active' : 'label-button'}
+          className={cn(
+            'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-start text-[13px] font-medium text-[#3f4942] hover:bg-[#e2e6e1] focus-visible:ring-2 focus-visible:ring-[#4d735b] focus-visible:outline-none',
+            showAiSettings && 'bg-[#d7e2da] font-bold text-[#173e28]',
+          )}
           onClick={() => {
             setShowAiSettings(true)
             setShowDrafts(false)
@@ -184,7 +202,7 @@ export function MailWorkspace({
           <span>AI provider</span>
         </button>
         <form
-          className="mail-search"
+          className="mt-1"
           aria-label="Search mail"
           onSubmit={(event) => {
             event.preventDefault()
@@ -194,23 +212,29 @@ export function MailWorkspace({
             setSelectedConversation(undefined)
           }}
         >
-          <label htmlFor="mail-search">Search mail</label>
+          <label className="sr-only" htmlFor="mail-search">
+            Search mail
+          </label>
           <input
+            className="w-full rounded-lg border border-[#cbd1cb] bg-white px-2.5 py-2 text-[#202722] outline-none focus:border-[#4d735b] focus:ring-2 focus:ring-[#4d735b]/20"
             id="mail-search"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
             placeholder="Search mail"
           />
         </form>
-        <nav aria-label="Labels" className="label-list">
-          {labels.isPending ? <p>Loading labels…</p> : null}
+        <nav aria-label="Labels" className="mt-4.5 flex flex-col gap-0.5">
+          {labels.isPending ? (
+            <p className="p-2 text-[13px] text-[#5d675f]">Loading labels…</p>
+          ) : null}
           {labels.data?.map((label) => (
             <button
               type="button"
               key={label.id}
-              className={
-                label.id === labelId && !searchQuery ? 'label-button active' : 'label-button'
-              }
+              className={cn(
+                'flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-start text-[13px] font-medium text-[#3f4942] hover:bg-[#e2e6e1] focus-visible:ring-2 focus-visible:ring-[#4d735b] focus-visible:outline-none',
+                label.id === labelId && !searchQuery && 'bg-[#d7e2da] font-bold text-[#173e28]',
+              )}
               onClick={() => {
                 setLabelId(label.id)
                 setShowDrafts(false)
@@ -221,7 +245,9 @@ export function MailWorkspace({
               }}
             >
               <span>{label.name}</span>
-              {label.unreadCount > 0 ? <small>{label.unreadCount}</small> : null}
+              {label.unreadCount > 0 ? (
+                <small className="text-[11px] text-[#657068]">{label.unreadCount}</small>
+              ) : null}
             </button>
           ))}
         </nav>
@@ -230,18 +256,23 @@ export function MailWorkspace({
       {showAiSettings ? (
         <AiSettings mailboxId={mailboxId} onClose={() => setShowAiSettings(false)} />
       ) : showDrafts ? (
-        <section className="conversation-list-panel" aria-label="Local drafts">
-          <header className="list-header">
+        <section
+          className="min-w-0 overflow-hidden border-e border-[#e0e4e1] bg-white"
+          aria-label="Local drafts"
+        >
+          <header className="flex h-19 items-center justify-between border-b border-[#e1e5e2] bg-white px-4.5 py-4">
             <div>
-              <h1>Local drafts</h1>
-              <p>{drafts.data?.length ?? 0} saved on this Mac</p>
+              <h1 className="truncate text-lg leading-tight text-[#202722]">Local drafts</h1>
+              <p className="mt-1 text-xs text-[#687169]">
+                {drafts.data?.length ?? 0} saved on this Mac
+              </p>
             </div>
           </header>
-          <div className="search-results">
+          <div className="h-[calc(100vh-132px)] overflow-y-auto">
             {drafts.data?.map((draft) => (
               <button
                 type="button"
-                className="search-result"
+                className="flex w-full flex-col items-start gap-1.5 border-b border-[#e9ece9] bg-white px-4 py-3 text-start text-[#26302a] hover:bg-[#e8efea] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#4d735b] focus-visible:outline-none"
                 key={draft.id}
                 onClick={() => {
                   void (async () => {
@@ -262,15 +293,22 @@ export function MailWorkspace({
                 }}
               >
                 <strong>{draft.subject || '(No subject)'}</strong>
-                <span>{draft.textBody || 'Empty draft'}</span>
-                <small>{draft.syncState}</small>
+                <span className="max-w-full truncate text-[#59635c]">
+                  {draft.textBody || 'Empty draft'}
+                </span>
+                <small className="text-[#748078]">{draft.syncState}</small>
               </button>
             ))}
-            {drafts.data?.length === 0 ? <p className="list-state">No local drafts.</p> : null}
+            {drafts.data?.length === 0 ? (
+              <p className="px-4.5 py-6 text-[#5d675f]">No local drafts.</p>
+            ) : null}
           </div>
         </section>
       ) : searchQuery ? (
-        <section className="conversation-list-panel" aria-label="Search results">
+        <section
+          className="min-w-0 overflow-hidden border-e border-[#e0e4e1] bg-white"
+          aria-label="Search results"
+        >
           <SearchResults
             pages={search.data}
             selectedConversation={selectedConversation}
@@ -313,25 +351,31 @@ export function MailWorkspace({
           }
         />
       ) : (
-        <section className="reader-empty">
+        <section className="grid place-items-center bg-[#f7f8f6] p-12 text-center text-[#58625b]">
           <div>
-            <strong>Select a conversation</strong>
-            <p>Messages stay on this Mac and open from the local cache.</p>
+            <strong className="text-[#29312c]">Select a conversation</strong>
+            <p className="mt-2 max-w-[40ch] text-[13px] leading-6">
+              Messages stay on this Mac and open from the local cache.
+            </p>
           </div>
         </section>
       )}
       {issue ? (
-        <aside className="command-issue" role="alert">
-          <div>
+        <aside
+          className="fixed top-17 left-1/2 z-45 flex w-[min(620px,calc(100vw-36px))] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-[#d8b66b] bg-[#fff8e5] px-3.5 py-3 text-[#4d3b17]"
+          role="alert"
+        >
+          <div className="min-w-0 flex-1">
             <strong>
               {issue.command.kind === 'send-draft'
                 ? 'Confirm whether this message was sent'
                 : 'A Gmail change needs attention'}
             </strong>
-            <p>MailRovers paused instead of risking a duplicate action.</p>
+            <p className="mt-1 text-xs">MailRovers paused instead of risking a duplicate action.</p>
           </div>
-          <button
+          <Button
             type="button"
+            size="sm"
             onClick={async () => {
               await desktopBridge.resolveCommand({
                 mailboxId,
@@ -342,10 +386,11 @@ export function MailWorkspace({
             }}
           >
             Check Gmail again
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="secondary"
+            variant="secondary"
+            size="sm"
             onClick={async () => {
               await desktopBridge.resolveCommand({
                 mailboxId,
@@ -356,14 +401,15 @@ export function MailWorkspace({
             }}
           >
             Dismiss
-          </button>
+          </Button>
         </aside>
       ) : null}
       {archiveUndo ? (
-        <aside className="command-issue">
-          <output>Conversation archived.</output>
-          <button
+        <aside className="fixed top-17 left-1/2 z-45 flex w-[min(620px,calc(100vw-36px))] -translate-x-1/2 items-center gap-2.5 rounded-xl border border-[#d8b66b] bg-[#fff8e5] px-3.5 py-3 text-[#4d3b17]">
+          <output className="min-w-0 flex-1">Conversation archived.</output>
+          <Button
             type="button"
+            size="sm"
             onClick={async () => {
               const source = archiveUndo
               setArchiveUndo(undefined)
@@ -375,10 +421,15 @@ export function MailWorkspace({
             }}
           >
             Undo archive
-          </button>
-          <button type="button" className="secondary" onClick={() => setArchiveUndo(undefined)}>
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setArchiveUndo(undefined)}
+          >
             Dismiss
-          </button>
+          </Button>
         </aside>
       ) : null}
       {composer ? (

@@ -5,7 +5,7 @@ function emailDocument(html: string): string {
 export function EmailFrame({ html, title }: { html: string; title: string }) {
   return (
     <iframe
-      className="email-frame"
+      className="min-h-70 w-full border-0 bg-white"
       title={title}
       sandbox=""
       referrerPolicy="no-referrer"

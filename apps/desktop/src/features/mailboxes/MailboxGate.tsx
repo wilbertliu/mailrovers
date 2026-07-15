@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { MailAccount01Icon } from '@hugeicons/core-free-icons'
-import { Button } from '@/components/ui/button.js'
+import { Button } from '../../components/ui/button.js'
 import {
   Card,
   CardContent,
@@ -410,10 +410,14 @@ export function MailboxGate() {
     return <ImportPage mailbox={mailbox} onChanged={onChanged} />
   return (
     <>
-      <nav className="mailbox-nav" aria-label="Mailboxes">
-        <label>
+      <nav
+        className="flex h-14 items-center justify-between border-b border-[#dfe3e8] bg-[#eef1ec] px-4 py-2"
+        aria-label="Mailboxes"
+      >
+        <label className="flex items-center gap-2.5 text-xs font-semibold text-[#687169]">
           <span>Mailbox</span>
           <select
+            className="min-w-55 rounded-lg border border-[#cfd5ce] bg-white py-1.5 pr-7 pl-2.5 text-[#263129] outline-none focus-visible:ring-2 focus-visible:ring-[#4d735b]"
             value={mailbox.id}
             onChange={(event) => setSelectedMailbox(mailboxes.data[event.target.selectedIndex]?.id)}
           >
@@ -424,9 +428,9 @@ export function MailboxGate() {
             ))}
           </select>
         </label>
-        <button type="button" className="secondary" onClick={() => setShowConnect(true)}>
+        <Button type="button" variant="secondary" size="sm" onClick={() => setShowConnect(true)}>
           Add Gmail account
-        </button>
+        </Button>
       </nav>
       <MailWorkspace mailbox={mailbox} onMailboxChanged={onChanged} />
     </>

@@ -2,6 +2,7 @@ import type { LabelSummary, MailCommand, MessageDetail } from '@mailrovers/mail-
 import type { AttachmentId, ConversationId, MailboxId, MessageId } from '@mailrovers/mail-domain'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Button } from '../../components/ui/button.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { ConversationSummary } from '../ai/ConversationSummary.js'
 import { EmailFrame } from './EmailFrame.js'
@@ -37,39 +38,51 @@ function MessageCard({
   })
   return (
     <details
-      className="message"
+      className="mb-2 overflow-hidden rounded-xl border border-[#dfe3df] bg-white"
       open={expanded}
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
-      <summary>
-        <span>
-          <strong>{addressLabel(message.sender)}</strong>
-          <small>to {message.recipients.to.map(addressLabel).join(', ') || 'me'}</small>
+      <summary className="flex min-h-14.5 cursor-pointer list-inside items-center justify-between gap-4 px-3.5 py-3">
+        <span className="flex min-w-0 flex-col">
+          <strong className="truncate">{addressLabel(message.sender)}</strong>
+          <small className="truncate text-xs text-[#69736b]">
+            to {message.recipients.to.map(addressLabel).join(', ') || 'me'}
+          </small>
         </span>
-        <time>{new Date(message.receivedAt).toLocaleString()}</time>
+        <time className="text-xs text-[#69736b]">
+          {new Date(message.receivedAt).toLocaleString()}
+        </time>
       </summary>
-      <div className="message-body">
+      <div className="border-t border-[#edf0ed] px-4 pt-2 pb-4.5">
         {body.data?.sanitizedHtmlBody ? (
           <EmailFrame
             html={body.data.sanitizedHtmlBody}
             title={`Message from ${message.sender.address}`}
           />
         ) : body.data?.textBody ? (
-          <pre>{body.data.textBody}</pre>
+          <pre className="m-0 wrap-anywhere whitespace-pre-wrap text-sm leading-6 text-[#202722]">
+            {body.data.textBody}
+          </pre>
         ) : body.isPending && message.bodyAvailable ? (
           <p>Loading message…</p>
         ) : (
-          <pre>This message has no readable body.</pre>
+          <pre className="m-0 wrap-anywhere whitespace-pre-wrap text-sm leading-6 text-[#202722]">
+            This message has no readable body.
+          </pre>
         )}
         {message.attachments.length > 0 ? (
-          <ul className="attachment-list" aria-label="Attachments">
+          <ul className="mt-4.5 flex list-none flex-wrap gap-2 p-0" aria-label="Attachments">
             {message.attachments.map((attachment) => (
-              <li key={attachment.id}>
+              <li
+                className="flex flex-col gap-0.5 rounded-lg border border-[#dfe3df] px-2.5 py-2"
+                key={attachment.id}
+              >
                 <span>{attachment.filename}</span>
-                <small>{attachment.mediaType}</small>
-                <button
+                <small className="text-[#69736b]">{attachment.mediaType}</small>
+                <Button
                   type="button"
-                  className="secondary"
+                  variant="secondary"
+                  size="sm"
                   disabled={attachment.availability === 'unavailable' || exporting !== undefined}
                   onClick={() => {
                     setExporting(attachment.id)
@@ -96,7 +109,7 @@ function MessageCard({
                   }}
                 >
                   {exporting === attachment.id ? 'Exporting…' : 'Export'}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -133,13 +146,13 @@ export function ConversationReader({
   })
   if (query.isPending)
     return (
-      <section className="reader-state" aria-live="polite">
+      <section className="px-4.5 py-6 text-[#5d675f]" aria-live="polite">
         Loading conversation…
       </section>
     )
   if (query.isError || !query.data)
     return (
-      <section className="reader-state" role="alert">
+      <section className="px-4.5 py-6 text-[#5d675f]" role="alert">
         Unable to open this conversation.
       </section>
     )
@@ -147,16 +160,19 @@ export function ConversationReader({
   const conversation = query.data
   const latestMessage = conversation.messages.at(-1)
   return (
-    <section className="conversation-reader" aria-label={conversation.subject}>
-      <header className="reader-header">
-        <div>
-          <h1>{conversation.subject || '(No subject)'}</h1>
-          <p>{conversation.messages.length} messages</p>
+    <section className="min-w-0 overflow-auto bg-[#f7f8f6]" aria-label={conversation.subject}>
+      <header className="sticky top-0 z-2 flex min-h-19 items-center justify-between border-b border-[#e1e5e2] bg-white px-4.5 py-4">
+        <div className="min-w-0">
+          <h1 className="truncate text-lg leading-tight text-[#202722]">
+            {conversation.subject || '(No subject)'}
+          </h1>
+          <p className="mt-1 text-xs text-[#687169]">{conversation.messages.length} messages</p>
         </div>
-        <div className="reader-actions">
+        <div className="flex items-center gap-1.5">
           {latestMessage ? (
-            <button
+            <Button
               type="button"
+              size="sm"
               onClick={() =>
                 onReply({
                   conversationId,
@@ -170,28 +186,31 @@ export function ConversationReader({
               }
             >
               Reply
-            </button>
+            </Button>
           ) : null}
-          <button
+          <Button
             type="button"
-            className="secondary"
+            variant="secondary"
+            size="sm"
             onClick={() => void onCommand({ kind: 'set-thread-read', conversationId, read: true })}
           >
             Mark read
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="secondary"
+            variant="secondary"
+            size="sm"
             onClick={() =>
               void onCommand({ kind: 'set-thread-archived', conversationId, archived: true })
             }
           >
             Archive
-          </button>
+          </Button>
           {latestMessage ? (
-            <button
+            <Button
               type="button"
-              className="secondary"
+              variant="secondary"
+              size="sm"
               onClick={() =>
                 void onCommand({
                   kind: 'set-message-starred',
@@ -201,9 +220,10 @@ export function ConversationReader({
               }
             >
               Star
-            </button>
+            </Button>
           ) : null}
           <select
+            className="rounded-lg border border-[#d2d8d3] bg-[#f1f3f0] px-2.5 py-1.5 text-xs text-[#344038] outline-none focus-visible:ring-2 focus-visible:ring-[#4d735b]"
             aria-label="Add label"
             defaultValue=""
             onChange={(event) => {
@@ -234,7 +254,7 @@ export function ConversationReader({
         conversationId={conversationId}
         sourceVersion={conversation.version}
       />
-      <div className="message-stack">
+      <div className="p-3.5">
         {conversation.messages.map((message, index) => (
           <MessageCard
             key={message.id}

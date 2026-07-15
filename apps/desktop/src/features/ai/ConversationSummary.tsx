@@ -1,5 +1,6 @@
 import type { ConversationId, MailboxId, OperationId } from '@mailrovers/mail-domain'
 import { useEffect, useRef, useState } from 'react'
+import { Button } from '../../components/ui/button.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 
 export function ConversationSummary({
@@ -98,35 +99,43 @@ export function ConversationSummary({
 
   if (status === 'idle')
     return (
-      <div className="summary-entry">
-        <button type="button" className="secondary" onClick={() => void generate()}>
+      <div className="px-3.5 pt-3">
+        <Button type="button" variant="secondary" size="sm" onClick={() => void generate()}>
           Summarize conversation
-        </button>
+        </Button>
       </div>
     )
 
   return (
-    <section className="conversation-summary" aria-label="Conversation summary">
-      <header>
+    <section
+      className="mx-3.5 mt-3.5 rounded-xl border border-[#ccd8cf] bg-[#eef4ef]"
+      aria-label="Conversation summary"
+    >
+      <header className="flex min-h-10.5 items-center justify-between border-b border-[#d9e3dc] bg-transparent px-3 py-2">
         <strong>AI summary</strong>
         <div>
           {status === 'streaming' ? (
-            <button type="button" className="text-button" onClick={() => void cancel()}>
+            <Button type="button" variant="ghost" size="xs" onClick={() => void cancel()}>
               Cancel
-            </button>
+            </Button>
           ) : (
-            <button type="button" className="text-button" onClick={() => void generate(true)}>
+            <Button type="button" variant="ghost" size="xs" onClick={() => void generate(true)}>
               Regenerate
-            </button>
+            </Button>
           )}
         </div>
       </header>
       {error ? (
-        <p role="alert" className="error-message">
+        <p role="alert" className="whitespace-pre-wrap p-3 text-[13px] leading-5 text-[#a1382c]">
           {error}
         </p>
       ) : (
-        <p aria-live="polite">{content || 'Writing summary…'}</p>
+        <p
+          className="whitespace-pre-wrap p-3 text-[13px] leading-5 text-[#29362d]"
+          aria-live="polite"
+        >
+          {content || 'Writing summary…'}
+        </p>
       )}
     </section>
   )
