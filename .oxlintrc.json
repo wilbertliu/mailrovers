@@ -1,12 +1,17 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y", "import", "vitest"],
-  "jsPlugins": ["eslint-plugin-better-tailwindcss"],
+  "jsPlugins": ["oxlint-tailwindcss"],
   "categories": {
     "correctness": "error"
   },
   "options": {
     "typeAware": true
+  },
+  "settings": {
+    "tailwindcss": {
+      "entryPoint": "apps/desktop/src/styles.css"
+    }
   },
   "rules": {
     "import/no-unassigned-import": "off",
@@ -38,11 +43,10 @@
     {
       "files": ["apps/desktop/src/features/**/*.{ts,tsx}"],
       "rules": {
-        "better-tailwindcss/no-restricted-classes": [
+        "tailwindcss/no-restricted-classes": [
           "error",
           {
-            "entryPoint": "apps/desktop/src/styles.css",
-            "restrict": [
+            "patterns": [
               {
                 "pattern": "^(?:[^:]+:)*(?:bg|border|decoration|divide|fill|from|outline|ring|shadow|stroke|text|to|via)-(?:amber|blue|cyan|emerald|fuchsia|gray|green|indigo|lime|neutral|orange|pink|purple|red|rose|sky|slate|stone|teal|violet|yellow|zinc)-",
                 "message": "Use a semantic theme token."

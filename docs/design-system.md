@@ -8,7 +8,7 @@ MailRovers now owns the runtime source of truth for its design system:
 
 - `apps/desktop/src/styles.css` defines the supported Tailwind theme and semantic tokens.
 - `apps/desktop/src/components/ui` owns control appearance and typed variants.
-- Oxlint and `eslint-plugin-better-tailwindcss` enforce feature boundaries as part of `pnpm lint`.
+- Oxlint and `oxlint-tailwindcss` enforce feature boundaries as part of `pnpm lint`.
 
 The original Rinhelp references remain useful historical context:
 
