@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { MailAccount01Icon } from '@hugeicons/core-free-icons'
-import { Button } from '../../components/ui/button.js'
+import { Button } from '@/components/ui/button.js'
 import {
   Card,
   CardContent,

@@ -2,7 +2,7 @@ import type { LabelSummary, MailCommand, MessageDetail } from '@mailrovers/mail-
 import type { AttachmentId, ConversationId, MailboxId, MessageId } from '@mailrovers/mail-domain'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Button } from '../../components/ui/button.js'
+import { Button } from '@/components/ui/button.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { ConversationSummary } from '../ai/ConversationSummary.js'
 import { EmailFrame } from './EmailFrame.js'

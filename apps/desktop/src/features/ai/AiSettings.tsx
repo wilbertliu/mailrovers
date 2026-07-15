@@ -1,7 +1,7 @@
 import type { MailboxId } from '@mailrovers/mail-domain'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { Button } from '../../components/ui/button.js'
+import { Button } from '@/components/ui/button.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 
 export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClose: () => void }) {

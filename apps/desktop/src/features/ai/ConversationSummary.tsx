@@ -1,6 +1,6 @@
 import type { ConversationId, MailboxId, OperationId } from '@mailrovers/mail-domain'
 import { useEffect, useRef, useState } from 'react'
-import { Button } from '../../components/ui/button.js'
+import { Button } from '@/components/ui/button.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 
 export function ConversationSummary({

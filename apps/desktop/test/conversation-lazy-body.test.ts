@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { shouldLoadMessageBody } from '../src/features/conversation/ConversationReader.js'
+import { shouldLoadMessageBody } from '@/features/conversation/ConversationReader.js'
 
 describe('conversation lazy body loading', () => {
   it('does not request bodies for collapsed older messages', () => {

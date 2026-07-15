@@ -1,8 +1,8 @@
 import type { ConversationId } from '@mailrovers/mail-domain'
 import type { InfiniteData } from '@tanstack/react-query'
 import type { SearchPage } from '@mailrovers/mail-contracts'
-import { Button } from '../../components/ui/button.js'
-import { cn } from '../../lib/utils.js'
+import { Button } from '@/components/ui/button.js'
+import { cn } from '@/lib/utils.js'
 
 export function SearchResults({
   pages,

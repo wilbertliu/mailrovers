@@ -1,7 +1,7 @@
 import type { AiArtifact, Draft } from '@mailrovers/mail-contracts'
 import type { ConversationId, MailboxId, MessageId, OperationId } from '@mailrovers/mail-domain'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button } from '../../components/ui/button.js'
+import { Button } from '@/components/ui/button.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 
 type ComposerSeed = {
