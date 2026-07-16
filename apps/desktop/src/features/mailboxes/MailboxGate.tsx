@@ -1,7 +1,10 @@
 import type { DesktopEvent, MailboxSummary, SyncStatus } from '@mailrovers/mail-contracts'
 import type { MailboxId, OperationId } from '@mailrovers/mail-domain'
+import { Alert02Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button.js'
 import { NativeSelect } from '@/components/ui/native-select.js'
 import {
@@ -12,6 +15,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card.js'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+} from '@/components/ui/empty.js'
 import { FieldError } from '@/components/ui/field.js'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
 import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress.js'
@@ -28,6 +38,27 @@ function LoadingPage({ message }: { message: string }) {
         </MarkerIcon>
         <MarkerContent>{message}</MarkerContent>
       </Marker>
+    </main>
+  )
+}
+
+function MailboxErrorPage({ retrying, onRetry }: { retrying: boolean; onRetry: () => void }) {
+  return (
+    <main className="grid min-h-screen place-items-center p-6">
+      <Empty>
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <HugeiconsIcon icon={Alert02Icon} strokeWidth={2} />
+          </EmptyMedia>
+          <EmptyDescription role="alert">Couldn't open your local mailbox.</EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button type="button" onClick={onRetry} disabled={retrying}>
+            {retrying ? <Spinner data-icon="inline-start" /> : null}
+            {retrying ? 'Retrying…' : 'Retry'}
+          </Button>
+        </EmptyContent>
+      </Empty>
     </main>
   )
 }
@@ -357,6 +388,7 @@ export function MailboxGate() {
   const queryClient = useQueryClient()
   const [selectedMailbox, setSelectedMailbox] = useState<MailboxId>()
   const [showConnect, setShowConnect] = useState(false)
+  const [retryingInitialLoad, setRetryingInitialLoad] = useState(false)
   const mailboxes = useQuery({
     queryKey: ['mailboxes'],
     queryFn: () => desktopBridge.listMailboxes(desktopBridge.createRequestId()),
@@ -373,10 +405,28 @@ export function MailboxGate() {
     },
     [onChanged],
   )
+  useEffect(() => {
+    if (!mailboxes.isError || mailboxes.data === undefined) return
+    toast.error("Couldn't refresh mailboxes", {
+      id: 'mailboxes-refresh-error',
+      description: 'Showing the last available mailbox data.',
+    })
+  }, [mailboxes.data, mailboxes.errorUpdatedAt, mailboxes.isError])
 
-  if (mailboxes.isPending) return <LoadingPage message="Opening your local mailbox…" />
-  if (mailboxes.isError)
-    return <LoadingPage message="MailRovers could not open its local mailbox." />
+  const retryInitialLoad = async () => {
+    setRetryingInitialLoad(true)
+    try {
+      await mailboxes.refetch()
+    } finally {
+      setRetryingInitialLoad(false)
+    }
+  }
+
+  if (mailboxes.data === undefined && (mailboxes.isError || retryingInitialLoad))
+    return (
+      <MailboxErrorPage retrying={retryingInitialLoad} onRetry={() => void retryInitialLoad()} />
+    )
+  if (mailboxes.data === undefined) return <LoadingPage message="Opening your local mailbox…" />
   const mailbox = mailboxes.data.find((item) => item.id === selectedMailbox) ?? mailboxes.data[0]
   if (!mailbox || showConnect)
     return (

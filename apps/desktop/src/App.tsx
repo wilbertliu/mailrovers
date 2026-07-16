@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
+import { Toaster } from '@/components/ui/sonner.js'
 import { desktopBridge } from './desktop-bridge.js'
 import { MailboxGate } from './features/mailboxes/MailboxGate.js'
 
@@ -30,5 +31,10 @@ export function App() {
     [queryClient],
   )
 
-  return <MailboxGate />
+  return (
+    <>
+      <MailboxGate />
+      <Toaster />
+    </>
+  )
 }
