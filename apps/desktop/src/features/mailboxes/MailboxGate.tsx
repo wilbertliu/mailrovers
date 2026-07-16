@@ -2,8 +2,6 @@ import type { DesktopEvent, MailboxSummary, SyncStatus } from '@mailrovers/mail-
 import type { MailboxId, OperationId } from '@mailrovers/mail-domain'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
-import { HugeiconsIcon } from '@hugeicons/react'
-import { MailAccount01Icon } from '@hugeicons/core-free-icons'
 import { Button } from '@/components/ui/button.js'
 import { NativeSelect } from '@/components/ui/native-select.js'
 import {
@@ -15,35 +13,21 @@ import {
   CardTitle,
 } from '@/components/ui/card.js'
 import { FieldError } from '@/components/ui/field.js'
+import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
 import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress.js'
 import { Spinner } from '@/components/ui/spinner.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
 
-function LoadingPage({ message, error = false }: { message: string; error?: boolean }) {
+function LoadingPage({ message }: { message: string }) {
   return (
-    <main className="grid min-h-screen place-items-center bg-muted/40 p-6">
-      <Card className="w-full max-w-lg" aria-live={error ? undefined : 'polite'}>
-        <CardHeader>
-          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <HugeiconsIcon icon={MailAccount01Icon} strokeWidth={2} className="size-6" />
-          </div>
-          <CardTitle>
-            <h1 className="text-2xl font-semibold tracking-tight">MailRovers</h1>
-          </CardTitle>
-          {!error ? (
-            <CardDescription className="flex items-center gap-2 text-pretty">
-              <Spinner aria-hidden="true" />
-              {message}
-            </CardDescription>
-          ) : null}
-        </CardHeader>
-        {error ? (
-          <CardContent>
-            <FieldError>{message}</FieldError>
-          </CardContent>
-        ) : null}
-      </Card>
+    <main className="grid min-h-screen place-items-center p-6">
+      <Marker className="w-auto" render={<output aria-live="polite" />}>
+        <MarkerIcon>
+          <Spinner aria-hidden="true" />
+        </MarkerIcon>
+        <MarkerContent>{message}</MarkerContent>
+      </Marker>
     </main>
   )
 }
@@ -93,14 +77,12 @@ function ConnectPage({
   const connecting = pendingAction !== undefined
 
   return (
-    <main className="grid min-h-screen place-items-center bg-muted/40 p-6">
+    <main className="grid min-h-screen place-items-center p-6">
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <p className="text-xs font-medium tracking-wider text-primary uppercase">
-            Local-first email
-          </p>
+          <p>Local-first email</p>
           <CardTitle>
-            <h1 className="text-2xl font-semibold tracking-tight text-balance">Connect Gmail</h1>
+            <h1 className="text-balance">Connect Gmail</h1>
           </CardTitle>
           <CardDescription className="text-pretty">
             MailRovers stores your mail on this Mac. Google authorization opens in your default
@@ -303,16 +285,12 @@ function ImportPage({
   const failed = status?.phase === 'failed' || mailbox.syncState === 'failed'
 
   return (
-    <main className="grid min-h-screen place-items-center bg-muted/40 p-6">
+    <main className="grid min-h-screen place-items-center p-6">
       <Card className="w-full max-w-lg">
         <CardHeader>
-          <p className="truncate text-xs font-medium tracking-wider text-primary uppercase">
-            {mailbox.emailAddress}
-          </p>
+          <p className="truncate">{mailbox.emailAddress}</p>
           <CardTitle>
-            <h1 className="text-2xl font-semibold tracking-tight text-balance">
-              {progressLabel(status, mailbox)}
-            </h1>
+            <h1 className="text-balance">{progressLabel(status, mailbox)}</h1>
           </CardTitle>
           <CardDescription className="text-pretty">
             {imported.toLocaleString()} messages imported
@@ -366,7 +344,7 @@ function ImportPage({
             {pendingAction === 'disconnect' ? <Spinner data-icon="inline-start" /> : null}
             {pendingAction === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
           </Button>
-          <p className="basis-full pt-3 text-xs text-muted-foreground">
+          <p className="basis-full pt-3">
             You can close MailRovers. The import resumes when you reopen it.
           </p>
         </CardFooter>
@@ -398,7 +376,7 @@ export function MailboxGate() {
 
   if (mailboxes.isPending) return <LoadingPage message="Opening your local mailbox…" />
   if (mailboxes.isError)
-    return <LoadingPage message="MailRovers could not open its local mailbox." error />
+    return <LoadingPage message="MailRovers could not open its local mailbox." />
   const mailbox = mailboxes.data.find((item) => item.id === selectedMailbox) ?? mailboxes.data[0]
   if (!mailbox || showConnect)
     return (
@@ -411,14 +389,11 @@ export function MailboxGate() {
     return <ImportPage mailbox={mailbox} onChanged={onChanged} />
   return (
     <>
-      <nav
-        className="flex h-14 items-center justify-between border-b border-border bg-panel px-4 py-2"
-        aria-label="Mailboxes"
-      >
-        <label className="flex items-center gap-2.5 text-xs font-semibold text-muted-foreground">
+      <nav className="flex h-14 items-center justify-between px-4 py-2" aria-label="Mailboxes">
+        <label className="flex items-center gap-2.5">
           <span>Mailbox</span>
           <NativeSelect
-            className="min-w-55 rounded-lg border border-border bg-surface py-1.5 pr-7 pl-2.5 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-w-55 py-1.5 pr-7 pl-2.5"
             value={mailbox.id}
             onChange={(event) => setSelectedMailbox(mailboxes.data[event.target.selectedIndex]?.id)}
           >

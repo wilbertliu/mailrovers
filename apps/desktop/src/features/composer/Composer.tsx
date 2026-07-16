@@ -238,10 +238,10 @@ export function Composer({
 
   return (
     <section
-      className="fixed right-4.5 bottom-4.5 z-40 flex h-[min(560px,calc(100vh-92px))] w-[min(520px,calc(100vw-36px))] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-panel"
+      className="fixed right-4.5 bottom-4.5 z-40 flex h-[min(560px,calc(100vh-92px))] w-[min(520px,calc(100vw-36px))] flex-col overflow-hidden"
       aria-label={seed?.replyToMessageId ? 'Reply' : 'New message'}
     >
-      <header className="flex h-12 items-center justify-between border-b border-border bg-panel py-2 pr-3 pl-4">
+      <header className="flex h-12 items-center justify-between py-2 pr-3 pl-4">
         <strong>{seed?.replyToMessageId ? 'Reply' : 'New message'}</strong>
         <Button
           type="button"
@@ -253,14 +253,11 @@ export function Composer({
           Close
         </Button>
       </header>
-      <label
-        htmlFor="composer-to"
-        className="flex min-h-11.5 items-center gap-2.5 border-b border-border px-3.5"
-      >
-        <span className="w-13.5 text-xs text-muted-foreground">To</span>
+      <label htmlFor="composer-to" className="flex min-h-11.5 items-center gap-2.5 px-3.5">
+        <span className="w-13.5">To</span>
         <Input
           id="composer-to"
-          className="min-w-0 flex-1 border-0 text-foreground outline-none"
+          className="min-w-0 flex-1"
           type="email"
           multiple
           value={to}
@@ -268,45 +265,34 @@ export function Composer({
           placeholder="name@example.com"
         />
       </label>
-      <label
-        htmlFor="composer-subject"
-        className="flex min-h-11.5 items-center gap-2.5 border-b border-border px-3.5"
-      >
-        <span className="w-13.5 text-xs text-muted-foreground">Subject</span>
+      <label htmlFor="composer-subject" className="flex min-h-11.5 items-center gap-2.5 px-3.5">
+        <span className="w-13.5">Subject</span>
         <Input
           id="composer-subject"
-          className="min-w-0 flex-1 border-0 text-foreground outline-none"
+          className="min-w-0 flex-1"
           value={subject}
           onChange={(event) => setSubject(event.target.value)}
         />
       </label>
       <Textarea
-        className="min-h-45 flex-1 resize-none border-0 p-4 text-sm leading-6 text-foreground outline-none"
+        className="min-h-45 flex-1 resize-none p-4"
         aria-label="Message"
         value={body}
         onChange={(event) => setBody(event.target.value)}
         placeholder="Write a message…"
       />
       {aiStatus !== 'idle' ? (
-        <section
-          className="max-h-57.5 overflow-y-auto border-t border-border bg-panel"
-          aria-label="AI reply suggestion"
-        >
-          <header className="flex min-h-10.5 items-center justify-between border-b border-border bg-transparent px-3 py-2">
+        <section className="max-h-57.5 overflow-y-auto" aria-label="AI reply suggestion">
+          <header className="flex min-h-10.5 items-center justify-between px-3 py-2">
             <strong>AI suggestion</strong>
-            {aiStatus === 'streaming' ? (
-              <span className="text-xs text-muted-foreground">Drafting…</span>
-            ) : null}
+            {aiStatus === 'streaming' ? <span>Drafting…</span> : null}
           </header>
           {aiError ? (
-            <p role="alert" className="px-3.5 py-2.5 text-detail leading-5 text-destructive">
+            <p role="alert" className="px-3.5 py-2.5">
               {aiError}
             </p>
           ) : (
-            <p
-              className="whitespace-pre-wrap px-3.5 py-2.5 text-detail leading-5 text-foreground"
-              aria-live="polite"
-            >
+            <p className="whitespace-pre-wrap px-3.5 py-2.5" aria-live="polite">
               {suggestion || 'Starting…'}
             </p>
           )}
@@ -342,7 +328,7 @@ export function Composer({
           </div>
         </section>
       ) : null}
-      <footer className="flex min-h-14.5 items-center gap-3 border-t border-border px-3.5 py-2.5">
+      <footer className="flex min-h-14.5 items-center gap-3 px-3.5 py-2.5">
         <Button
           type="button"
           onClick={() => void send()}
@@ -355,7 +341,7 @@ export function Composer({
             Draft with AI
           </Button>
         ) : null}
-        <output className="text-xs text-muted-foreground">
+        <output>
           {status === 'saving'
             ? 'Saving locally…'
             : status === 'saved'

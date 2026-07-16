@@ -1,7 +1,6 @@
 import type { ConversationSummary } from '@mailrovers/mail-contracts'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useRef } from 'react'
-import { cn } from '@/lib/utils.js'
 import { Button } from '@/components/ui/button.js'
 
 export function ConversationVirtualList({
@@ -40,10 +39,8 @@ export function ConversationVirtualList({
             <Button
               type="button"
               key={item.id}
-              className={cn(
-                'absolute inset-x-0 grid h-16 w-full grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] items-center gap-4 border-b border-border bg-surface px-3.5 py-2.5 text-start font-normal text-foreground transition-colors duration-150 motion-reduce:transition-none hover:bg-panel focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:outline-none',
-                selectedId === item.id && 'bg-selection',
-              )}
+              className="absolute inset-x-0 grid h-16 w-full grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] items-center gap-4 px-3.5 py-2.5 text-start"
+              aria-pressed={selectedId === item.id}
               onClick={() => onSelect(item)}
               style={{
                 transform: `translateY(${row.start}px)`,
@@ -52,13 +49,11 @@ export function ConversationVirtualList({
               <div className="flex min-w-0 items-center gap-2">
                 <strong className="truncate">{item.subject || '(No subject)'}</strong>
                 {item.unreadCount > 0 ? (
-                  <span className="size-1.5 shrink-0 rounded-full bg-primary" aria-label="Unread" />
+                  <span className="size-1.5 shrink-0" aria-label="Unread" />
                 ) : null}
               </div>
-              <span className="truncate text-muted-foreground">{item.snippet}</span>
-              <time className="truncate text-xs text-muted-foreground">
-                {new Date(item.lastMessageAt).toLocaleDateString()}
-              </time>
+              <span className="truncate">{item.snippet}</span>
+              <time className="truncate">{new Date(item.lastMessageAt).toLocaleDateString()}</time>
             </Button>
           )
         })}

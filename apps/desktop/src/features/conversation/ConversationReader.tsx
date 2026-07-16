@@ -39,47 +39,40 @@ function MessageCard({
   })
   return (
     <details
-      className="mb-2 overflow-hidden rounded-xl border border-border bg-surface"
+      className="mb-2 overflow-hidden"
       open={expanded}
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
       <summary className="flex min-h-14.5 cursor-pointer list-inside items-center justify-between gap-4 px-3.5 py-3">
         <span className="flex min-w-0 flex-col">
           <strong className="truncate">{addressLabel(message.sender)}</strong>
-          <small className="truncate text-xs text-muted-foreground">
+          <small className="truncate">
             to {message.recipients.to.map(addressLabel).join(', ') || 'me'}
           </small>
         </span>
-        <time className="text-xs text-muted-foreground">
-          {new Date(message.receivedAt).toLocaleString()}
-        </time>
+        <time>{new Date(message.receivedAt).toLocaleString()}</time>
       </summary>
-      <div className="border-t border-border px-4 pt-2 pb-4.5">
+      <div className="px-4 pt-2 pb-4.5">
         {body.data?.sanitizedHtmlBody ? (
           <EmailFrame
             html={body.data.sanitizedHtmlBody}
             title={`Message from ${message.sender.address}`}
           />
         ) : body.data?.textBody ? (
-          <pre className="m-0 wrap-anywhere whitespace-pre-wrap text-sm leading-6 text-foreground">
-            {body.data.textBody}
-          </pre>
+          <pre className="m-0 wrap-anywhere whitespace-pre-wrap">{body.data.textBody}</pre>
         ) : body.isPending && message.bodyAvailable ? (
           <p>Loading message…</p>
         ) : (
-          <pre className="m-0 wrap-anywhere whitespace-pre-wrap text-sm leading-6 text-foreground">
+          <pre className="m-0 wrap-anywhere whitespace-pre-wrap">
             This message has no readable body.
           </pre>
         )}
         {message.attachments.length > 0 ? (
           <ul className="mt-4.5 flex list-none flex-wrap gap-2 p-0" aria-label="Attachments">
             {message.attachments.map((attachment) => (
-              <li
-                className="flex flex-col gap-0.5 rounded-lg border border-border px-2.5 py-2"
-                key={attachment.id}
-              >
+              <li className="flex flex-col gap-0.5 px-2.5 py-2" key={attachment.id}>
                 <span>{attachment.filename}</span>
-                <small className="text-muted-foreground">{attachment.mediaType}</small>
+                <small>{attachment.mediaType}</small>
                 <Button
                   type="button"
                   variant="secondary"
@@ -147,13 +140,13 @@ export function ConversationReader({
   })
   if (query.isPending)
     return (
-      <section className="px-4.5 py-6 text-muted-foreground" aria-live="polite">
+      <section className="px-4.5 py-6" aria-live="polite">
         Loading conversation…
       </section>
     )
   if (query.isError || !query.data)
     return (
-      <section className="px-4.5 py-6 text-muted-foreground" role="alert">
+      <section className="px-4.5 py-6" role="alert">
         Unable to open this conversation.
       </section>
     )
@@ -161,15 +154,11 @@ export function ConversationReader({
   const conversation = query.data
   const latestMessage = conversation.messages.at(-1)
   return (
-    <section className="min-w-0 overflow-auto bg-panel" aria-label={conversation.subject}>
-      <header className="sticky top-0 z-2 flex min-h-19 items-center justify-between border-b border-border bg-surface px-4.5 py-4">
+    <section className="min-w-0 overflow-auto" aria-label={conversation.subject}>
+      <header className="sticky top-0 z-2 flex min-h-19 items-center justify-between px-4.5 py-4">
         <div className="min-w-0">
-          <h1 className="truncate text-lg leading-tight text-foreground">
-            {conversation.subject || '(No subject)'}
-          </h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {conversation.messages.length} messages
-          </p>
+          <h1 className="truncate">{conversation.subject || '(No subject)'}</h1>
+          <p className="mt-1">{conversation.messages.length} messages</p>
         </div>
         <div className="flex items-center gap-1.5">
           {latestMessage ? (
@@ -226,7 +215,7 @@ export function ConversationReader({
             </Button>
           ) : null}
           <NativeSelect
-            className="rounded-lg border border-border bg-panel px-2.5 py-1.5 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="px-2.5 py-1.5"
             aria-label="Add label"
             defaultValue=""
             onChange={(event) => {

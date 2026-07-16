@@ -16,26 +16,23 @@ export function InboxPage({
   const query = useConversationPages(mailbox, labelId === undefined ? undefined : { labelId })
   const items = query.data?.pages.flatMap((page) => page.items) ?? []
   return (
-    <section
-      className="min-w-0 overflow-hidden border-e border-border bg-surface"
-      aria-label="Conversations"
-    >
-      <header className="flex h-19 items-center justify-between border-b border-border bg-surface px-4.5 py-4">
+    <section className="min-w-0 overflow-hidden" aria-label="Conversations">
+      <header className="flex h-19 items-center justify-between px-4.5 py-4">
         <div>
-          <h1 className="truncate text-lg leading-tight text-foreground">Mail</h1>
-          <p className="mt-1 text-xs text-muted-foreground">{items.length} cached conversations</p>
+          <h1 className="truncate">Mail</h1>
+          <p className="mt-1">{items.length} cached conversations</p>
         </div>
       </header>
       {query.isPending ? (
-        <div className="px-4.5 py-6 text-muted-foreground" aria-live="polite">
+        <div className="px-4.5 py-6" aria-live="polite">
           Loading mail…
         </div>
       ) : query.isError ? (
-        <div className="px-4.5 py-6 text-muted-foreground" role="alert">
+        <div className="px-4.5 py-6" role="alert">
           Unable to load local mail.
         </div>
       ) : items.length === 0 ? (
-        <div className="px-4.5 py-6 text-muted-foreground">No conversations in this view.</div>
+        <div className="px-4.5 py-6">No conversations in this view.</div>
       ) : (
         <ConversationVirtualList
           items={items}

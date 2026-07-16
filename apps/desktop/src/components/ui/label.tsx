@@ -1,7 +1,5 @@
 'use client'
 
-/* oxlint-disable jsx-a11y/label-has-associated-control -- This primitive receives htmlFor or wraps a control at each call site. */
-
 import * as React from 'react'
 
 import { cn } from '@/lib/utils'

@@ -24,6 +24,17 @@
   },
   "overrides": [
     {
+      "files": ["apps/desktop/src/components/ui/**/*.{ts,tsx}"],
+      "rules": {
+        "jsx-a11y/anchor-has-content": "off",
+        "jsx-a11y/click-events-have-key-events": "off",
+        "jsx-a11y/label-has-associated-control": "off",
+        "jsx-a11y/no-noninteractive-element-interactions": "off",
+        "jsx-a11y/prefer-tag-over-role": "off",
+        "typescript/restrict-template-expressions": "off"
+      }
+    },
+    {
       "files": ["apps/desktop/src/**/*.{ts,tsx}"],
       "excludeFiles": ["apps/desktop/src/components/ui/**/*.{ts,tsx}"],
       "rules": {
@@ -37,27 +48,26 @@
               }
             ]
           }
-        ]
-      }
-    },
-    {
-      "files": ["apps/desktop/src/features/**/*.{ts,tsx}"],
-      "rules": {
+        ],
         "tailwindcss/no-restricted-classes": [
           "error",
           {
             "patterns": [
               {
-                "pattern": "^(?:[^:]+:)*(?:bg|border|decoration|divide|fill|from|outline|ring|shadow|stroke|text|to|via)-(?:amber|blue|cyan|emerald|fuchsia|gray|green|indigo|lime|neutral|orange|pink|purple|red|rose|sky|slate|stone|teal|violet|yellow|zinc)-",
-                "message": "Use a semantic theme token."
+                "pattern": "^(?:[^:]+:)*(?:accent|animate|antialiased|backdrop|bg|border|caret|decoration|delay|divide|drop-shadow|duration|ease|fill|font|from|grayscale|invert|leading|mix-blend|opacity|outline|ring|rounded|saturate|sepia|shadow|stroke|text-shadow|to|tracking|transition|via)(?:$|-)",
+                "message": "Product code may use Tailwind for layout only. Move visual styling into components/ui."
               },
               {
-                "pattern": "^(?:[^:]+:)*(?:bg|border|decoration|fill|font|leading|outline|ring|rounded|shadow|stroke|text)-\\[",
-                "message": "Arbitrary visual values are forbidden."
+                "pattern": "^(?:[^:]+:)*text-(?!(?:left|center|right|start|end|justify|wrap|nowrap|balance|pretty|ellipsis|clip)$)",
+                "message": "Product code may only use text alignment and wrapping utilities. Move typography and color into components/ui."
               },
               {
-                "pattern": "^(?:[^:]+:)*(?:m[trblexy]?|p[trblexy]?|gap|space-[xy])-\\[",
-                "message": "Arbitrary spacing is forbidden."
+                "pattern": "^(?:[^:]+:)*(?:italic|not-italic|uppercase|lowercase|capitalize|normal-case|underline|overline|line-through|no-underline)$",
+                "message": "Move typography and text decoration into components/ui."
+              },
+              {
+                "pattern": "^(?:[^:]+:)*\\[",
+                "message": "Arbitrary CSS properties are forbidden outside components/ui."
               }
             ]
           }
@@ -72,7 +82,36 @@
               { "element": "textarea", "message": "Use the shared Textarea component." }
             ]
           }
+        ],
+        "react/forbid-dom-props": [
+          "error",
+          {
+            "forbid": [
+              {
+                "propName": "style",
+                "message": "Inline styles are forbidden outside components/ui. Move visual styling into a shared component or document a runtime layout exception."
+              }
+            ]
+          }
+        ],
+        "react/forbid-component-props": [
+          "error",
+          {
+            "forbid": [
+              {
+                "propName": "style",
+                "message": "Inline styles are forbidden outside components/ui. Move visual styling into a shared component or document a runtime layout exception."
+              }
+            ]
+          }
         ]
+      }
+    },
+    {
+      "files": ["apps/desktop/src/features/inbox/ConversationVirtualList.tsx"],
+      "rules": {
+        "react/forbid-dom-props": "off",
+        "react/forbid-component-props": "off"
       }
     }
   ]
