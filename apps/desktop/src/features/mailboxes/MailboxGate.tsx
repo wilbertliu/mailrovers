@@ -3,6 +3,7 @@ import type { MailboxId, OperationId } from '@mailrovers/mail-domain'
 import { Alert02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button.js'
@@ -29,9 +30,20 @@ import { Spinner } from '@/components/ui/spinner.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
 
+function WindowFrame({ children, titlebar }: { children: ReactNode; titlebar?: ReactNode }) {
+  return (
+    <>
+      <header className="window-titlebar flex h-14 shrink-0 items-center px-4 py-2">
+        {titlebar}
+      </header>
+      {children}
+    </>
+  )
+}
+
 function LoadingPage({ message }: { message: string }) {
   return (
-    <main className="grid min-h-screen place-items-center p-6">
+    <main className="grid min-h-[calc(100vh-56px)] place-items-center p-6">
       <Marker className="w-auto" render={<output aria-live="polite" />}>
         <MarkerIcon>
           <Spinner aria-hidden="true" />
@@ -44,7 +56,7 @@ function LoadingPage({ message }: { message: string }) {
 
 function MailboxErrorPage({ retrying, onRetry }: { retrying: boolean; onRetry: () => void }) {
   return (
-    <main className="grid min-h-screen place-items-center p-6">
+    <main className="grid min-h-[calc(100vh-56px)] place-items-center p-6">
       <Empty>
         <EmptyHeader>
           <EmptyMedia variant="icon">
@@ -108,7 +120,7 @@ function ConnectPage({
   const connecting = pendingAction !== undefined
 
   return (
-    <main className="grid min-h-screen place-items-center p-6">
+    <main className="grid min-h-[calc(100vh-56px)] place-items-center p-6">
       <Card className="w-full max-w-lg">
         <CardHeader>
           <p>Local-first email</p>
@@ -316,7 +328,7 @@ function ImportPage({
   const failed = status?.phase === 'failed' || mailbox.syncState === 'failed'
 
   return (
-    <main className="grid min-h-screen place-items-center p-6">
+    <main className="grid min-h-[calc(100vh-56px)] place-items-center p-6">
       <Card className="w-full max-w-lg">
         <CardHeader>
           <p className="truncate">{mailbox.emailAddress}</p>
@@ -422,43 +434,56 @@ export function MailboxGate() {
     }
   }
 
-  if (mailboxes.data === undefined && (mailboxes.isError || retryingInitialLoad))
-    return (
+  let content: ReactNode
+  let titlebar: ReactNode
+
+  if (mailboxes.data === undefined && (mailboxes.isError || retryingInitialLoad)) {
+    content = (
       <MailboxErrorPage retrying={retryingInitialLoad} onRetry={() => void retryInitialLoad()} />
     )
-  if (mailboxes.data === undefined) return <LoadingPage message="Opening your local mailbox…" />
-  const mailbox = mailboxes.data.find((item) => item.id === selectedMailbox) ?? mailboxes.data[0]
-  if (!mailbox || showConnect)
-    return (
-      <ConnectPage
-        onConnected={onConnected}
-        {...(mailbox ? { onCancel: () => setShowConnect(false) } : {})}
-      />
-    )
-  if (mailbox.connectionState === 'connected' && mailbox.syncState !== 'ready')
-    return <ImportPage mailbox={mailbox} onChanged={onChanged} />
-  return (
-    <>
-      <nav className="flex h-14 items-center justify-between px-4 py-2" aria-label="Mailboxes">
-        <label className="flex items-center gap-2.5">
-          <span>Mailbox</span>
-          <NativeSelect
-            className="min-w-55 py-1.5 pr-7 pl-2.5"
-            value={mailbox.id}
-            onChange={(event) => setSelectedMailbox(mailboxes.data[event.target.selectedIndex]?.id)}
+  } else if (mailboxes.data === undefined) {
+    content = <LoadingPage message="Opening your local mailbox…" />
+  } else {
+    const mailbox = mailboxes.data.find((item) => item.id === selectedMailbox) ?? mailboxes.data[0]
+    if (!mailbox || showConnect) {
+      content = (
+        <ConnectPage
+          onConnected={onConnected}
+          {...(mailbox ? { onCancel: () => setShowConnect(false) } : {})}
+        />
+      )
+    } else if (mailbox.connectionState === 'connected' && mailbox.syncState !== 'ready') {
+      content = <ImportPage mailbox={mailbox} onChanged={onChanged} />
+    } else {
+      titlebar = (
+        <nav className="flex w-full items-center justify-between" aria-label="Mailboxes">
+          <label className="flex items-center gap-2.5">
+            <span>Mailbox</span>
+            <NativeSelect
+              className="min-w-55 py-1.5 pr-7 pl-2.5"
+              value={mailbox.id}
+              onChange={(event) => setSelectedMailbox(mailboxes.data[event.target.selectedIndex]?.id)}
+            >
+              {mailboxes.data.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.emailAddress}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowConnect(true)}
           >
-            {mailboxes.data.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.emailAddress}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-        <Button type="button" variant="secondary" size="sm" onClick={() => setShowConnect(true)}>
-          Add Gmail account
-        </Button>
-      </nav>
-      <MailWorkspace mailbox={mailbox} onMailboxChanged={onChanged} />
-    </>
-  )
+            Add Gmail account
+          </Button>
+        </nav>
+      )
+      content = <MailWorkspace mailbox={mailbox} onMailboxChanged={onChanged} />
+    }
+  }
+
+  return <WindowFrame titlebar={titlebar}>{content}</WindowFrame>
 }

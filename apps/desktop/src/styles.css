@@ -135,6 +135,17 @@
     @apply bg-background text-foreground;
   }
 
+  .window-titlebar {
+    -webkit-app-region: drag;
+    app-region: drag;
+    padding-left: 5.5rem;
+  }
+
+  .window-titlebar :is(button, select, input, a, [role='button']) {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+
   button:not(:disabled),
   [role='button']:not(:disabled) {
     cursor: pointer;

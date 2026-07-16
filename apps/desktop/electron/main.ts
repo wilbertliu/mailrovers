@@ -131,6 +131,7 @@ async function createWindow(): Promise<void> {
     width: 1200,
     height: 800,
     show: false,
+    titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       sandbox: true,
