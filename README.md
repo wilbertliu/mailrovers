@@ -1,5 +1,17 @@
 # MailRovers
 
+## UI development
+
+Run the renderer-state workbench with:
+
+```sh
+pnpm --filter @mailrovers/desktop storybook
+```
+
+It renders mailbox, import, workspace, composer, and AI states against a typed fake Electron bridge.
+No Gmail connection, production database, environment variables, or secrets are used. See
+[`docs/storybook.md`](docs/storybook.md) for the scenario model and instructions for adding states.
+
 MailRovers is an open-source, AI-native desktop email client designed to keep your mail and application data local.
 
 The first release is a macOS application that connects directly to Gmail and an OpenAI-compatible provider using your own API key. MailRovers does not require a hosted MailRovers backend.

@@ -10,5 +10,6 @@
     "types": ["vite/client"],
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "renderer-node-ambient.canary.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "renderer-node-ambient.canary.ts"],
+  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx", "src/storybook"]
 }
