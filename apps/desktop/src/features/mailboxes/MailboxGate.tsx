@@ -5,6 +5,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useCallback, useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button.js'
 import { NativeSelect } from '@/components/ui/native-select.js'
 import {
@@ -36,7 +37,7 @@ import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress
 import { Spinner } from '@/components/ui/spinner.js'
 import { useImportSubscription } from '@/hooks/use-import-subscription.js'
 import { useMailboxRefreshErrorToast } from '@/hooks/use-mailbox-refresh-error-toast.js'
-import { desktopBridge } from '../../desktop-bridge.js'
+import { DesktopApplicationError, desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
 
 function WindowFrame({ children, titlebar }: { children: ReactNode; titlebar?: ReactNode }) {
@@ -133,18 +134,21 @@ function ConnectPage({
 }) {
   const [pendingAction, setPendingAction] = useState<ConnectPendingAction>()
   const [operation, setOperation] = useState<OperationId>()
-  const [error, setError] = useState<string>()
 
   const connect = async () => {
     const requestId = desktopBridge.createRequestId()
     setOperation(requestId)
     setPendingAction('connect')
-    setError(undefined)
     try {
       const result = await desktopBridge.connectGmail({ requestId })
       await onConnected(result.mailbox.id)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Gmail connection failed.')
+      const cancelled =
+        caught instanceof DesktopApplicationError && caught.detail.code === 'OPERATION_CANCELLED'
+      if (!cancelled)
+        toast.error(caught instanceof Error ? caught.message : 'Gmail connection failed.', {
+          id: 'gmail-connect-error',
+        })
     } finally {
       setPendingAction(undefined)
       setOperation(undefined)
@@ -154,14 +158,15 @@ function ConnectPage({
   const cancel = async () => {
     if (!operation) return
     setPendingAction('cancel')
-    setError(undefined)
     try {
       await desktopBridge.cancelOperation({
         requestId: desktopBridge.createRequestId(),
         operationId: operation,
       })
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to cancel Gmail connection.')
+      toast.error(caught instanceof Error ? caught.message : 'Unable to cancel Gmail connection.', {
+        id: 'gmail-cancel-error',
+      })
       setPendingAction('connect')
     }
   }
@@ -209,7 +214,6 @@ function ConnectPage({
               </ItemContent>
             </Item>
           </ItemGroup>
-          {error ? <FieldError>{error}</FieldError> : null}
         </CardContent>
         <CardFooter className="flex-wrap gap-2">{actions}</CardFooter>
       </Card>
