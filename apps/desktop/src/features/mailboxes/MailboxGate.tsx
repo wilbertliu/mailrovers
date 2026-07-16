@@ -1,6 +1,6 @@
 import type { DesktopEvent, MailboxSummary, SyncStatus } from '@mailrovers/mail-contracts'
 import type { MailboxId, OperationId } from '@mailrovers/mail-domain'
-import { Alert02Icon } from '@hugeicons/core-free-icons'
+import { Alert02Icon, BrowserIcon, ComputerProtectionIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -23,6 +23,14 @@ import {
   EmptyMedia,
 } from '@/components/ui/empty.js'
 import { FieldError } from '@/components/ui/field.js'
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemMedia,
+  ItemTitle,
+} from '@/components/ui/item.js'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
 import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress.js'
 import { Spinner } from '@/components/ui/spinner.js'
@@ -76,6 +84,46 @@ function MailboxErrorPage({ retrying, onRetry }: { retrying: boolean; onRetry: (
   )
 }
 
+type ConnectPendingAction = 'connect' | 'cancel'
+
+function ConnectActions({
+  pendingAction,
+  onConnect,
+  onCancel,
+  onBack,
+}: {
+  pendingAction: ConnectPendingAction | undefined
+  onConnect: () => void
+  onCancel: () => void
+  onBack?: (() => void) | undefined
+}) {
+  const connecting = pendingAction !== undefined
+
+  return (
+    <>
+      <Button type="button" onClick={onConnect} disabled={connecting}>
+        {pendingAction === 'connect' ? <Spinner data-icon="inline-start" /> : null}
+        {pendingAction === 'connect' ? 'Waiting for Google…' : 'Connect Gmail'}
+      </Button>
+      {connecting ? (
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={onCancel}
+          disabled={pendingAction === 'cancel'}
+        >
+          {pendingAction === 'cancel' ? <Spinner data-icon="inline-start" /> : null}
+          {pendingAction === 'cancel' ? 'Cancelling…' : 'Cancel'}
+        </Button>
+      ) : onBack ? (
+        <Button type="button" variant="secondary" onClick={onBack}>
+          Back
+        </Button>
+      ) : null}
+    </>
+  )
+}
+
 function ConnectPage({
   onConnected,
   onCancel,
@@ -83,7 +131,7 @@ function ConnectPage({
   onConnected: (mailboxId: MailboxId) => Promise<void>
   onCancel?: (() => void) | undefined
 }) {
-  const [pendingAction, setPendingAction] = useState<'connect' | 'cancel'>()
+  const [pendingAction, setPendingAction] = useState<ConnectPendingAction>()
   const [operation, setOperation] = useState<OperationId>()
   const [error, setError] = useState<string>()
 
@@ -118,47 +166,52 @@ function ConnectPage({
     }
   }
 
-  const connecting = pendingAction !== undefined
+  const actions = (
+    <ConnectActions
+      pendingAction={pendingAction}
+      onConnect={() => void connect()}
+      onCancel={() => void cancel()}
+      {...(onCancel ? { onBack: onCancel } : {})}
+    />
+  )
 
   return (
     <main className="grid h-full place-items-center p-6">
-      <Card className="w-full max-w-lg">
+      <Card className="w-full max-w-xl">
         <CardHeader>
-          <p>Local-first email</p>
           <CardTitle>
-            <h1 className="text-balance">Connect Gmail</h1>
+            <h1 className="text-balance">Before you connect</h1>
           </CardTitle>
           <CardDescription className="text-pretty">
-            MailRovers stores your mail on this Mac. Google authorization opens in your default
-            browser.
+            MailRovers connects directly to Gmail and keeps your imported mail on this Mac.
           </CardDescription>
         </CardHeader>
-        {error ? (
-          <CardContent>
-            <FieldError>{error}</FieldError>
-          </CardContent>
-        ) : null}
-        <CardFooter className="gap-2">
-          <Button type="button" onClick={() => void connect()} disabled={connecting}>
-            {pendingAction === 'connect' ? <Spinner data-icon="inline-start" /> : null}
-            {pendingAction === 'connect' ? 'Waiting for Google…' : 'Connect Gmail'}
-          </Button>
-          {connecting ? (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => void cancel()}
-              disabled={pendingAction === 'cancel'}
-            >
-              {pendingAction === 'cancel' ? <Spinner data-icon="inline-start" /> : null}
-              {pendingAction === 'cancel' ? 'Cancelling…' : 'Cancel'}
-            </Button>
-          ) : onCancel ? (
-            <Button type="button" variant="secondary" onClick={onCancel}>
-              Back
-            </Button>
-          ) : null}
-        </CardFooter>
+        <CardContent className="flex flex-col gap-4">
+          <ItemGroup>
+            <Item variant="muted" size="sm">
+              <ItemMedia variant="icon">
+                <HugeiconsIcon icon={ComputerProtectionIcon} strokeWidth={2} />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>Stored on this Mac</ItemTitle>
+                <ItemDescription>
+                  Imported messages live in MailRovers' local database.
+                </ItemDescription>
+              </ItemContent>
+            </Item>
+            <Item variant="muted" size="sm">
+              <ItemMedia variant="icon">
+                <HugeiconsIcon icon={BrowserIcon} strokeWidth={2} />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle>Google handles sign-in</ItemTitle>
+                <ItemDescription>Authorization opens in your default browser.</ItemDescription>
+              </ItemContent>
+            </Item>
+          </ItemGroup>
+          {error ? <FieldError>{error}</FieldError> : null}
+        </CardContent>
+        <CardFooter className="flex-wrap gap-2">{actions}</CardFooter>
       </Card>
     </main>
   )
