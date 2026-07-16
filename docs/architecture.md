@@ -238,6 +238,8 @@ Package rules:
 
 The repository uses pinned TypeScript 7, Oxlint, `oxlint-tsgolint`, and Oxfmt versions. Oxlint performs repository-wide and type-aware linting; TypeScript remains the authoritative compiler and type checker. Oxfmt formats JavaScript, TypeScript, JSON, CSS, HTML, Markdown, and other supported project files with semicolons disabled and single quotes enabled.
 
+Desktop application components cannot import React's `useEffect`. Server and local mailbox state belongs in TanStack Query, and values derived from query data are computed during render. Code that synchronizes React with an external system, such as Electron subscriptions, timers, or unmount cleanup, lives in a focused hook under `apps/desktop/src/hooks`. Generated and low-level components under `apps/desktop/src/components/ui` are exempt because they adapt browser and component-library APIs.
+
 ESLint and Prettier are not part of the toolchain and must not be added as direct dependencies, configuration files, editor defaults, or CI steps. A tool that requires either one for repository linting or formatting must justify that dependency through a later architecture decision. Electron Forge currently brings Prettier into the lockfile transitively through `@electron/packager`; MailRovers does not configure or invoke it.
 
 Oxfmt is intentionally adopted while its upstream release is beta. Its version remains exact-pinned, formatting changes are reviewed during upgrades, and `pnpm format:check` protects CI from unreviewed output changes.

@@ -1,6 +1,7 @@
 import type { ConversationId, MailboxId, OperationId } from '@mailrovers/mail-domain'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button } from '@/components/ui/button.js'
+import { useCancelOperationOnUnmount } from '@/hooks/use-cancel-operation-on-unmount.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 
 export function ConversationSummary({
@@ -31,18 +32,7 @@ export function ConversationSummary({
     setStatus('idle')
   }
 
-  useEffect(
-    () => () => {
-      unsubscribe.current?.()
-      const active = operation.current
-      if (active)
-        void desktopBridge.cancelOperation({
-          requestId: desktopBridge.createRequestId(),
-          operationId: active,
-        })
-    },
-    [],
-  )
+  useCancelOperationOnUnmount({ operation, unsubscribe })
 
   const generate = async (force = false) => {
     unsubscribe.current?.()

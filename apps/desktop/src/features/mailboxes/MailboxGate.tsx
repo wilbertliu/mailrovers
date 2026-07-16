@@ -4,8 +4,7 @@ import { Alert02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { useCallback, useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import { useCallback, useState } from 'react'
 import { Button } from '@/components/ui/button.js'
 import { NativeSelect } from '@/components/ui/native-select.js'
 import {
@@ -27,6 +26,8 @@ import { FieldError } from '@/components/ui/field.js'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
 import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress.js'
 import { Spinner } from '@/components/ui/spinner.js'
+import { useImportSubscription } from '@/hooks/use-import-subscription.js'
+import { useMailboxRefreshErrorToast } from '@/hooks/use-mailbox-refresh-error-toast.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
 
@@ -200,18 +201,24 @@ function ImportPage({
   mailbox: MailboxSummary
   onChanged: () => Promise<void>
 }) {
-  const [status, setStatus] = useState<SyncStatus>()
+  const queryClient = useQueryClient()
   const [operation, setOperation] = useState<OperationId>()
   const [error, setError] = useState<string>()
   const [pendingAction, setPendingAction] = useState<'pause' | 'resume' | 'disconnect'>()
+  const statusQueryKey = ['sync-status', mailbox.id]
+  const statusQuery = useQuery({
+    queryKey: statusQueryKey,
+    queryFn: () =>
+      desktopBridge.getSyncStatus({
+        requestId: desktopBridge.createRequestId(),
+        mailboxId: mailbox.id,
+      }),
+  })
+  const status = statusQuery.data
 
   const refreshStatus = useCallback(async () => {
-    const value = await desktopBridge.getSyncStatus({
-      requestId: desktopBridge.createRequestId(),
-      mailboxId: mailbox.id,
-    })
-    setStatus(value)
-  }, [mailbox.id])
+    await queryClient.invalidateQueries({ queryKey: ['sync-status', mailbox.id] })
+  }, [mailbox.id, queryClient])
 
   const handleEvent = useCallback(
     (event: DesktopEvent) => {
@@ -221,11 +228,11 @@ function ImportPage({
           void onChanged()
           break
         case 'sync-progress':
-          setStatus(event.status)
+          queryClient.setQueryData(['sync-status', mailbox.id], event.status)
           break
         case 'sync-completed':
         case 'sync-cancelled':
-          setStatus(event.status)
+          queryClient.setQueryData(['sync-status', mailbox.id], event.status)
           void onChanged()
           break
         case 'events-overflowed':
@@ -234,7 +241,7 @@ function ImportPage({
           break
       }
     },
-    [onChanged, refreshStatus],
+    [mailbox.id, onChanged, queryClient, refreshStatus],
   )
 
   const start = useCallback(async () => {
@@ -244,27 +251,11 @@ function ImportPage({
     return receipt.requestId
   }, [mailbox.id])
 
-  useEffect(() => {
-    let unsubscribe: (() => void) | undefined
-    let active = true
-    void refreshStatus().catch((caught) => {
-      if (active)
-        setError(caught instanceof Error ? caught.message : 'Unable to load import status.')
-    })
-    if (mailbox.syncState === 'importing' || mailbox.syncState === 'reconciling')
-      void start()
-        .then((requestId) => {
-          if (active) unsubscribe = desktopBridge.subscribe(requestId, handleEvent)
-        })
-        .catch((caught) => {
-          if (active)
-            setError(caught instanceof Error ? caught.message : 'Unable to resume import.')
-        })
-    return () => {
-      active = false
-      unsubscribe?.()
-    }
-  }, [handleEvent, mailbox.syncState, refreshStatus, start])
+  const subscribe = useCallback(
+    (operationId: OperationId) => desktopBridge.subscribe(operationId, handleEvent),
+    [handleEvent],
+  )
+  useImportSubscription({ syncState: mailbox.syncState, start, subscribe, onError: setError })
 
   const pause = async () => {
     setPendingAction('pause')
@@ -349,7 +340,14 @@ function ImportPage({
               }
             </ProgressValue>
           </Progress>
-          {error ? <FieldError>{error}</FieldError> : null}
+          {error || statusQuery.error ? (
+            <FieldError>
+              {error ??
+                (statusQuery.error instanceof Error
+                  ? statusQuery.error.message
+                  : 'Unable to load import status.')}
+            </FieldError>
+          ) : null}
         </CardContent>
         <CardFooter className="flex-wrap gap-2">
           {paused || failed ? (
@@ -417,13 +415,11 @@ export function MailboxGate() {
     },
     [onChanged],
   )
-  useEffect(() => {
-    if (!mailboxes.isError || mailboxes.data === undefined) return
-    toast.error("Couldn't refresh mailboxes", {
-      id: 'mailboxes-refresh-error',
-      description: 'Showing the last available mailbox data.',
-    })
-  }, [mailboxes.data, mailboxes.errorUpdatedAt, mailboxes.isError])
+  useMailboxRefreshErrorToast({
+    hasCachedData: mailboxes.data !== undefined,
+    isError: mailboxes.isError,
+    errorUpdatedAt: mailboxes.errorUpdatedAt,
+  })
 
   const retryInitialLoad = async () => {
     setRetryingInitialLoad(true)
@@ -462,7 +458,9 @@ export function MailboxGate() {
             <NativeSelect
               className="min-w-55 py-1.5 pr-7 pl-2.5"
               value={mailbox.id}
-              onChange={(event) => setSelectedMailbox(mailboxes.data[event.target.selectedIndex]?.id)}
+              onChange={(event) =>
+                setSelectedMailbox(mailboxes.data[event.target.selectedIndex]?.id)
+              }
             >
               {mailboxes.data.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -471,12 +469,7 @@ export function MailboxGate() {
               ))}
             </NativeSelect>
           </label>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => setShowConnect(true)}
-          >
+          <Button type="button" variant="secondary" size="sm" onClick={() => setShowConnect(true)}>
             Add Gmail account
           </Button>
         </nav>

@@ -41,6 +41,13 @@
         "no-restricted-imports": [
           "error",
           {
+            "paths": [
+              {
+                "name": "react",
+                "importNames": ["useEffect"],
+                "message": "Do not use effects for fetching, query synchronization, or derived state. Put external-system synchronization in a focused hook under src/hooks."
+              }
+            ],
             "patterns": [
               {
                 "group": ["@base-ui/**", "@radix-ui/**"],
@@ -101,6 +108,22 @@
               {
                 "propName": "style",
                 "message": "Inline styles are forbidden outside components/ui. Move visual styling into a shared component or document a runtime layout exception."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/desktop/src/hooks/**/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@base-ui/**", "@radix-ui/**"],
+                "message": "Import UI foundations through components/ui."
               }
             ]
           }

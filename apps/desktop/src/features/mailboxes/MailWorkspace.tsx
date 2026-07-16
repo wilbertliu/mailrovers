@@ -8,7 +8,7 @@ import type {
 } from '@mailrovers/mail-contracts'
 import type { ConversationId, LabelId, MessageId } from '@mailrovers/mail-domain'
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { AiSettings } from '../ai/AiSettings.js'
@@ -62,9 +62,7 @@ export function MailWorkspace({
     () => labels.data?.find((label) => label.providerLabelId === 'INBOX'),
     [labels.data],
   )
-  useEffect(() => {
-    if (labelId === undefined && inbox !== undefined) setLabelId(inbox.id)
-  }, [inbox, labelId])
+  const activeLabelId = labelId ?? inbox?.id
   const executeCommand = async (command: MailCommand) => {
     const receipt = await desktopBridge.executeCommand({
       mailboxId,
@@ -219,7 +217,7 @@ export function MailWorkspace({
               type="button"
               key={label.id}
               className="flex w-full items-center justify-between px-2.5 py-2 text-start"
-              aria-pressed={label.id === labelId && !searchQuery}
+              aria-pressed={label.id === activeLabelId && !searchQuery}
               onClick={() => {
                 setLabelId(label.id)
                 setShowDrafts(false)
@@ -299,7 +297,7 @@ export function MailWorkspace({
       ) : (
         <InboxPage
           mailbox={mailboxId}
-          labelId={labelId}
+          labelId={activeLabelId}
           selectedId={selectedConversation}
           onSelect={setSelectedConversation}
         />

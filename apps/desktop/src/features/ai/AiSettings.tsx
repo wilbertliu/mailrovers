@@ -1,26 +1,27 @@
 import type { MailboxId } from '@mailrovers/mail-domain'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { Input } from '@/components/ui/input.js'
 
-export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClose: () => void }) {
+type AiConfiguration = Awaited<ReturnType<typeof desktopBridge.getAiConfiguration>>
+
+function AiSettingsForm({
+  mailboxId,
+  onClose,
+  configuration,
+}: {
+  mailboxId: MailboxId
+  onClose: () => void
+  configuration: AiConfiguration
+}) {
   const queryClient = useQueryClient()
-  const configuration = useQuery({
-    queryKey: ['ai-configuration', mailboxId],
-    queryFn: () => desktopBridge.getAiConfiguration(mailboxId),
-  })
-  const [baseUrl, setBaseUrl] = useState('https://api.openai.com/v1')
-  const [model, setModel] = useState('')
+  const [baseUrl, setBaseUrl] = useState(configuration.baseUrl ?? 'https://api.openai.com/v1')
+  const [model, setModel] = useState(configuration.model ?? '')
   const [apiKey, setApiKey] = useState('')
   const [status, setStatus] = useState<'idle' | 'saving' | 'testing' | 'saved' | 'valid'>('idle')
   const [error, setError] = useState<string>()
-
-  useEffect(() => {
-    if (configuration.data?.baseUrl) setBaseUrl(configuration.data.baseUrl)
-    if (configuration.data?.model) setModel(configuration.data.model)
-  }, [configuration.data])
 
   const save = async () => {
     setStatus('saving')
@@ -117,7 +118,7 @@ export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClo
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
             placeholder={
-              configuration.data?.hasApiKey ? 'Stored securely. Enter to replace.' : 'Required'
+              configuration.hasApiKey ? 'Stored securely. Enter to replace.' : 'Required'
             }
           />
         </label>
@@ -134,10 +135,7 @@ export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClo
           <Button
             type="submit"
             disabled={
-              status === 'saving' ||
-              !baseUrl ||
-              !model ||
-              (!apiKey && !configuration.data?.hasApiKey)
+              status === 'saving' || !baseUrl || !model || (!apiKey && !configuration.hasApiKey)
             }
           >
             {status === 'saving' ? 'Saving…' : 'Save settings'}
@@ -145,22 +143,22 @@ export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClo
           <Button
             type="button"
             variant="secondary"
-            disabled={!configuration.data?.hasApiKey || status === 'testing'}
+            disabled={!configuration.hasApiKey || status === 'testing'}
             onClick={() => void validate()}
           >
             {status === 'testing' ? 'Testing…' : 'Test connection'}
           </Button>
         </div>
         <output className="mt-3 block min-h-4.5" aria-live="polite">
-          {status === 'valid' || configuration.data?.state === 'valid'
+          {status === 'valid' || configuration.state === 'valid'
             ? 'Connection verified.'
             : status === 'saved'
               ? 'Settings saved.'
-              : configuration.data?.hasApiKey
+              : configuration.hasApiKey
                 ? 'API key stored securely.'
                 : ''}
         </output>
-        {configuration.data?.hasApiKey ? (
+        {configuration.hasApiKey ? (
           <Button
             type="button"
             variant="ghost"
@@ -172,5 +170,37 @@ export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClo
         ) : null}
       </form>
     </section>
+  )
+}
+
+export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClose: () => void }) {
+  const configuration = useQuery({
+    queryKey: ['ai-configuration', mailboxId],
+    queryFn: () => desktopBridge.getAiConfiguration(mailboxId),
+  })
+
+  if (configuration.data === undefined) {
+    return (
+      <section className="min-w-0 overflow-hidden" aria-labelledby="ai-settings-title">
+        <header className="flex h-19 items-center justify-between px-4.5 py-4">
+          <div>
+            <h1 className="truncate" id="ai-settings-title">
+              AI provider
+            </h1>
+            <p className="mt-1">Configured for this mailbox</p>
+          </div>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            Done
+          </Button>
+        </header>
+        <p className="px-4.5 py-5" role={configuration.isError ? 'alert' : undefined}>
+          {configuration.isError ? 'Could not load AI settings.' : 'Loading AI settings…'}
+        </p>
+      </section>
+    )
+  }
+
+  return (
+    <AiSettingsForm mailboxId={mailboxId} onClose={onClose} configuration={configuration.data} />
   )
 }

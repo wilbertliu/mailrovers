@@ -1,7 +1,9 @@
 import type { AiArtifact, Draft } from '@mailrovers/mail-contracts'
 import type { ConversationId, MailboxId, MessageId, OperationId } from '@mailrovers/mail-domain'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button.js'
+import { useCancelOperationOnUnmount } from '@/hooks/use-cancel-operation-on-unmount.js'
+import { useComposerAutosave } from '@/hooks/use-composer-autosave.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { Input } from '@/components/ui/input.js'
 import { Textarea } from '@/components/ui/textarea.js'
@@ -83,15 +85,11 @@ export function Composer({
     [mailboxId, seed],
   )
 
-  useEffect(() => {
-    if (suppressAutosave.current) {
-      suppressAutosave.current = false
-      return
-    }
-    if (!to && !subject && !body) return
-    const timer = setTimeout(() => void save({ to, subject, body }), 750)
-    return () => clearTimeout(timer)
-  }, [to, subject, body, save])
+  useComposerAutosave({
+    snapshot: { to, subject, body },
+    save,
+    suppressNextSave: suppressAutosave,
+  })
 
   const cancelAi = useCallback(async () => {
     const active = aiOperation.current
@@ -106,18 +104,7 @@ export function Composer({
     setAiStatus('idle')
   }, [])
 
-  useEffect(
-    () => () => {
-      aiUnsubscribe.current?.()
-      const active = aiOperation.current
-      if (active)
-        void desktopBridge.cancelOperation({
-          requestId: desktopBridge.createRequestId(),
-          operationId: active,
-        })
-    },
-    [],
-  )
+  useCancelOperationOnUnmount({ operation: aiOperation, unsubscribe: aiUnsubscribe })
 
   const generateReply = async () => {
     const conversationId = seed?.draft?.conversationId ?? seed?.conversationId
