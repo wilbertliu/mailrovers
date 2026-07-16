@@ -130,7 +130,7 @@ export function MailWorkspace({
   const search = useSearchPages(mailboxId, searchQuery)
 
   return (
-    <main className="grid h-[calc(100vh-56px)] min-w-220 grid-cols-[208px_minmax(320px,390px)_minmax(360px,1fr)] overflow-hidden max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]">
+    <main className="grid h-full min-w-220 grid-cols-[208px_minmax(320px,390px)_minmax(360px,1fr)] overflow-hidden max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]">
       <aside className="overflow-y-auto px-3 py-4.5 max-[980px]:hidden">
         <div className="flex items-center gap-2.5 px-2 pb-4.5">
           <span className="grid size-6.5 place-items-center" aria-hidden="true">

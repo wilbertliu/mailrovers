@@ -138,7 +138,6 @@
   .window-titlebar {
     -webkit-app-region: drag;
     app-region: drag;
-    padding-left: 5.5rem;
   }
 
   .window-titlebar :is(button, select, input, a, [role='button']) {

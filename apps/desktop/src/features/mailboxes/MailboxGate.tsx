@@ -32,18 +32,18 @@ import { MailWorkspace } from './MailWorkspace.js'
 
 function WindowFrame({ children, titlebar }: { children: ReactNode; titlebar?: ReactNode }) {
   return (
-    <>
-      <header className="window-titlebar flex h-14 shrink-0 items-center px-4 py-2">
+    <div className="flex h-screen flex-col overflow-hidden">
+      <header className="window-titlebar flex h-14 shrink-0 items-center py-2 pr-4 pl-22">
         {titlebar}
       </header>
-      {children}
-    </>
+      <div className="min-h-0 flex-1">{children}</div>
+    </div>
   )
 }
 
 function LoadingPage({ message }: { message: string }) {
   return (
-    <main className="grid min-h-[calc(100vh-56px)] place-items-center p-6">
+    <main className="grid h-full place-items-center p-6">
       <Marker className="w-auto" render={<output aria-live="polite" />}>
         <MarkerIcon>
           <Spinner aria-hidden="true" />
@@ -56,7 +56,7 @@ function LoadingPage({ message }: { message: string }) {
 
 function MailboxErrorPage({ retrying, onRetry }: { retrying: boolean; onRetry: () => void }) {
   return (
-    <main className="grid min-h-[calc(100vh-56px)] place-items-center p-6">
+    <main className="grid h-full place-items-center p-6">
       <Empty>
         <EmptyHeader>
           <EmptyMedia variant="icon">
@@ -120,7 +120,7 @@ function ConnectPage({
   const connecting = pendingAction !== undefined
 
   return (
-    <main className="grid min-h-[calc(100vh-56px)] place-items-center p-6">
+    <main className="grid h-full place-items-center p-6">
       <Card className="w-full max-w-lg">
         <CardHeader>
           <p>Local-first email</p>
@@ -328,7 +328,7 @@ function ImportPage({
   const failed = status?.phase === 'failed' || mailbox.syncState === 'failed'
 
   return (
-    <main className="grid min-h-[calc(100vh-56px)] place-items-center p-6">
+    <main className="grid h-full place-items-center p-6">
       <Card className="w-full max-w-lg">
         <CardHeader>
           <p className="truncate">{mailbox.emailAddress}</p>
