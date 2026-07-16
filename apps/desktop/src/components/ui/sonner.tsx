@@ -11,11 +11,33 @@ import {
   Loading03Icon,
 } from '@hugeicons/core-free-icons'
 
+import { cn } from '@/lib/utils'
+
 interface ToasterStyle extends React.CSSProperties {
   [property: `--${string}`]: string
 }
 
-const Toaster = ({ theme: requestedTheme, ...props }: ToasterProps) => {
+const semanticIconClasses = {
+  success: '[&_[data-icon]]:text-[var(--success-text)]',
+  info: '[&_[data-icon]]:text-[var(--info-text)]',
+  warning: '[&_[data-icon]]:text-[var(--warning-text)]',
+  error: '[&_[data-icon]]:text-destructive',
+}
+
+const quietToastClasses = {
+  toast:
+    '!w-fit !max-w-(--toast-max-width) !gap-2 !rounded-xl !border-border !bg-popover !p-3 !text-popover-foreground !shadow-md data-[x-position=center]:!inset-x-0 data-[x-position=center]:!mx-auto',
+  content: '!min-w-0 !gap-0.5',
+  title: '!text-sm !font-medium',
+  description: '!text-muted-foreground',
+  icon: 'self-start !mt-0.5',
+  actionButton: '!h-7 !rounded-full !bg-secondary !px-3 !text-secondary-foreground hover:!bg-muted',
+  cancelButton: '!h-7 !rounded-full !bg-transparent !px-3 !text-muted-foreground',
+  closeButton: '!border-border !bg-popover !text-muted-foreground',
+  ...semanticIconClasses,
+} satisfies NonNullable<ToasterProps['toastOptions']>['classNames']
+
+const Toaster = ({ theme: requestedTheme, className, toastOptions, ...props }: ToasterProps) => {
   const { theme } = useTheme()
   const toasterTheme =
     requestedTheme ??
@@ -26,13 +48,16 @@ const Toaster = ({ theme: requestedTheme, ...props }: ToasterProps) => {
     '--normal-text': 'var(--popover-foreground)',
     '--normal-border': 'var(--border)',
     '--border-radius': 'var(--radius)',
+    '--toast-max-width': 'min(24rem, calc(100vw - 2rem))',
+    '--toast-icon-margin-start': '0px',
+    '--toast-icon-margin-end': '0px',
   } satisfies ToasterStyle
 
   return (
     <Sonner
       {...props}
       theme={toasterTheme}
-      className="toaster group"
+      className={cn('toaster group', className)}
       icons={{
         success: <HugeiconsIcon icon={CheckmarkCircle02Icon} strokeWidth={2} className="size-4" />,
         info: <HugeiconsIcon icon={InformationCircleIcon} strokeWidth={2} className="size-4" />,
@@ -46,8 +71,10 @@ const Toaster = ({ theme: requestedTheme, ...props }: ToasterProps) => {
       }}
       style={style}
       toastOptions={{
+        ...toastOptions,
         classNames: {
-          toast: 'cn-toast',
+          ...quietToastClasses,
+          ...toastOptions?.classNames,
         },
       }}
     />

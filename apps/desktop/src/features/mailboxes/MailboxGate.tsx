@@ -146,7 +146,7 @@ function ConnectPage({
       const cancelled =
         caught instanceof DesktopApplicationError && caught.detail.code === 'OPERATION_CANCELLED'
       if (!cancelled)
-        toast.error(caught instanceof Error ? caught.message : 'Gmail connection failed.', {
+        toast.error(caught instanceof Error ? caught.message : "Couldn't connect Gmail", {
           id: 'gmail-connect-error',
         })
     } finally {
@@ -164,7 +164,7 @@ function ConnectPage({
         operationId: operation,
       })
     } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : 'Unable to cancel Gmail connection.', {
+      toast.error(caught instanceof Error ? caught.message : "Couldn't cancel Gmail connection", {
         id: 'gmail-cancel-error',
       })
       setPendingAction('connect')

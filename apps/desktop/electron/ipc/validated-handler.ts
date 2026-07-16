@@ -86,7 +86,7 @@ export function safeApplicationError(error: unknown, id: string): ApplicationErr
   if (error instanceof Error && error.message.includes('client ID is not configured'))
     return applicationError(
       'GMAIL_CONFIGURATION_REQUIRED',
-      'This build does not have a Google OAuth client ID.',
+      "Google sign-in isn't configured",
       false,
       id,
       'reviewSettings',

@@ -8,7 +8,7 @@ export function App() {
   return (
     <>
       <MailboxGate />
-      <Toaster />
+      <Toaster position="top-center" />
     </>
   )
 }
