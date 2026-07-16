@@ -26,18 +26,28 @@ const semanticIconClasses = {
 
 const quietToastClasses = {
   toast:
-    '!w-fit !max-w-(--toast-max-width) !gap-2 !rounded-xl !border-border !bg-popover !p-3 !text-popover-foreground !shadow-md data-[x-position=center]:!inset-x-0 data-[x-position=center]:!mx-auto',
-  content: '!min-w-0 !gap-0.5',
-  title: '!text-sm !font-medium',
-  description: '!text-muted-foreground',
-  icon: 'self-start !mt-0.5',
-  actionButton: '!h-7 !rounded-full !bg-secondary !px-3 !text-secondary-foreground hover:!bg-muted',
-  cancelButton: '!h-7 !rounded-full !bg-transparent !px-3 !text-muted-foreground',
-  closeButton: '!border-border !bg-popover !text-muted-foreground',
+    'flex items-center gap-2 rounded-xl border border-border bg-popover p-3 text-sm text-popover-foreground shadow-md outline-none select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring data-[x-position=center]:inset-x-0 data-[x-position=center]:mx-auto data-[expanded=false]:data-[front=false]:[&>*]:opacity-0',
+  content: 'flex min-w-0 flex-col gap-0.5',
+  title: 'font-medium leading-5',
+  description: 'leading-5 text-muted-foreground opacity-80',
+  icon: 'relative mt-0.5 flex size-4 shrink-0 self-start items-center justify-center',
+  actionButton:
+    'ml-auto inline-flex h-7 shrink-0 cursor-pointer items-center rounded-full bg-secondary px-3 text-xs font-medium text-secondary-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50',
+  cancelButton:
+    'ml-auto inline-flex h-7 shrink-0 cursor-pointer items-center rounded-full bg-transparent px-3 text-xs font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50',
+  closeButton:
+    'absolute -top-2 -left-2 z-10 flex size-5 cursor-pointer items-center justify-center rounded-full border border-border bg-popover p-0 text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-50',
   ...semanticIconClasses,
 } satisfies NonNullable<ToasterProps['toastOptions']>['classNames']
 
-const Toaster = ({ theme: requestedTheme, className, toastOptions, ...props }: ToasterProps) => {
+const Toaster = ({
+  theme: requestedTheme,
+  className,
+  style: requestedStyle,
+  icons: requestedIcons,
+  toastOptions,
+  ...props
+}: ToasterProps) => {
   const { theme } = useTheme()
   const toasterTheme =
     requestedTheme ??
@@ -51,6 +61,7 @@ const Toaster = ({ theme: requestedTheme, className, toastOptions, ...props }: T
     '--toast-max-width': 'min(24rem, calc(100vw - 2rem))',
     '--toast-icon-margin-start': '0px',
     '--toast-icon-margin-end': '0px',
+    ...requestedStyle,
   } satisfies ToasterStyle
 
   return (
@@ -68,10 +79,17 @@ const Toaster = ({ theme: requestedTheme, className, toastOptions, ...props }: T
         loading: (
           <HugeiconsIcon icon={Loading03Icon} strokeWidth={2} className="size-4 animate-spin" />
         ),
+        ...requestedIcons,
       }}
       style={style}
       toastOptions={{
         ...toastOptions,
+        unstyled: true,
+        style: {
+          width: 'fit-content',
+          maxWidth: 'var(--toast-max-width)',
+          ...toastOptions?.style,
+        },
         classNames: {
           ...quietToastClasses,
           ...toastOptions?.classNames,
