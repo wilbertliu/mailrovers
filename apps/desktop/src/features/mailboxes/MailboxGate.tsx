@@ -37,6 +37,9 @@ import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress
 import { Spinner } from '@/components/ui/spinner.js'
 import { DesktopApplicationError, desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
+import { ConnectionSuccessPage } from './ConnectionSuccessPage.js'
+
+const CONNECTION_HANDOFF_MINIMUM_MS = 800
 
 function WindowFrame({ children, titlebar }: { children: ReactNode; titlebar?: ReactNode }) {
   return (
@@ -421,6 +424,7 @@ function ImportPage({
 export function MailboxGate() {
   const queryClient = useQueryClient()
   const [selectedMailbox, setSelectedMailbox] = useState<MailboxId>()
+  const [connectionHandoff, setConnectionHandoff] = useState<MailboxId>()
   const [showConnect, setShowConnect] = useState(false)
   const [retryingInitialLoad, setRetryingInitialLoad] = useState(false)
   const mailboxes = useQuery({
@@ -428,12 +432,22 @@ export function MailboxGate() {
     queryFn: () => desktopBridge.listMailboxes(desktopBridge.createRequestId()),
     staleTime: 2_000,
   })
+  const handoffMinimum = useQuery({
+    queryKey: ['connection-handoff-minimum', connectionHandoff],
+    queryFn: () =>
+      new Promise<true>((resolve) => {
+        setTimeout(() => resolve(true), CONNECTION_HANDOFF_MINIMUM_MS)
+      }),
+    enabled: connectionHandoff !== undefined,
+    staleTime: Infinity,
+  })
   const onChanged = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ['mailboxes'] })
   }, [queryClient])
   const onConnected = useCallback(
     async (mailboxId: MailboxId) => {
       setSelectedMailbox(mailboxId)
+      setConnectionHandoff(mailboxId)
       setShowConnect(false)
       await onChanged()
     },
@@ -466,7 +480,17 @@ export function MailboxGate() {
           {...(mailbox ? { onCancel: () => setShowConnect(false) } : {})}
         />
       )
-    } else if (mailbox.connectionState === 'connected' && mailbox.syncState !== 'ready') {
+    } else if (
+      connectionHandoff === mailbox.id &&
+      (handoffMinimum.data !== true ||
+        (mailbox.importedMessageCount === 0 && mailbox.syncState !== 'ready'))
+    ) {
+      content = <ConnectionSuccessPage emailAddress={mailbox.emailAddress} />
+    } else if (
+      mailbox.connectionState === 'connected' &&
+      mailbox.syncState !== 'ready' &&
+      connectionHandoff !== mailbox.id
+    ) {
       content = <ImportPage mailbox={mailbox} onChanged={onChanged} />
     } else {
       titlebar = (

@@ -10,6 +10,8 @@ import type { ConversationId, LabelId, MessageId } from '@mailrovers/mail-domain
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button.js'
+import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
+import { Spinner } from '@/components/ui/spinner.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { AiSettings } from '../ai/AiSettings.js'
 import { Composer } from '../composer/Composer.js'
@@ -154,6 +156,14 @@ export function MailWorkspace({
           <output className="mt-2 block">
             Offline cache retained. Reconnect Gmail to refresh, send, or edit Gmail.
           </output>
+        ) : null}
+        {mailbox.connectionState === 'connected' && mailbox.syncState !== 'ready' ? (
+          <Marker className="mt-2 w-auto" render={<output aria-live="polite" />}>
+            <MarkerIcon>
+              <Spinner aria-hidden="true" />
+            </MarkerIcon>
+            <MarkerContent>Importing older mail</MarkerContent>
+          </Marker>
         ) : null}
         {refreshStatus ? <output className="mt-2 block">{refreshStatus}</output> : null}
         <Button className="mt-3 mb-3 w-full" onClick={() => setComposer({})}>

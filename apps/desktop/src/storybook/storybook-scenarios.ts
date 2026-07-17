@@ -202,6 +202,11 @@ const connectedImportMailbox = {
   importTotalEstimate: 12_482,
 } satisfies MailboxSummary
 
+const usableImportMailbox = {
+  ...connectedImportMailbox,
+  importedMessageCount: 24,
+} satisfies MailboxSummary
+
 const completedSyncStatus = {
   ...storybookFixtures.syncStatus,
   phase: 'complete',
@@ -248,7 +253,7 @@ export const storybookScenarios = {
   connectionSucceeded: scenario('Google authorization completed', {
     data: { mailboxes: [] },
     responses: {
-      listMailboxes: [success([]), success([connectedImportMailbox])],
+      listMailboxes: [success([]), success([usableImportMailbox])],
       connectGmail: success({
         mailbox: connectedImportMailbox,
         sync: storybookFixtures.syncReceipt,

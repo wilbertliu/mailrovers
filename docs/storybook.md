@@ -96,7 +96,8 @@ The catalog covers every user-visible renderer branch currently implemented by t
 
 - Startup: the local opening screen shown before database and IPC initialization.
 - Mailbox gate: initial loading and failure, retry, first account, additional account, Google
-  connection pending/success/failure, and cancellation pending/failure.
+  connection pending/success/failure, the readiness-driven workspace handoff, and cancellation
+  pending/failure.
 - Import: every sync phase, unknown totals, status failure, automatic-start failure, pause, resume,
   retry, and disconnect pending states.
 - Workspace: inbox loading/error/empty/populated, label loading/error, draft loading/empty/populated,

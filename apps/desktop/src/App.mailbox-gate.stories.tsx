@@ -106,6 +106,8 @@ export const GoogleConnectionSucceeded: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     await userEvent.click(await canvas.findByRole('button', { name: 'Connect Gmail' }))
-    await expect(await canvas.findByRole('heading', { name: 'Importing labels' })).toBeVisible()
+    await expect(await canvas.findByRole('heading', { name: 'Gmail connected' })).toBeVisible()
+    await expect(await canvas.findByRole('textbox', { name: 'Search mail' })).toBeVisible()
+    await expect(await canvas.findByText('Importing older mail')).toBeVisible()
   },
 }
