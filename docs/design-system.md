@@ -23,6 +23,14 @@ The reset keeps three local CSS policies:
 
 Tailwind's default shadow scale remains available because generated shadcn components use it. Product code outside `components/ui` cannot use shadow utilities, so elevation decisions remain inside the shared component layer.
 
+## Elevation
+
+Elevation communicates stacking and temporary UI state. It is not decoration. Keep persistent product surfaces flat unless overlap requires separation.
+
+Sonner toasts use a two-layer shadow in light mode: `0 1px 2px oklch(0 0 0 / 6%)` for contact and `0 5px 10px -4px oklch(0 0 0 / 10%)` for lift. Pair it with a 70% border so a white toast remains distinct on the white application background. In dark mode, use the full border token and `shadow-sm`; the border provides most of the separation.
+
+Toasts should appear above product content but below menus, dialogs, and sheets. Do not raise them to `shadow-lg` or add glow. Their elevation should read as transient feedback, not a new workspace layer.
+
 ## Dependency direction
 
 The allowed direction is:

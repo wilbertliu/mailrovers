@@ -26,7 +26,7 @@ const semanticIconClasses = {
 
 const quietToastClasses = {
   toast:
-    'flex items-center gap-2 rounded-xl border border-border bg-popover p-3 text-sm text-popover-foreground shadow-md outline-none select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring data-[x-position=center]:inset-x-0 data-[x-position=center]:mx-auto data-[expanded=false]:data-[front=false]:[&>*]:opacity-0',
+    'flex items-center gap-2 rounded-xl border border-border/70 bg-popover p-3 text-sm text-popover-foreground shadow-[0_1px_2px_oklch(0_0_0/0.06),0_5px_10px_-4px_oklch(0_0_0/0.10)] outline-none select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring data-[x-position=center]:inset-x-0 data-[x-position=center]:mx-auto data-[expanded=false]:data-[front=false]:[&>*]:opacity-0 dark:border-border dark:shadow-sm',
   content: 'flex min-w-0 flex-col gap-0.5',
   title: 'font-medium leading-5',
   description: 'leading-5 text-muted-foreground opacity-80',
