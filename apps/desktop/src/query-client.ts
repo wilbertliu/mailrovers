@@ -16,9 +16,9 @@ function isMailboxQuery(queryKey: QueryKey): boolean {
 }
 
 function showMailboxRefreshError(): void {
-  toast.error("Couldn't refresh mailboxes", {
+  toast.error('Refresh failed', {
     id: 'mailboxes-refresh-error',
-    description: 'Showing the last available mailbox data.',
+    description: 'Using saved mailbox data',
   })
 }
 

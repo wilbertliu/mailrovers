@@ -144,7 +144,7 @@ function ConnectPage({
       const cancelled =
         caught instanceof DesktopApplicationError && caught.detail.code === 'OPERATION_CANCELLED'
       if (!cancelled)
-        toast.error(caught instanceof Error ? caught.message : "Couldn't connect Gmail", {
+        toast.error('Gmail connection failed', {
           id: 'gmail-connect-error',
         })
     } finally {
@@ -161,8 +161,8 @@ function ConnectPage({
         requestId: desktopBridge.createRequestId(),
         operationId: operation,
       })
-    } catch (caught) {
-      toast.error(caught instanceof Error ? caught.message : "Couldn't cancel Gmail connection", {
+    } catch {
+      toast.error("Couldn't cancel connection", {
         id: 'gmail-cancel-error',
       })
       setPendingAction('connect')
