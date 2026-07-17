@@ -37,9 +37,20 @@ import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress
 import { Spinner } from '@/components/ui/spinner.js'
 import { DesktopApplicationError, desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
-import { ConnectionSuccessPage } from './ConnectionSuccessPage.js'
+import { ConnectionHandoffPage } from './ConnectionHandoffPage.js'
 
 const CONNECTION_HANDOFF_MINIMUM_MS = 800
+
+type ConnectionHandoff = {
+  mailboxId: MailboxId
+  minimumElapsed: boolean
+}
+
+function connectionHandoffMinimum(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, CONNECTION_HANDOFF_MINIMUM_MS)
+  })
+}
 
 function WindowFrame({ children, titlebar }: { children: ReactNode; titlebar?: ReactNode }) {
   return (
@@ -424,7 +435,7 @@ function ImportPage({
 export function MailboxGate() {
   const queryClient = useQueryClient()
   const [selectedMailbox, setSelectedMailbox] = useState<MailboxId>()
-  const [connectionHandoff, setConnectionHandoff] = useState<MailboxId>()
+  const [connectionHandoff, setConnectionHandoff] = useState<ConnectionHandoff>()
   const [showConnect, setShowConnect] = useState(false)
   const [retryingInitialLoad, setRetryingInitialLoad] = useState(false)
   const mailboxes = useQuery({
@@ -432,24 +443,18 @@ export function MailboxGate() {
     queryFn: () => desktopBridge.listMailboxes(desktopBridge.createRequestId()),
     staleTime: 2_000,
   })
-  const handoffMinimum = useQuery({
-    queryKey: ['connection-handoff-minimum', connectionHandoff],
-    queryFn: () =>
-      new Promise<true>((resolve) => {
-        setTimeout(() => resolve(true), CONNECTION_HANDOFF_MINIMUM_MS)
-      }),
-    enabled: connectionHandoff !== undefined,
-    staleTime: Infinity,
-  })
   const onChanged = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ['mailboxes'] })
   }, [queryClient])
   const onConnected = useCallback(
     async (mailboxId: MailboxId) => {
       setSelectedMailbox(mailboxId)
-      setConnectionHandoff(mailboxId)
+      setConnectionHandoff({ mailboxId, minimumElapsed: false })
       setShowConnect(false)
-      await onChanged()
+      await Promise.all([onChanged(), connectionHandoffMinimum()])
+      setConnectionHandoff((current) =>
+        current?.mailboxId === mailboxId ? { ...current, minimumElapsed: true } : current,
+      )
     },
     [onChanged],
   )
@@ -481,15 +486,15 @@ export function MailboxGate() {
         />
       )
     } else if (
-      connectionHandoff === mailbox.id &&
-      (handoffMinimum.data !== true ||
+      connectionHandoff?.mailboxId === mailbox.id &&
+      (!connectionHandoff.minimumElapsed ||
         (mailbox.importedMessageCount === 0 && mailbox.syncState !== 'ready'))
     ) {
-      content = <ConnectionSuccessPage emailAddress={mailbox.emailAddress} />
+      content = <ConnectionHandoffPage emailAddress={mailbox.emailAddress} />
     } else if (
       mailbox.connectionState === 'connected' &&
       mailbox.syncState !== 'ready' &&
-      connectionHandoff !== mailbox.id
+      connectionHandoff?.mailboxId !== mailbox.id
     ) {
       content = <ImportPage mailbox={mailbox} onChanged={onChanged} />
     } else {

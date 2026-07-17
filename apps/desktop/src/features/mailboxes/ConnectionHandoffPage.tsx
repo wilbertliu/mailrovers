@@ -12,7 +12,7 @@ import {
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
 import { Spinner } from '@/components/ui/spinner.js'
 
-export function ConnectionSuccessPage({ emailAddress }: { emailAddress: string }) {
+export function ConnectionHandoffPage({ emailAddress }: { emailAddress: string }) {
   return (
     <main className="grid h-full place-items-center p-6">
       <Empty>
