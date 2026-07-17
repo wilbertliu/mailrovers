@@ -34,6 +34,8 @@ fictional fixtures in `src/storybook/storybook-fixtures.ts`.
 - `src/storybook/storybook-scenarios.ts` describes responses, delays, pending operations, failures,
   and subscription events.
 - `src/storybook/mock-desktop-bridge.ts` implements the complete preload bridge contract.
+- `src/startup-screen-document.ts` owns the script-free startup document shared by Electron and its
+  Storybook story.
 - `src/App.*.stories.tsx` groups states by user flow and uses `play` functions for states that only
   appear after an interaction.
 
@@ -92,6 +94,7 @@ single-instance behavior, OAuth browser handoff, and packaged-app behavior.
 
 The catalog covers every user-visible renderer branch currently implemented by the app:
 
+- Startup: the local opening screen shown before database and IPC initialization.
 - Mailbox gate: initial loading and failure, retry, first account, additional account, Google
   connection pending/success/failure, and cancellation pending/failure.
 - Import: every sync phase, unknown totals, status failure, automatic-start failure, pause, resume,

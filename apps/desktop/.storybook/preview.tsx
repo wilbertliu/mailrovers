@@ -77,7 +77,16 @@ const preview: Preview = {
       storySort: {
         order: [
           'Flows',
-          ['Mailbox gate', 'Import', 'Workspace', 'Search', 'Conversation', 'Composer', 'AI'],
+          [
+            'Startup',
+            'Mailbox gate',
+            'Import',
+            'Workspace',
+            'Search',
+            'Conversation',
+            'Composer',
+            'AI',
+          ],
         ],
       },
     },
