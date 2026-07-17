@@ -1,7 +1,7 @@
 import type { ConversationId, MailboxId, OperationId } from '@mailrovers/mail-domain'
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button.js'
-import { useCancelOperationOnUnmount } from '@/hooks/use-cancel-operation-on-unmount.js'
+import { useOperationCleanup } from '@/hooks/use-operation-cleanup.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 
 export function ConversationSummary({
@@ -32,7 +32,14 @@ export function ConversationSummary({
     setStatus('idle')
   }
 
-  useCancelOperationOnUnmount({ operation, unsubscribe })
+  const cleanupOperation = useOperationCleanup({ operation, unsubscribe })
+  const cleanupRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (node === null) return
+      return cleanupOperation
+    },
+    [cleanupOperation],
+  )
 
   const generate = async (force = false) => {
     unsubscribe.current?.()
@@ -87,40 +94,41 @@ export function ConversationSummary({
     }
   }
 
-  if (status === 'idle')
-    return (
-      <div className="px-3.5 pt-3">
-        <Button type="button" variant="secondary" size="sm" onClick={() => void generate()}>
-          Summarize conversation
-        </Button>
-      </div>
-    )
-
   return (
-    <section className="mx-3.5 mt-3.5" aria-label="Conversation summary">
-      <header className="flex min-h-10.5 items-center justify-between px-3 py-2">
-        <strong>AI summary</strong>
-        <div>
-          {status === 'streaming' ? (
-            <Button type="button" variant="ghost" size="xs" onClick={() => void cancel()}>
-              Cancel
-            </Button>
-          ) : (
-            <Button type="button" variant="ghost" size="xs" onClick={() => void generate(true)}>
-              Regenerate
-            </Button>
-          )}
+    <div ref={cleanupRef} className="contents">
+      {status === 'idle' ? (
+        <div className="px-3.5 pt-3">
+          <Button type="button" variant="secondary" size="sm" onClick={() => void generate()}>
+            Summarize conversation
+          </Button>
         </div>
-      </header>
-      {error ? (
-        <p role="alert" className="whitespace-pre-wrap p-3">
-          {error}
-        </p>
       ) : (
-        <p className="whitespace-pre-wrap p-3" aria-live="polite">
-          {content || 'Writing summary…'}
-        </p>
+        <section className="mx-3.5 mt-3.5" aria-label="Conversation summary">
+          <header className="flex min-h-10.5 items-center justify-between px-3 py-2">
+            <strong>AI summary</strong>
+            <div>
+              {status === 'streaming' ? (
+                <Button type="button" variant="ghost" size="xs" onClick={() => void cancel()}>
+                  Cancel
+                </Button>
+              ) : (
+                <Button type="button" variant="ghost" size="xs" onClick={() => void generate(true)}>
+                  Regenerate
+                </Button>
+              )}
+            </div>
+          </header>
+          {error ? (
+            <p role="alert" className="whitespace-pre-wrap p-3">
+              {error}
+            </p>
+          ) : (
+            <p className="whitespace-pre-wrap p-3" aria-live="polite">
+              {content || 'Writing summary…'}
+            </p>
+          )}
+        </section>
       )}
-    </section>
+    </div>
   )
 }

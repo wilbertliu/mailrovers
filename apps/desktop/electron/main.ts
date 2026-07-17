@@ -21,14 +21,10 @@ import { allowedExternalUrl } from './external-links.js'
 import { DesktopEventBus } from './ipc/desktop-event-bus.js'
 import { registerMailApplication } from './ipc/register-mail-application.js'
 import { isAllowedRendererUrl } from './ipc/authorization.js'
-import { acquireSingleInstance } from './single-instance.js'
+import { acquireSingleInstance, presentWindow } from './single-instance.js'
 
 let mainWindow: BrowserWindow | undefined
-let pendingSecondInstanceFocus = false
-const hasSingleInstanceLock = acquireSingleInstance(app, () => {
-  if (mainWindow === undefined) pendingSecondInstanceFocus = true
-  return mainWindow
-})
+const hasSingleInstanceLock = acquireSingleInstance(app, () => mainWindow)
 const stages: Record<string, number> = { mainEntry: performance.now() }
 const smokeResultPath = process.env.MAILROVERS_SMOKE_RESULT_PATH
 const checkpointPath = process.env.MAILROVERS_SMOKE_CHECKPOINT_PATH
@@ -99,6 +95,50 @@ async function backfillSearch(store: MailStore): Promise<void> {
 }
 
 async function createWindow(): Promise<void> {
+  const packagedRendererPath = path.join(
+    __dirname,
+    `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
+  )
+  const rendererUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL ?? pathToFileURL(packagedRendererPath).href
+  checkpoint('beforeWindow', rendererUrl)
+  const window = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    show: false,
+    backgroundColor: '#ffffff',
+    titleBarStyle: 'hiddenInset',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      backgroundThrottling: process.env.MAILROVERS_PERFORMANCE !== '1',
+    },
+  })
+  mainWindow = window
+  checkpoint('windowCreated')
+  const startupDocument = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+    <meta name="color-scheme" content="light dark">
+    <title>MailRovers</title>
+    <style>
+      :root { font: 15px system-ui, sans-serif; color: #171717; background: #fff; }
+      @media (prefers-color-scheme: dark) { :root { color: #fafafa; background: #242424; } }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; }
+      main { text-align: center; }
+      h1 { margin: 0 0 8px; font-size: 20px; font-weight: 650; }
+      p { margin: 0; color: #737373; }
+    </style>
+  </head>
+  <body><main><h1>MailRovers</h1><p>Opening your mailbox…</p></main></body>
+</html>`
+  await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(startupDocument)}`)
+  await presentWindow(app, window)
+  checkpoint('windowVisible')
+
   const dbPath =
     process.env.MAILROVERS_DB_PATH ?? path.join(app.getPath('userData'), 'mailrovers.sqlite')
   checkpoint('beforeDatabase', dbPath)
@@ -121,39 +161,6 @@ async function createWindow(): Promise<void> {
   unsubscribeCommittedChanges = () => composed.unsubscribeCommittedChanges()
   shutdownNormalization = () => composed.shutdownNormalization()
 
-  const packagedRendererPath = path.join(
-    __dirname,
-    `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`,
-  )
-  const rendererUrl = MAIN_WINDOW_VITE_DEV_SERVER_URL ?? pathToFileURL(packagedRendererPath).href
-  checkpoint('beforeWindow', rendererUrl)
-  const window = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    show: false,
-    titleBarStyle: 'hiddenInset',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      backgroundThrottling: process.env.MAILROVERS_PERFORMANCE !== '1',
-    },
-  })
-  mainWindow = window
-  const visible = new Promise<void>((resolve) => {
-    window.once('ready-to-show', () => {
-      window.show()
-      checkpoint('windowVisible')
-      resolve()
-    })
-  })
-  if (pendingSecondInstanceFocus) {
-    pendingSecondInstanceFocus = false
-    window.show()
-    window.focus()
-  }
-  checkpoint('windowCreated')
   const windowContents = window.webContents
   eventBus.attach(windowContents)
   windowContents.once('destroyed', () => eventBus.detach(windowContents))
@@ -189,7 +196,6 @@ async function createWindow(): Promise<void> {
   checkpoint('beforeLoad')
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) await window.loadURL(rendererUrl)
   else await window.loadFile(packagedRendererPath)
-  await visible
   checkpoint('windowLoaded')
   void backfillSearch(host.store).catch((error: unknown) =>
     logger.error('search-indexing-failed', { code: 'INTERNAL_ERROR', error }),
@@ -213,9 +219,7 @@ async function createWindow(): Promise<void> {
   if (!smokeResultPath) return
   const performanceRequested = process.env.MAILROVERS_PERFORMANCE === '1'
   if (performanceRequested) {
-    app.focus({ steal: true })
-    window.show()
-    window.focus()
+    await presentWindow(app, window)
   }
   checkpoint('beforeProbe')
   const rendererReadiness: Record<string, unknown> = await window.webContents
@@ -319,6 +323,9 @@ if (hasSingleInstanceLock) {
     .catch(writeSmokeFailure)
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()
+  })
+  app.on('activate', () => {
+    if (mainWindow !== undefined) void presentWindow(app, mainWindow)
   })
   app.on('before-quit', (event) => {
     if (shuttingDown) return

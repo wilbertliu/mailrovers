@@ -175,6 +175,7 @@ The bridge must expose task-oriented operations such as `listThreads` and `sendD
 The main process owns:
 
 - Application lifecycle and windows.
+- Startup presentation. The main window displays a local, script-free startup surface before database initialization, then replaces it with the renderer after storage and IPC are ready. Window presentation shows the window before activating and focusing the app so macOS can bring it to the foreground reliably.
 - Single-instance enforcement. `app.requestSingleInstanceLock()` runs before readiness, database opening, worker creation, provider construction, or command/sync startup. A losing process quits without opening local services; the winner restores, shows, and focuses its window on `second-instance`.
 - Deep links and OAuth callback coordination.
 - Native menus, notifications, dock integration, and updater lifecycle.
@@ -238,7 +239,11 @@ Package rules:
 
 The repository uses pinned TypeScript 7, Oxlint, `oxlint-tsgolint`, and Oxfmt versions. Oxlint performs repository-wide and type-aware linting and rejects explicit `any` annotations; TypeScript's strict mode rejects implicit `any` types and remains the authoritative compiler and type checker. Oxfmt formats JavaScript, TypeScript, JSON, CSS, HTML, Markdown, and other supported project files with semicolons disabled and single quotes enabled.
 
-Desktop application components cannot import React's `useEffect`. Server and local mailbox state belongs in TanStack Query, and values derived from query data are computed during render. Code that synchronizes React with an external system, such as Electron subscriptions, timers, or unmount cleanup, lives in a focused hook under `apps/desktop/src/hooks`. Generated and low-level components under `apps/desktop/src/components/ui` are exempt because they adapt browser and component-library APIs.
+Checked-in application code cannot import or call React's `useEffect`, `useLayoutEffect`, or `useInsertionEffect`. This rule includes renderer hooks, low-level UI components, Storybook configuration, and reusable packages. Third-party dependencies are outside the boundary. `pnpm lint` enforces the restriction through Oxlint and a source-tree check.
+
+Server and local mailbox state belongs in TanStack Query, and values derived from query data are computed during render. Browser and Electron subscriptions use `useSyncExternalStore` when React reads their state. Process-lifetime synchronization lives in an explicit coordinator beside its owner, such as the QueryClient subscription in `apps/desktop/src/main.tsx`. User-initiated work starts in event handlers. Component-bound resources use stable React 19 callback-ref cleanup. Timers live in cancellable controller objects and start from user events.
+
+The main-process `SyncScheduler` owns mailbox synchronization across startup, focus, and timer events. The renderer observes durable committed-change events and invalidates `mailboxes` and `sync-status` queries; mounting an import screen does not start or resume synchronization.
 
 ESLint and Prettier are not part of the toolchain and must not be added as direct dependencies, configuration files, editor defaults, or CI steps. A tool that requires either one for repository linting or formatting must justify that dependency through a later architecture decision. Electron Forge currently brings Prettier into the lockfile transitively through `@electron/packager`; MailRovers does not configure or invoke it.
 

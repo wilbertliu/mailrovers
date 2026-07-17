@@ -1,6 +1,8 @@
 import { createRoot } from 'react-dom/client'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { App } from './App.js'
+import { subscribeDesktopChangeInvalidation } from './desktop-change-invalidation.js'
+import { createDesktopQueryClient } from './query-client.js'
 import './styles.css'
 
 function applyTheme() {
@@ -22,7 +24,8 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   if (storedTheme !== 'light' && storedTheme !== 'dark') applyTheme()
 })
 
-const client = new QueryClient()
+const client = createDesktopQueryClient()
+subscribeDesktopChangeInvalidation({ queryClient: client })
 performance.mark('rendererMounted')
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider client={client}>

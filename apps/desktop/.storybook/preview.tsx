@@ -1,48 +1,21 @@
 import type { Preview } from '@storybook/react-vite'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import React, { useEffect, useState, type ReactNode } from 'react'
+import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
+import React, { type ReactNode } from 'react'
+import { subscribeDesktopChangeInvalidation } from '../src/desktop-change-invalidation.js'
+import { createDesktopQueryClient } from '../src/query-client.js'
 import { installStorybookBridge } from '../src/storybook/mock-desktop-bridge.js'
 import type { StorybookScenario } from '../src/storybook/storybook-scenarios.js'
 import '../src/styles.css'
 
+let activeQueryClient: QueryClient | undefined
+
 function StoryEnvironment({
   children,
-  scenario,
-  theme,
+  queryClient,
 }: {
   children: ReactNode
-  scenario: StorybookScenario
-  theme: 'light' | 'dark'
+  queryClient: QueryClient
 }) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: { retry: false, refetchOnWindowFocus: false },
-          mutations: { retry: false },
-        },
-      }),
-  )
-
-  installStorybookBridge(scenario)
-
-  useEffect(() => {
-    const originalConfirm = window.confirm
-    const originalPrompt = window.prompt
-    document.documentElement.classList.remove('light', 'dark')
-    document.documentElement.classList.add(theme)
-    document.documentElement.style.colorScheme = theme
-    if (scenario.dialogs?.confirm !== undefined)
-      window.confirm = () => scenario.dialogs?.confirm ?? false
-    if (scenario.dialogs && 'prompt' in scenario.dialogs)
-      window.prompt = () => scenario.dialogs?.prompt ?? null
-    return () => {
-      window.confirm = originalConfirm
-      window.prompt = originalPrompt
-      queryClient.clear()
-    }
-  }, [queryClient, scenario, theme])
-
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
@@ -60,6 +33,42 @@ const preview: Preview = {
     },
   },
   initialGlobals: { theme: 'light' },
+  beforeEach: (context) => {
+    const scenario: StorybookScenario | undefined = context.parameters.mailrovers
+    if (scenario === undefined)
+      throw new Error(`Story ${context.id} must define parameters.mailrovers`)
+
+    const theme = context.globals.theme === 'dark' ? 'dark' : 'light'
+    const originalConfirm = window.confirm
+    const originalPrompt = window.prompt
+    const queryClient = createDesktopQueryClient({
+      config: {
+        defaultOptions: {
+          queries: { retry: false, refetchOnWindowFocus: false },
+          mutations: { retry: false },
+        },
+      },
+    })
+
+    installStorybookBridge(scenario)
+    const unsubscribeChanges = subscribeDesktopChangeInvalidation({ queryClient })
+    activeQueryClient = queryClient
+    document.documentElement.classList.remove('light', 'dark')
+    document.documentElement.classList.add(theme)
+    document.documentElement.style.colorScheme = theme
+    if (scenario.dialogs?.confirm !== undefined)
+      window.confirm = () => scenario.dialogs?.confirm ?? false
+    if (scenario.dialogs && 'prompt' in scenario.dialogs)
+      window.prompt = () => scenario.dialogs?.prompt ?? null
+
+    return () => {
+      unsubscribeChanges()
+      window.confirm = originalConfirm
+      window.prompt = originalPrompt
+      queryClient.clear()
+      if (activeQueryClient === queryClient) activeQueryClient = undefined
+    }
+  },
   parameters: {
     layout: 'fullscreen',
     viewport: { defaultViewport: 'desktop' },
@@ -75,12 +84,11 @@ const preview: Preview = {
   },
   decorators: [
     (Story, context) => {
-      const scenario = context.parameters.mailrovers as StorybookScenario | undefined
-      if (scenario === undefined)
-        throw new Error(`Story ${context.id} must define parameters.mailrovers`)
-      const theme = context.globals.theme === 'dark' ? 'dark' : 'light'
+      const queryClient = activeQueryClient
+      if (queryClient === undefined)
+        throw new Error(`Story ${context.id} rendered before its environment was prepared`)
       return (
-        <StoryEnvironment key={`${context.id}:${theme}`} scenario={scenario} theme={theme}>
+        <StoryEnvironment queryClient={queryClient}>
           <Story />
         </StoryEnvironment>
       )

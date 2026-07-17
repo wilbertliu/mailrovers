@@ -1,4 +1,4 @@
-import type { DesktopEvent, MailboxSummary, SyncStatus } from '@mailrovers/mail-contracts'
+import type { MailboxSummary, SyncStatus } from '@mailrovers/mail-contracts'
 import type { MailboxId, OperationId } from '@mailrovers/mail-domain'
 import { Alert02Icon, BrowserIcon, ComputerProtectionIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -35,8 +35,6 @@ import {
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
 import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress.js'
 import { Spinner } from '@/components/ui/spinner.js'
-import { useImportSubscription } from '@/hooks/use-import-subscription.js'
-import { useMailboxRefreshErrorToast } from '@/hooks/use-mailbox-refresh-error-toast.js'
 import { DesktopApplicationError, desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
 
@@ -277,42 +275,12 @@ function ImportPage({
     await queryClient.invalidateQueries({ queryKey: ['sync-status', mailbox.id] })
   }, [mailbox.id, queryClient])
 
-  const handleEvent = useCallback(
-    (event: DesktopEvent) => {
-      switch (event.kind) {
-        case 'sync-failed':
-          setError(event.error.message)
-          void onChanged()
-          break
-        case 'sync-progress':
-          queryClient.setQueryData(['sync-status', mailbox.id], event.status)
-          break
-        case 'sync-completed':
-        case 'sync-cancelled':
-          queryClient.setQueryData(['sync-status', mailbox.id], event.status)
-          void onChanged()
-          break
-        case 'events-overflowed':
-          void refreshStatus()
-          void onChanged()
-          break
-      }
-    },
-    [mailbox.id, onChanged, queryClient, refreshStatus],
-  )
-
   const start = useCallback(async () => {
     const requestId = desktopBridge.createRequestId()
     const receipt = await desktopBridge.startSync({ requestId, mailboxId: mailbox.id })
     setOperation(receipt.requestId)
     return receipt.requestId
   }, [mailbox.id])
-
-  const subscribe = useCallback(
-    (operationId: OperationId) => desktopBridge.subscribe(operationId, handleEvent),
-    [handleEvent],
-  )
-  useImportSubscription({ syncState: mailbox.syncState, start, subscribe, onError: setError })
 
   const pause = async () => {
     setPendingAction('pause')
@@ -336,8 +304,7 @@ function ImportPage({
     setPendingAction('resume')
     setError(undefined)
     try {
-      const requestId = await start()
-      desktopBridge.subscribe(requestId, handleEvent)
+      await start()
       await onChanged()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to resume the import.')
@@ -472,12 +439,6 @@ export function MailboxGate() {
     },
     [onChanged],
   )
-  useMailboxRefreshErrorToast({
-    hasCachedData: mailboxes.data !== undefined,
-    isError: mailboxes.isError,
-    errorUpdatedAt: mailboxes.errorUpdatedAt,
-  })
-
   const retryInitialLoad = async () => {
     setRetryingInitialLoad(true)
     try {

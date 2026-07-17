@@ -2,8 +2,8 @@ import type { AiArtifact, Draft } from '@mailrovers/mail-contracts'
 import type { ConversationId, MailboxId, MessageId, OperationId } from '@mailrovers/mail-domain'
 import { useCallback, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button.js'
-import { useCancelOperationOnUnmount } from '@/hooks/use-cancel-operation-on-unmount.js'
-import { useComposerAutosave } from '@/hooks/use-composer-autosave.js'
+import { useOperationCleanup } from '@/hooks/use-operation-cleanup.js'
+import { createDebouncedAction } from '@/lib/debounced-action.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { Input } from '@/components/ui/input.js'
 import { Textarea } from '@/components/ui/textarea.js'
@@ -15,6 +15,12 @@ type ComposerSeed = {
   sourceVersion?: number | undefined
   to?: string | undefined
   subject?: string | undefined
+}
+
+type ComposerSnapshot = {
+  to: string
+  subject: string
+  body: string
 }
 
 function addresses(value: string): Array<{ address: string }> {
@@ -49,10 +55,10 @@ export function Composer({
   const draftRef = useRef<Draft | undefined>(seed?.draft)
   const aiOperation = useRef<OperationId | undefined>(undefined)
   const aiUnsubscribe = useRef<(() => void) | undefined>(undefined)
-  const suppressAutosave = useRef(false)
+  const [autosave] = useState(() => createDebouncedAction(750))
 
   const save = useCallback(
-    (snapshot: { to: string; subject: string; body: string }) => {
+    (snapshot: ComposerSnapshot) => {
       setStatus('saving')
       queue.current = queue.current.then(async () => {
         const current = draftRef.current
@@ -85,11 +91,13 @@ export function Composer({
     [mailboxId, seed],
   )
 
-  useComposerAutosave({
-    snapshot: { to, subject, body },
-    save,
-    suppressNextSave: suppressAutosave,
-  })
+  const scheduleAutosave = (snapshot: ComposerSnapshot) => {
+    if (!snapshot.to && !snapshot.subject && !snapshot.body) {
+      autosave.cancel()
+      return
+    }
+    autosave.schedule(() => void save(snapshot))
+  }
 
   const cancelAi = useCallback(async () => {
     const active = aiOperation.current
@@ -104,7 +112,20 @@ export function Composer({
     setAiStatus('idle')
   }, [])
 
-  useCancelOperationOnUnmount({ operation: aiOperation, unsubscribe: aiUnsubscribe })
+  const cleanupOperation = useOperationCleanup({
+    operation: aiOperation,
+    unsubscribe: aiUnsubscribe,
+  })
+  const composerRef = useCallback(
+    (node: HTMLElement | null) => {
+      if (node === null) return
+      return () => {
+        autosave.cancel()
+        cleanupOperation()
+      }
+    },
+    [autosave, cleanupOperation],
+  )
 
   const generateReply = async () => {
     const conversationId = seed?.draft?.conversationId ?? seed?.conversationId
@@ -115,6 +136,7 @@ export function Composer({
     setArtifact(undefined)
     setAiError(undefined)
     try {
+      autosave.cancel()
       const saved = await save({ to, subject, body })
       if (!saved) throw new Error('Draft could not be saved')
       const receipt = await desktopBridge.startReplyDraft({
@@ -175,7 +197,7 @@ export function Composer({
         expectedDraftVersion: artifact.draftVersion,
         idempotencyKey: crypto.randomUUID(),
       })
-      suppressAutosave.current = true
+      autosave.cancel()
       draftRef.current = accepted
       setDraft(accepted)
       setBody(accepted.textBody)
@@ -200,6 +222,7 @@ export function Composer({
     if (addresses(to).length === 0) return
     setStatus('sending')
     try {
+      autosave.cancel()
       const saved = await save({ to, subject, body })
       if (!saved) throw new Error('Draft could not be saved')
       await desktopBridge.sendDraft({
@@ -225,6 +248,7 @@ export function Composer({
 
   return (
     <section
+      ref={composerRef}
       className="fixed right-4.5 bottom-4.5 z-40 flex h-[min(560px,calc(100vh-92px))] w-[min(520px,calc(100vw-36px))] flex-col overflow-hidden"
       aria-label={seed?.replyToMessageId ? 'Reply' : 'New message'}
     >
@@ -248,7 +272,11 @@ export function Composer({
           type="email"
           multiple
           value={to}
-          onChange={(event) => setTo(event.target.value)}
+          onChange={(event) => {
+            const value = event.target.value
+            setTo(value)
+            scheduleAutosave({ to: value, subject, body })
+          }}
           placeholder="name@example.com"
         />
       </label>
@@ -258,14 +286,22 @@ export function Composer({
           id="composer-subject"
           className="min-w-0 flex-1"
           value={subject}
-          onChange={(event) => setSubject(event.target.value)}
+          onChange={(event) => {
+            const value = event.target.value
+            setSubject(value)
+            scheduleAutosave({ to, subject: value, body })
+          }}
         />
       </label>
       <Textarea
         className="min-h-45 flex-1 resize-none p-4"
         aria-label="Message"
         value={body}
-        onChange={(event) => setBody(event.target.value)}
+        onChange={(event) => {
+          const value = event.target.value
+          setBody(value)
+          scheduleAutosave({ to, subject, body: value })
+        }}
         placeholder="Write a message…"
       />
       {aiStatus !== 'idle' ? (
