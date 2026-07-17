@@ -138,9 +138,7 @@ export const MailboxRefreshFailedWithCache: Story = {
   parameters: { mailrovers: storybookScenarios.mailboxRefreshError },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByText('Refresh failed')).toBeVisible()
-    await expect(
-      await within(canvasElement).findByText('Using saved mailbox data'),
-    ).toBeVisible()
+    await expect(await within(canvasElement).findByText('Using saved mailbox data')).toBeVisible()
   },
 }
 
