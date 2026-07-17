@@ -1,17 +1,11 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y", "import", "vitest"],
-  "jsPlugins": ["oxlint-tailwindcss"],
   "categories": {
     "correctness": "error"
   },
   "options": {
     "typeAware": true
-  },
-  "settings": {
-    "tailwindcss": {
-      "entryPoint": "apps/desktop/src/styles.css"
-    }
   },
   "rules": {
     "import/no-unassigned-import": "off",
@@ -61,93 +55,6 @@
         "jsx-a11y/prefer-tag-over-role": "off",
         "no-restricted-imports": "off",
         "typescript/restrict-template-expressions": "off"
-      }
-    },
-    {
-      "files": ["apps/desktop/src/**/*.{ts,tsx}"],
-      "excludeFiles": ["apps/desktop/src/components/ui/**/*.{ts,tsx}"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "paths": [
-              {
-                "name": "react",
-                "importNames": ["useEffect", "useInsertionEffect", "useLayoutEffect"],
-                "message": "Generic React effects are forbidden in checked-in application code. Use events, external stores, coordinators, or callback-ref cleanup."
-              }
-            ],
-            "patterns": [
-              {
-                "group": ["@base-ui/**", "@radix-ui/**"],
-                "message": "Import UI foundations through components/ui."
-              }
-            ]
-          }
-        ],
-        "tailwindcss/no-restricted-classes": [
-          "error",
-          {
-            "patterns": [
-              {
-                "pattern": "^(?:[^:]+:)*(?:accent|animate|antialiased|backdrop|bg|border|caret|decoration|delay|divide|drop-shadow|duration|ease|fill|font|from|grayscale|invert|leading|mix-blend|opacity|outline|ring|rounded|saturate|sepia|shadow|stroke|text-shadow|to|tracking|transition|via)(?:$|-)",
-                "message": "Product code may use Tailwind for layout only. Move visual styling into components/ui."
-              },
-              {
-                "pattern": "^(?:[^:]+:)*text-(?!(?:left|center|right|start|end|justify|wrap|nowrap|balance|pretty|ellipsis|clip)$)",
-                "message": "Product code may only use text alignment and wrapping utilities. Move typography and color into components/ui."
-              },
-              {
-                "pattern": "^(?:[^:]+:)*(?:italic|not-italic|uppercase|lowercase|capitalize|normal-case|underline|overline|line-through|no-underline)$",
-                "message": "Move typography and text decoration into components/ui."
-              },
-              {
-                "pattern": "^(?:[^:]+:)*\\[",
-                "message": "Arbitrary CSS properties are forbidden outside components/ui."
-              }
-            ]
-          }
-        ],
-        "react/forbid-elements": [
-          "error",
-          {
-            "forbid": [
-              { "element": "button", "message": "Use the shared Button component." },
-              { "element": "input", "message": "Use the shared Input component." },
-              { "element": "select", "message": "Use the shared select component." },
-              { "element": "textarea", "message": "Use the shared Textarea component." }
-            ]
-          }
-        ],
-        "react/forbid-dom-props": [
-          "error",
-          {
-            "forbid": [
-              {
-                "propName": "style",
-                "message": "Inline styles are forbidden outside components/ui. Move visual styling into a shared component or document a runtime layout exception."
-              }
-            ]
-          }
-        ],
-        "react/forbid-component-props": [
-          "error",
-          {
-            "forbid": [
-              {
-                "propName": "style",
-                "message": "Inline styles are forbidden outside components/ui. Move visual styling into a shared component or document a runtime layout exception."
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "files": ["apps/desktop/src/features/inbox/ConversationVirtualList.tsx"],
-      "rules": {
-        "react/forbid-dom-props": "off",
-        "react/forbid-component-props": "off"
       }
     }
   ]
