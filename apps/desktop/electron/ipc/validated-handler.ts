@@ -1,6 +1,5 @@
 import type { ApplicationError } from '@mailrovers/mail-contracts'
 import { stableErrorCode, type StableErrorCode } from '@mailrovers/platform-electron'
-import type { z } from 'zod'
 import {
   isAuthorizedRequest,
   type AuthorizationEvent,
@@ -12,11 +11,43 @@ export type IpcMainLike = {
   removeHandler(channel: string): void
 }
 
-export type ValidatedHandlerDefinition<Application, Input = unknown> = {
+type SafeParseResult<Output> = { success: true; data: Output } | { success: false }
+
+type SchemaOutput<Schema> = Schema extends { readonly _output: infer Output } ? Output : never
+
+type RuntimeSchema<Schema> = {
+  readonly _output: unknown
+  safeParse(value: unknown): SafeParseResult<SchemaOutput<Schema>>
+}
+
+type HandlerRegistrationContext<Application> = {
+  ipcMain: IpcMainLike
+  application: Application
+  webContents: AuthorizedWebContents
+  rendererUrl: string
+}
+
+export type ValidatedHandlerDefinition<
+  Application,
+  InputSchema extends RuntimeSchema<InputSchema>,
+  ResultSchema extends RuntimeSchema<ResultSchema>,
+> = {
   channel: string
-  inputSchema: z.ZodType<Input, z.ZodTypeDef, any>
-  resultSchema: z.ZodTypeAny
-  run(application: Application, value: Input): Promise<unknown>
+  inputSchema: InputSchema
+  resultSchema: ResultSchema
+  run(application: Application, value: SchemaOutput<InputSchema>): Promise<unknown>
+}
+
+type RegisteredValidatedHandler<
+  Application,
+  InputSchema extends RuntimeSchema<InputSchema>,
+  ResultSchema extends RuntimeSchema<ResultSchema>,
+> = ValidatedHandlerDefinition<Application, InputSchema, ResultSchema> & {
+  register(input: HandlerRegistrationContext<Application>): () => void
+}
+
+type HandlerRegistration<Application> = {
+  register(input: HandlerRegistrationContext<Application>): () => void
 }
 
 function requestId(value: unknown): string {
@@ -125,9 +156,13 @@ function failure(
 }
 
 /** Registers one authorized, schema-validated invoke handler and returns an idempotent unregister. */
-export function registerValidatedHandler<Application, Input>(input: {
+export function registerValidatedHandler<
+  Application,
+  InputSchema extends RuntimeSchema<InputSchema>,
+  ResultSchema extends RuntimeSchema<ResultSchema>,
+>(input: {
   ipcMain: IpcMainLike
-  definition: ValidatedHandlerDefinition<Application, Input>
+  definition: ValidatedHandlerDefinition<Application, InputSchema, ResultSchema>
   application: Application
   webContents: AuthorizedWebContents
   rendererUrl: string
@@ -175,19 +210,24 @@ export function registerValidatedHandler<Application, Input>(input: {
   }
 }
 
-export function registerValidatedRegistry<Application>(input: {
-  ipcMain: IpcMainLike
-  definitions: readonly ValidatedHandlerDefinition<Application, any>[]
-  application: Application
-  webContents: AuthorizedWebContents
-  rendererUrl: string
-}): () => void {
-  const unregister = input.definitions.map((definition) =>
-    registerValidatedHandler({
-      ...input,
-      definition: definition as ValidatedHandlerDefinition<Application, unknown>,
-    }),
-  )
+export function defineValidatedHandler<Application>() {
+  return <
+    InputSchema extends RuntimeSchema<InputSchema>,
+    ResultSchema extends RuntimeSchema<ResultSchema>,
+  >(
+    definition: ValidatedHandlerDefinition<Application, InputSchema, ResultSchema>,
+  ): RegisteredValidatedHandler<Application, InputSchema, ResultSchema> => ({
+    ...definition,
+    register: (input) => registerValidatedHandler({ ...input, definition }),
+  })
+}
+
+export function registerValidatedRegistry<Application>(
+  input: {
+    definitions: readonly HandlerRegistration<Application>[]
+  } & HandlerRegistrationContext<Application>,
+): () => void {
+  const unregister = input.definitions.map((definition) => definition.register(input))
   let registered = true
   return () => {
     if (!registered) return

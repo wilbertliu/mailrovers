@@ -64,12 +64,13 @@ import {
   conversationPageResultSchema,
   listConversationsInputSchema,
 } from './list-conversations.schema.js'
-import { registerValidatedRegistry, type ValidatedHandlerDefinition } from './validated-handler.js'
+import { defineValidatedHandler, registerValidatedRegistry } from './validated-handler.js'
 
 type DesktopApplication = MailApplication & MailApplicationOperations
+const defineMailIpcHandler = defineValidatedHandler<DesktopApplication>()
 
 export const mailIpcRegistry = [
-  {
+  defineMailIpcHandler({
     channel: channels.listConversations,
     inputSchema: listConversationsInputSchema,
     resultSchema: conversationPageResultSchema,
@@ -77,64 +78,64 @@ export const mailIpcRegistry = [
       application: DesktopApplication,
       value: Parameters<MailApplication['listConversations']>[0],
     ) => application.listConversations(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.listMailboxes,
     inputSchema: listMailboxesInputSchema,
     resultSchema: listMailboxesResultSchema,
     run: (application: DesktopApplication, value) => application.listMailboxes(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.listLabels,
     inputSchema: listLabelsInputSchema,
     resultSchema: listLabelsResultSchema,
     run: (application: DesktopApplication, value) => application.listLabels(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.getConversation,
     inputSchema: getConversationInputSchema,
     resultSchema: getConversationResultSchema,
     run: async (application: DesktopApplication, value) =>
       (await application.getConversation(value)) ?? null,
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.getMessageBody,
     inputSchema: getMessageBodyInputSchema,
     resultSchema: getMessageBodyResultSchema,
     run: async (application: DesktopApplication, value) =>
       (await application.getMessageBody(value)) ?? null,
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.exportAttachment,
     inputSchema: exportAttachmentInputSchema,
     resultSchema: exportAttachmentResultSchema,
     run: (application: DesktopApplication, value) => application.exportAttachment(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.searchMail,
     inputSchema: searchMailInputSchema,
     resultSchema: searchMailResultSchema,
     run: (application: DesktopApplication, value) => application.searchMail(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.executeCommand,
     inputSchema: executeCommandInputSchema,
     resultSchema: commandReceiptResultSchema,
     run: (application: DesktopApplication, value) => application.executeCommand(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.undoCommand,
     inputSchema: undoCommandInputSchema,
     resultSchema: commandReceiptResultSchema,
     run: (application: DesktopApplication, value) => application.undoCommand(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.listCommandIssues,
     inputSchema: listCommandIssuesInputSchema,
     resultSchema: listCommandIssuesResultSchema,
     run: (application: DesktopApplication, value) => application.listCommandIssues(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.resolveCommand,
     inputSchema: resolveCommandInputSchema,
     resultSchema: voidResultSchema,
@@ -142,45 +143,45 @@ export const mailIpcRegistry = [
       await application.resolveCommand(value)
       return null
     },
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.saveDraft,
     inputSchema: saveDraftInputSchema,
     resultSchema: draftResultSchema,
     run: (application: DesktopApplication, value) => application.saveDraft(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.getDraft,
     inputSchema: getDraftInputSchema,
     resultSchema: getDraftResultSchema,
     run: async (application: DesktopApplication, value) =>
       (await application.getDraft(value)) ?? null,
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.listDrafts,
     inputSchema: listDraftsInputSchema,
     resultSchema: listDraftsResultSchema,
     run: (application: DesktopApplication, value) => application.listDrafts(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.sendDraft,
     inputSchema: sendDraftInputSchema,
     resultSchema: sendDraftResultSchema,
     run: (application: DesktopApplication, value) => application.sendDraft(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.getAiConfiguration,
     inputSchema: getAiConfigurationInputSchema,
     resultSchema: aiConfigurationResultSchema,
     run: (application: DesktopApplication, value) => application.getAiConfiguration(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.saveAiConfiguration,
     inputSchema: saveAiConfigurationInputSchema,
     resultSchema: aiConfigurationResultSchema,
     run: (application: DesktopApplication, value) => application.saveAiConfiguration(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.clearAiConfiguration,
     inputSchema: clearAiConfigurationInputSchema,
     resultSchema: voidResultSchema,
@@ -188,32 +189,32 @@ export const mailIpcRegistry = [
       await application.clearAiConfiguration(value)
       return null
     },
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.validateAiConfiguration,
     inputSchema: validateAiConfigurationInputSchema,
     resultSchema: aiConfigurationResultSchema,
     run: (application: DesktopApplication, value) => application.validateAiConfiguration(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.startConversationSummary,
     inputSchema: summarizeConversationInputSchema,
     resultSchema: aiStreamReceiptResultSchema,
     run: (application: DesktopApplication, value) => application.startConversationSummary(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.startReplyDraft,
     inputSchema: draftReplyInputSchema,
     resultSchema: aiStreamReceiptResultSchema,
     run: (application: DesktopApplication, value) => application.startReplyDraft(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.acceptAiReply,
     inputSchema: acceptAiReplyInputSchema,
     resultSchema: draftResultSchema,
     run: (application: DesktopApplication, value) => application.acceptAiReply(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.reviewAiArtifact,
     inputSchema: reviewAiArtifactInputSchema,
     resultSchema: voidResultSchema,
@@ -221,21 +222,21 @@ export const mailIpcRegistry = [
       await application.reviewAiArtifact(value)
       return null
     },
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.operationSubscribe,
     inputSchema: operationSubscribeInputSchema,
     resultSchema: operationSubscribeResultSchema,
     run: async (application: DesktopApplication, value) =>
       application.subscribeOperation(value.requestId),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.connectGmail,
     inputSchema: connectGmailInputSchema,
     resultSchema: connectGmailIpcResultSchema,
     run: (application: DesktopApplication, value) => application.connectGmail(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.disconnectMailbox,
     inputSchema: disconnectMailboxInputSchema,
     resultSchema: voidResultSchema,
@@ -243,20 +244,20 @@ export const mailIpcRegistry = [
       await application.disconnectMailbox(value)
       return null
     },
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.startSync,
     inputSchema: startSyncInputSchema,
     resultSchema: syncReceiptResultSchema,
     run: (application: DesktopApplication, value) => application.startSync(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.getSyncStatus,
     inputSchema: getSyncStatusInputSchema,
     resultSchema: syncStatusResultSchema,
     run: (application: DesktopApplication, value) => application.getSyncStatus(value),
-  },
-  {
+  }),
+  defineMailIpcHandler({
     channel: channels.cancelOperation,
     inputSchema: cancelOperationInputSchema,
     resultSchema: voidResultSchema,
@@ -264,8 +265,8 @@ export const mailIpcRegistry = [
       await application.cancelOperation(value)
       return null
     },
-  },
-] as const satisfies readonly ValidatedHandlerDefinition<DesktopApplication, any>[]
+  }),
+] as const
 
 export function registerMailApplication(input: {
   application: DesktopApplication

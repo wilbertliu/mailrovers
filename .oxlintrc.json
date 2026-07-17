@@ -16,6 +16,7 @@
   "rules": {
     "import/no-unassigned-import": "off",
     "react/react-in-jsx-scope": "off",
+    "typescript/no-explicit-any": "error",
     "unicorn/require-module-specifiers": "off",
     "unicorn/require-post-message-target-origin": "off"
   },

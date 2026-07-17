@@ -236,7 +236,7 @@ Package rules:
 
 ### 8.1 TypeScript quality toolchain
 
-The repository uses pinned TypeScript 7, Oxlint, `oxlint-tsgolint`, and Oxfmt versions. Oxlint performs repository-wide and type-aware linting; TypeScript remains the authoritative compiler and type checker. Oxfmt formats JavaScript, TypeScript, JSON, CSS, HTML, Markdown, and other supported project files with semicolons disabled and single quotes enabled.
+The repository uses pinned TypeScript 7, Oxlint, `oxlint-tsgolint`, and Oxfmt versions. Oxlint performs repository-wide and type-aware linting and rejects explicit `any` annotations; TypeScript's strict mode rejects implicit `any` types and remains the authoritative compiler and type checker. Oxfmt formats JavaScript, TypeScript, JSON, CSS, HTML, Markdown, and other supported project files with semicolons disabled and single quotes enabled.
 
 Desktop application components cannot import React's `useEffect`. Server and local mailbox state belongs in TanStack Query, and values derived from query data are computed during render. Code that synchronizes React with an external system, such as Electron subscriptions, timers, or unmount cleanup, lives in a focused hook under `apps/desktop/src/hooks`. Generated and low-level components under `apps/desktop/src/components/ui` are exempt because they adapt browser and component-library APIs.
 
