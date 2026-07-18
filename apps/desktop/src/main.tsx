@@ -5,24 +5,17 @@ import { subscribeDesktopChangeInvalidation } from './desktop-change-invalidatio
 import { createDesktopQueryClient } from './query-client.js'
 import './styles.css'
 
-function applyTheme() {
-  const storedTheme = localStorage.getItem('theme')
-  const theme =
-    storedTheme === 'light' || storedTheme === 'dark'
-      ? storedTheme
-      : matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light'
+const systemTheme = matchMedia('(prefers-color-scheme: dark)')
+
+function applySystemTheme() {
+  const theme = systemTheme.matches ? 'dark' : 'light'
   document.documentElement.classList.remove('light', 'dark')
   document.documentElement.classList.add(theme)
   document.documentElement.style.colorScheme = theme
 }
 
-applyTheme()
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-  const storedTheme = localStorage.getItem('theme')
-  if (storedTheme !== 'light' && storedTheme !== 'dark') applyTheme()
-})
+applySystemTheme()
+systemTheme.addEventListener('change', applySystemTheme)
 
 const client = createDesktopQueryClient()
 subscribeDesktopChangeInvalidation({ queryClient: client })

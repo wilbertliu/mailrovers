@@ -18,7 +18,7 @@ export function ConversationVirtualList({
   const virtual = useVirtualizer({
     count: items.length,
     getScrollElement: () => parent.current,
-    estimateSize: () => 64,
+    estimateSize: () => 76,
     overscan: 8,
   })
   return (
@@ -28,7 +28,7 @@ export function ConversationVirtualList({
         const el = event.currentTarget
         if (el.scrollTop + el.clientHeight >= el.scrollHeight - 256) onEnd()
       }}
-      className="h-[calc(100vh-136px)] overflow-auto"
+      className="h-[calc(100vh-156px)] overflow-auto p-1"
       aria-label="Inbox"
     >
       <div className="relative" style={{ height: virtual.getTotalSize() }}>
@@ -39,21 +39,29 @@ export function ConversationVirtualList({
             <Button
               type="button"
               key={item.id}
-              className="absolute inset-x-0 grid h-16 w-full grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto] items-center gap-4 px-3.5 py-2.5 text-start"
+              variant="ghost"
+              className="absolute inset-x-0 grid h-19 w-full grid-cols-[8px_minmax(0,1fr)_auto] items-start gap-1 rounded-md px-2 py-2.5 text-start text-xs font-medium aria-pressed:bg-accent"
               aria-pressed={selectedId === item.id}
+              data-unread={item.unreadCount > 0}
               onClick={() => onSelect(item)}
               style={{
                 transform: `translateY(${row.start}px)`,
               }}
             >
-              <div className="flex min-w-0 items-center gap-2">
-                <strong className="truncate">{item.subject || '(No subject)'}</strong>
-                {item.unreadCount > 0 ? (
-                  <span className="size-1.5 shrink-0" aria-label="Unread" />
-                ) : null}
+              <span
+                className="mt-1.5 size-1 rounded-full bg-transparent data-[unread=true]:bg-primary"
+                data-unread={item.unreadCount > 0}
+                aria-label={item.unreadCount > 0 ? 'Unread' : undefined}
+              />
+              <div className="flex min-w-0 flex-col gap-1">
+                <strong className="truncate text-xs">{item.subject || '(No subject)'}</strong>
+                <span className="truncate text-[0.625rem] font-normal text-muted-foreground">
+                  {item.snippet}
+                </span>
               </div>
-              <span className="truncate">{item.snippet}</span>
-              <time className="truncate">{new Date(item.lastMessageAt).toLocaleDateString()}</time>
+              <time className="truncate text-[0.625rem] font-normal text-muted-foreground">
+                {new Date(item.lastMessageAt).toLocaleDateString()}
+              </time>
             </Button>
           )
         })}

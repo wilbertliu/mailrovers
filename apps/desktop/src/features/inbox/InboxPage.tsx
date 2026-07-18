@@ -16,13 +16,30 @@ export function InboxPage({
   const query = useConversationPages(mailbox, labelId === undefined ? undefined : { labelId })
   const items = query.data?.pages.flatMap((page) => page.items) ?? []
   return (
-    <section className="min-w-0 overflow-hidden" aria-label="Conversations">
-      <header className="flex h-19 items-center justify-between px-4.5 py-4">
+    <section
+      className="min-w-0 overflow-hidden border-r bg-background"
+      aria-label="Conversations"
+      ref={(node) => {
+        const first = items[0]
+        if (node !== null && selectedId === undefined && first !== undefined)
+          queueMicrotask(() => onSelect(first.id))
+      }}
+    >
+      <header className="flex h-20 items-center justify-between px-4 py-3">
         <div>
-          <h1 className="truncate">Mail</h1>
-          <p className="mt-1">{items.length} cached conversations</p>
+          <p className="mb-1 text-[0.625rem] text-muted-foreground">Workspace</p>
+          <h1 className="truncate text-lg tracking-tight">
+            Inbox{' '}
+            <span className="text-xs font-normal text-muted-foreground">
+              {items.filter((item) => item.unreadCount > 0).length}
+            </span>
+          </h1>
         </div>
       </header>
+      <div className="flex h-8 items-center justify-between border-y px-4 text-[0.625rem] text-muted-foreground">
+        <span>{items.length} conversations</span>
+        <span>Newest⌄</span>
+      </div>
       {query.isPending ? (
         <div className="px-4.5 py-6" aria-live="polite">
           Loading mail…

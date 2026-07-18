@@ -1,5 +1,7 @@
 import type { LabelSummary, MailCommand, MessageDetail } from '@mailrovers/mail-contracts'
 import type { AttachmentId, ConversationId, MailboxId, MessageId } from '@mailrovers/mail-domain'
+import { Archive02Icon, MailOpen01Icon, StarIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button.js'
@@ -39,38 +41,45 @@ function MessageCard({
   })
   return (
     <details
-      className="mb-2 overflow-hidden"
+      className="m-0 overflow-hidden border-b"
       open={expanded}
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
-      <summary className="flex min-h-14.5 cursor-pointer list-inside items-center justify-between gap-4 px-3.5 py-3">
+      <summary className="flex min-h-17 cursor-pointer list-none items-center justify-between gap-4 py-4">
         <span className="flex min-w-0 flex-col">
-          <strong className="truncate">{addressLabel(message.sender)}</strong>
-          <small className="truncate">
+          <strong className="truncate text-xs">{addressLabel(message.sender)}</strong>
+          <small className="truncate text-[0.625rem] text-muted-foreground">
             to {message.recipients.to.map(addressLabel).join(', ') || 'me'}
           </small>
         </span>
-        <time>{new Date(message.receivedAt).toLocaleString()}</time>
+        <time className="text-[0.625rem] text-muted-foreground">
+          {new Date(message.receivedAt).toLocaleString()}
+        </time>
       </summary>
-      <div className="px-4 pt-2 pb-4.5">
+      <div className="px-0 pt-1 pb-6 text-xs leading-relaxed text-foreground/90">
         {body.data?.sanitizedHtmlBody ? (
           <EmailFrame
             html={body.data.sanitizedHtmlBody}
             title={`Message from ${message.sender.address}`}
           />
         ) : body.data?.textBody ? (
-          <pre className="m-0 wrap-anywhere whitespace-pre-wrap">{body.data.textBody}</pre>
+          <pre className="m-0 max-w-[65ch] wrap-anywhere whitespace-pre-wrap font-sans">
+            {body.data.textBody}
+          </pre>
         ) : body.isPending && message.bodyAvailable ? (
           <p>Loading message…</p>
         ) : (
-          <pre className="m-0 wrap-anywhere whitespace-pre-wrap">
+          <pre className="m-0 max-w-[65ch] wrap-anywhere whitespace-pre-wrap font-sans">
             This message has no readable body.
           </pre>
         )}
         {message.attachments.length > 0 ? (
           <ul className="mt-4.5 flex list-none flex-wrap gap-2 p-0" aria-label="Attachments">
             {message.attachments.map((attachment) => (
-              <li className="flex flex-col gap-0.5 px-2.5 py-2" key={attachment.id}>
+              <li
+                className="flex flex-col gap-0.5 rounded-md border bg-background px-2.5 py-2"
+                key={attachment.id}
+              >
                 <span>{attachment.filename}</span>
                 <small>{attachment.mediaType}</small>
                 <Button
@@ -154,13 +163,18 @@ export function ConversationReader({
   const conversation = query.data
   const latestMessage = conversation.messages.at(-1)
   return (
-    <section className="min-w-0 overflow-auto" aria-label={conversation.subject}>
-      <header className="sticky top-0 z-2 flex min-h-19 items-center justify-between px-4.5 py-4">
+    <section className="min-w-0 overflow-auto bg-card" aria-label={conversation.subject}>
+      <header className="sticky top-0 z-2 flex min-h-30 items-start justify-between border-b bg-card px-8 pt-11 pb-4 max-[980px]:px-5">
         <div className="min-w-0">
-          <h1 className="truncate">{conversation.subject || '(No subject)'}</h1>
-          <p className="mt-1">{conversation.messages.length} messages</p>
+          <p className="mb-2.5 text-[0.625rem] text-muted-foreground">Inbox / Conversation</p>
+          <h1 className="max-w-2xl truncate text-xl tracking-tight">
+            {conversation.subject || '(No subject)'}
+          </h1>
+          <p className="mt-1 text-[0.625rem] text-muted-foreground">
+            {conversation.messages.length} messages
+          </p>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="absolute top-2 right-3 flex items-center gap-1.5">
           {latestMessage ? (
             <Button
               type="button"
@@ -182,27 +196,30 @@ export function ConversationReader({
           ) : null}
           <Button
             type="button"
-            variant="secondary"
-            size="sm"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Mark read"
             onClick={() => void onCommand({ kind: 'set-thread-read', conversationId, read: true })}
           >
-            Mark read
+            <HugeiconsIcon icon={MailOpen01Icon} aria-hidden="true" />
           </Button>
           <Button
             type="button"
-            variant="secondary"
-            size="sm"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Archive"
             onClick={() =>
               void onCommand({ kind: 'set-thread-archived', conversationId, archived: true })
             }
           >
-            Archive
+            <HugeiconsIcon icon={Archive02Icon} aria-hidden="true" />
           </Button>
           {latestMessage ? (
             <Button
               type="button"
-              variant="secondary"
-              size="sm"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Star"
               onClick={() =>
                 void onCommand({
                   kind: 'set-message-starred',
@@ -211,7 +228,7 @@ export function ConversationReader({
                 })
               }
             >
-              Star
+              <HugeiconsIcon icon={StarIcon} aria-hidden="true" />
             </Button>
           ) : null}
           <NativeSelect
@@ -246,7 +263,7 @@ export function ConversationReader({
         conversationId={conversationId}
         sourceVersion={conversation.version}
       />
-      <div className="p-3.5">
+      <div className="max-w-190 px-8 pb-8 max-[980px]:px-5">
         {conversation.messages.map((message, index) => (
           <MessageCard
             key={message.id}

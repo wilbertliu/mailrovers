@@ -26,10 +26,10 @@ export function SearchResults({
   const indexing = pages?.pages.some((page) => page.indexing) ?? false
   return (
     <>
-      <header className="flex h-19 items-center justify-between px-4.5 py-4">
+      <header className="flex h-20 items-center justify-between border-b px-4 py-3">
         <div>
-          <h1 className="truncate">Search</h1>
-          <p className="mt-1">{items.length} loaded local results</p>
+          <h1 className="truncate text-lg tracking-tight">Search</h1>
+          <p className="mt-1 text-xs text-muted-foreground">{items.length} loaded local results</p>
         </div>
         <Button type="button" variant="ghost" size="sm" onClick={onClear}>
           Clear
@@ -51,14 +51,15 @@ export function SearchResults({
         {items.map((hit) => (
           <Button
             type="button"
-            className="flex w-full flex-col items-start gap-1.5 px-4 py-3 text-start"
+            variant="ghost"
+            className="flex w-full flex-col items-start gap-1.5 rounded-md px-4 py-3 text-start aria-pressed:bg-accent"
             aria-pressed={selectedConversation === hit.conversationId}
             key={hit.messageId}
             onClick={() => onSelect(hit.conversationId)}
           >
             <strong>{hit.subject || '(No subject)'}</strong>
-            <span className="max-w-full truncate">{hit.excerpt}</span>
-            <small>{hit.sender.name || hit.sender.address}</small>
+            <span className="max-w-full truncate text-muted-foreground">{hit.excerpt}</span>
+            <small className="text-muted-foreground">{hit.sender.name || hit.sender.address}</small>
           </Button>
         ))}
         {items.length === 0 ? <p className="px-4.5 py-6">No local results.</p> : null}

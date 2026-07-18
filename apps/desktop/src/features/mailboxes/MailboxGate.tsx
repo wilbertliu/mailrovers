@@ -35,6 +35,7 @@ import {
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
 import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress.js'
 import { Spinner } from '@/components/ui/spinner.js'
+import { cn } from '@/lib/utils.js'
 import { DesktopApplicationError, desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
 import { ConnectionHandoffPage } from './ConnectionHandoffPage.js'
@@ -55,7 +56,12 @@ function connectionHandoffMinimum(): Promise<void> {
 function WindowFrame({ children, titlebar }: { children: ReactNode; titlebar?: ReactNode }) {
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <header className="window-titlebar flex h-14 shrink-0 items-center py-2 pr-4 pl-22">
+      <header
+        className={cn(
+          'window-titlebar flex h-14 shrink-0 items-center py-2 pr-4 pl-22',
+          titlebar && 'h-11 border-b bg-sidebar pr-3 pl-22 text-foreground',
+        )}
+      >
         {titlebar}
       </header>
       <div className="min-h-0 flex-1">{children}</div>
@@ -499,11 +505,11 @@ export function MailboxGate() {
       content = <ImportPage mailbox={mailbox} onChanged={onChanged} />
     } else {
       titlebar = (
-        <nav className="flex w-full items-center justify-between" aria-label="Mailboxes">
+        <nav className="flex w-full items-center justify-between text-xs" aria-label="Mailboxes">
           <label className="flex items-center gap-2.5">
-            <span>Mailbox</span>
+            <span className="text-muted-foreground">Mailbox</span>
             <NativeSelect
-              className="min-w-55 py-1.5 pr-7 pl-2.5"
+              className="h-7 min-w-55 rounded-md py-1.5 pr-7 pl-2.5 text-xs"
               value={mailbox.id}
               onChange={(event) =>
                 setSelectedMailbox(mailboxes.data[event.target.selectedIndex]?.id)
@@ -516,7 +522,13 @@ export function MailboxGate() {
               ))}
             </NativeSelect>
           </label>
-          <Button type="button" variant="secondary" size="sm" onClick={() => setShowConnect(true)}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="h-7 rounded-md text-xs"
+            onClick={() => setShowConnect(true)}
+          >
             Add Gmail account
           </Button>
         </nav>
