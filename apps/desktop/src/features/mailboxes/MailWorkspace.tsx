@@ -229,8 +229,8 @@ export function MailWorkspace({
       className={cn(
         'grid h-full min-w-220 overflow-hidden bg-background text-sm text-foreground',
         sidebarCollapsed
-          ? 'grid-cols-[minmax(320px,370px)_minmax(420px,1fr)_216px] max-[1250px]:grid-cols-[minmax(320px,370px)_minmax(420px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]'
-          : 'grid-cols-[206px_minmax(320px,370px)_minmax(420px,1fr)_216px] max-[1250px]:grid-cols-[206px_minmax(320px,370px)_minmax(420px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]',
+          ? 'grid-cols-[minmax(320px,370px)_minmax(390px,1fr)_216px] max-[1250px]:grid-cols-[minmax(320px,370px)_minmax(390px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]'
+          : 'grid-cols-[236px_minmax(320px,370px)_minmax(390px,1fr)_216px] max-[1250px]:grid-cols-[236px_minmax(320px,370px)_minmax(390px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]',
       )}
       data-disable-window-drag={mailboxMenuOpen || undefined}
     >
