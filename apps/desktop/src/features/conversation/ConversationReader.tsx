@@ -46,17 +46,17 @@ function MessageCard({
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
       <summary className="flex min-h-17 cursor-pointer list-none items-center justify-between gap-4 py-4">
-        <span className="flex min-w-0 flex-col">
-          <strong className="truncate text-xs">{addressLabel(message.sender)}</strong>
-          <small className="truncate text-[0.625rem] text-muted-foreground">
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <strong className="truncate text-sm">{addressLabel(message.sender)}</strong>
+          <small className="truncate text-sm text-muted-foreground">
             to {message.recipients.to.map(addressLabel).join(', ') || 'me'}
           </small>
         </span>
-        <time className="text-[0.625rem] text-muted-foreground">
+        <time className="text-sm text-muted-foreground">
           {new Date(message.receivedAt).toLocaleString()}
         </time>
       </summary>
-      <div className="px-0 pt-1 pb-6 text-xs leading-relaxed text-foreground/90">
+      <div className="px-0 pt-1 pb-6 text-sm leading-relaxed text-foreground/90">
         {body.data?.sanitizedHtmlBody ? (
           <EmailFrame
             html={body.data.sanitizedHtmlBody}
@@ -164,13 +164,13 @@ export function ConversationReader({
   const latestMessage = conversation.messages.at(-1)
   return (
     <section className="min-w-0 overflow-auto bg-card" aria-label={conversation.subject}>
-      <header className="window-titlebar sticky top-0 z-2 flex min-h-30 items-start justify-between border-b bg-card px-8 pt-11 pb-4 max-[980px]:px-5">
+      <header className="window-titlebar sticky top-0 z-2 flex min-h-28 items-start justify-between border-b bg-card px-6 pt-11 pb-4 max-[980px]:px-5">
         <div className="min-w-0">
-          <p className="mb-2.5 text-[0.625rem] text-muted-foreground">Inbox / Conversation</p>
+          <p className="mb-2 text-sm text-muted-foreground">Inbox / Conversation</p>
           <h1 className="max-w-2xl truncate text-xl tracking-tight">
             {conversation.subject || '(No subject)'}
           </h1>
-          <p className="mt-1 text-[0.625rem] text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             {conversation.messages.length} messages
           </p>
         </div>
@@ -263,7 +263,7 @@ export function ConversationReader({
         conversationId={conversationId}
         sourceVersion={conversation.version}
       />
-      <div className="max-w-190 px-8 pb-8 max-[980px]:px-5">
+      <div className="max-w-190 px-6 pb-8 max-[980px]:px-5">
         {conversation.messages.map((message, index) => (
           <MessageCard
             key={message.id}

@@ -2,6 +2,7 @@ import type { ConversationId } from '@mailrovers/mail-domain'
 import type { InfiniteData } from '@tanstack/react-query'
 import type { SearchPage } from '@mailrovers/mail-contracts'
 import { Button } from '@/components/ui/button.js'
+import { ListColumnHeader } from './ListColumnHeader.js'
 
 export function SearchResults({
   pages,
@@ -9,35 +10,50 @@ export function SearchResults({
   hasNextPage,
   isFetchingNextPage,
   isError,
+  searchInput,
+  onSearchInputChange,
+  onSearchSubmit,
   onClear,
   onLoadMore,
   onSelect,
+  showSidebarToggle,
+  onShowSidebar,
 }: {
   pages: InfiniteData<SearchPage> | undefined
   selectedConversation?: ConversationId | undefined
   hasNextPage: boolean
   isFetchingNextPage: boolean
   isError: boolean
+  searchInput: string
+  onSearchInputChange: (value: string) => void
+  onSearchSubmit: () => void
   onClear: () => void
   onLoadMore: () => void
   onSelect: (conversationId: ConversationId) => void
+  showSidebarToggle?: boolean | undefined
+  onShowSidebar?: (() => void) | undefined
 }) {
   const items = pages?.pages.flatMap((page) => page.items) ?? []
   const indexing = pages?.pages.some((page) => page.indexing) ?? false
   return (
     <>
-      <header className="window-titlebar flex h-20 items-center justify-between border-b px-4 py-3">
-        <div>
-          <h1 className="truncate text-lg tracking-tight">Search</h1>
-          <p className="mt-1 text-xs text-muted-foreground">{items.length} loaded local results</p>
-        </div>
-        <Button type="button" variant="ghost" size="sm" onClick={onClear}>
-          Clear
-        </Button>
-      </header>
-      {indexing ? <p className="px-4.5 py-6">Indexing older mail…</p> : null}
+      <ListColumnHeader
+        title="Search"
+        subtitle={`${items.length} loaded local results`}
+        searchInput={searchInput}
+        onSearchInputChange={onSearchInputChange}
+        onSearchSubmit={onSearchSubmit}
+        showSidebarToggle={showSidebarToggle}
+        onShowSidebar={onShowSidebar}
+        trailing={
+          <Button type="button" variant="ghost" size="sm" onClick={onClear}>
+            Clear
+          </Button>
+        }
+      />
+      {indexing ? <p className="px-4 py-6 text-sm">Indexing older mail…</p> : null}
       <div
-        className="h-[calc(100vh-132px)] overflow-y-auto"
+        className="min-h-0 flex-1 overflow-y-auto"
         onScroll={(event) => {
           const element = event.currentTarget
           if (
@@ -52,20 +68,22 @@ export function SearchResults({
           <Button
             type="button"
             variant="ghost"
-            className="flex w-full flex-col items-start gap-1.5 rounded-md px-4 py-3 text-start aria-pressed:bg-accent"
+            className="flex w-full flex-col items-start gap-1.5 rounded-md px-4 py-3 text-start text-sm aria-pressed:bg-accent"
             aria-pressed={selectedConversation === hit.conversationId}
             key={hit.messageId}
             onClick={() => onSelect(hit.conversationId)}
           >
-            <strong>{hit.subject || '(No subject)'}</strong>
-            <span className="max-w-full truncate text-muted-foreground">{hit.excerpt}</span>
-            <small className="text-muted-foreground">{hit.sender.name || hit.sender.address}</small>
+            <strong className="text-sm font-medium">{hit.subject || '(No subject)'}</strong>
+            <span className="max-w-full truncate text-sm text-muted-foreground">{hit.excerpt}</span>
+            <small className="text-sm text-muted-foreground">
+              {hit.sender.name || hit.sender.address}
+            </small>
           </Button>
         ))}
-        {items.length === 0 ? <p className="px-4.5 py-6">No local results.</p> : null}
-        {isFetchingNextPage ? <p className="px-4.5 py-6">Loading more results…</p> : null}
+        {items.length === 0 ? <p className="px-4 py-6 text-sm">No local results.</p> : null}
+        {isFetchingNextPage ? <p className="px-4 py-6 text-sm">Loading more results…</p> : null}
         {isError ? (
-          <Button type="button" variant="ghost" className="m-2" onClick={onLoadMore}>
+          <Button type="button" variant="ghost" className="m-2 text-sm" onClick={onLoadMore}>
             Retry loading results
           </Button>
         ) : null}

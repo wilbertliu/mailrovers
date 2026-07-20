@@ -145,62 +145,19 @@ export const MailboxRefreshFailedWithCache: Story = {
 export const OfflineCache: Story = {
   parameters: { mailrovers: storybookScenarios.disconnected },
   play: async ({ canvasElement }) => {
-    await expect(await within(canvasElement).findByText(/Offline cache retained/)).toBeVisible()
+    const canvas = within(canvasElement)
+    await expect(await canvas.findByRole('textbox', { name: 'Search mail' })).toBeVisible()
+    await expect(await canvas.findByText(/Offline cache retained/)).toBeVisible()
   },
 }
 
-export const Refreshing: Story = {
-  parameters: { mailrovers: storybookScenarios.refreshing },
+export const ImportingOlderMail: Story = {
+  parameters: { mailrovers: storybookScenarios.connectionSucceeded },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Refresh' }))
-    await expect(await canvas.findByRole('button', { name: 'Refreshing…' })).toBeDisabled()
-  },
-}
-
-export const RefreshFailed: Story = {
-  parameters: { mailrovers: storybookScenarios.refreshFailed },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Refresh' }))
-    await expect(await canvas.findByText(/Gmail could not be reached/)).toBeVisible()
-  },
-}
-
-export const RefreshComplete: Story = {
-  parameters: { mailrovers: storybookScenarios.refreshComplete },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Refresh' }))
-    await expect(await canvas.findByText('Refresh complete.')).toBeVisible()
-    await expect(await canvas.findByRole('button', { name: 'Refresh' })).toBeEnabled()
-  },
-}
-
-export const RefreshCancelled: Story = {
-  parameters: { mailrovers: storybookScenarios.refreshCancelled },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Refresh' }))
-    await expect(await canvas.findByText('Refresh cancelled.')).toBeVisible()
-  },
-}
-
-export const RefreshDeferred: Story = {
-  parameters: { mailrovers: storybookScenarios.refreshDeferred },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Refresh' }))
-    await expect(await canvas.findByText(/Refresh deferred until/)).toBeVisible()
-  },
-}
-
-export const RefreshAlreadyActive: Story = {
-  parameters: { mailrovers: storybookScenarios.refreshAlreadyActive },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Refresh' }))
-    await expect(await canvas.findByText('Refresh already active.')).toBeVisible()
+    await userEvent.click(await canvas.findByRole('button', { name: 'Connect Gmail' }))
+    await expect(await canvas.findByRole('textbox', { name: 'Search mail' })).toBeVisible()
+    await expect(await canvas.findByText('Importing older mail')).toBeVisible()
   },
 }
 

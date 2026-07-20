@@ -1,4 +1,3 @@
-import { Input } from '@/components/ui/input.js'
 import {
   Add01Icon,
   AiMailIcon,
@@ -6,18 +5,10 @@ import {
   InboxIcon,
   Mail02Icon,
   PencilEdit02Icon,
-  RefreshIcon,
-  Search01Icon,
-  Settings02Icon,
+  SidebarLeftIcon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import type {
-  CommandReceipt,
-  DesktopEvent,
-  Draft,
-  MailCommand,
-  MailboxSummary,
-} from '@mailrovers/mail-contracts'
+import type { CommandReceipt, Draft, MailCommand, MailboxSummary } from '@mailrovers/mail-contracts'
 import type { ConversationId, LabelId, MailboxId, MessageId } from '@mailrovers/mail-domain'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
@@ -34,11 +25,13 @@ import {
 } from '@/components/ui/dropdown-menu.js'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
 import { Spinner } from '@/components/ui/spinner.js'
+import { cn } from '@/lib/utils.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { AiSettings } from '../ai/AiSettings.js'
 import { Composer } from '../composer/Composer.js'
 import { ConversationReader } from '../conversation/ConversationReader.js'
 import { InboxPage } from '../inbox/InboxPage.js'
+import { ListColumnHeader } from '../inbox/ListColumnHeader.js'
 import { SearchResults } from '../inbox/SearchResults.js'
 import { useSearchPages } from '../inbox/useSearchPages.js'
 
@@ -64,19 +57,19 @@ function MailboxMenu({
           <Button
             type="button"
             variant="ghost"
-            className="h-auto w-full justify-start gap-2 rounded-md px-2 py-1.5 text-xs"
+            className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-md px-2 py-1.5 text-sm"
           />
         }
       >
         <span
-          className="grid size-5.5 place-items-center rounded-md bg-foreground text-[0.5rem] font-bold text-background"
+          className="grid size-5.5 shrink-0 place-items-center rounded-md bg-foreground text-[0.625rem] font-bold text-background"
           aria-hidden="true"
         >
           MR
         </span>
-        <strong className="flex-1 truncate text-left text-xs">MailRovers</strong>
+        <strong className="min-w-0 flex-1 truncate text-left text-sm">MailRovers</strong>
         <HugeiconsIcon
-          className="text-muted-foreground"
+          className="shrink-0 text-muted-foreground"
           icon={ArrowDown01Icon}
           strokeWidth={2}
           aria-hidden="true"
@@ -89,13 +82,13 @@ function MailboxMenu({
         >
           <DropdownMenuLabel>Mailboxes</DropdownMenuLabel>
           {mailboxes.map((item) => (
-            <DropdownMenuRadioItem key={item.id} value={item.id} className="text-xs">
+            <DropdownMenuRadioItem key={item.id} value={item.id} className="text-sm">
               <span className="min-w-0 truncate">{item.emailAddress}</span>
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem className="text-xs" onClick={onAddAccount}>
+        <DropdownMenuItem className="text-sm" onClick={onAddAccount}>
           <HugeiconsIcon icon={Add01Icon} strokeWidth={2} aria-hidden="true" />
           Add Gmail account
         </DropdownMenuItem>
@@ -110,13 +103,13 @@ function WorkspaceDetails({ selected }: { selected: boolean }) {
       className="flex min-w-0 flex-col border-l bg-sidebar px-3 py-2.5 max-[1250px]:hidden"
       aria-label="Conversation details"
     >
-      <header className="window-titlebar flex h-8 items-center justify-between border-b px-0.5 pb-2 text-xs">
+      <header className="window-titlebar flex h-8 items-center justify-between border-b px-0.5 pb-2 text-sm">
         <strong>Details</strong>
         <span aria-hidden="true">⌄</span>
       </header>
       {selected ? (
         <>
-          <dl className="mt-3 text-xs">
+          <dl className="mt-3 text-sm">
             {[
               ['Status', 'Open'],
               ['Priority', 'Normal'],
@@ -136,9 +129,9 @@ function WorkspaceDetails({ selected }: { selected: boolean }) {
             ))}
           </dl>
           <section className="border-t px-0.5 py-4">
-            <h2 className="mb-2.5 text-xs font-medium text-muted-foreground">People</h2>
-            <span className="flex items-center gap-2 text-xs">
-              <i className="grid size-5 place-items-center rounded-full bg-accent text-[0.4rem] not-italic text-muted-foreground">
+            <h2 className="mb-2.5 text-sm font-medium text-muted-foreground">People</h2>
+            <span className="flex items-center gap-2 text-sm">
+              <i className="grid size-5 place-items-center rounded-full bg-accent text-[0.5rem] not-italic text-muted-foreground">
                 AM
               </i>
               <b>Alex Morgan</b>
@@ -146,11 +139,11 @@ function WorkspaceDetails({ selected }: { selected: boolean }) {
           </section>
         </>
       ) : (
-        <p className="mx-0.5 my-4 text-xs leading-relaxed text-muted-foreground">
+        <p className="mx-0.5 my-4 text-sm leading-relaxed text-muted-foreground">
           Select a conversation to inspect its details.
         </p>
       )}
-      <footer className="mt-auto border-t px-0.5 pt-3 pb-0.5 text-[0.625rem] text-muted-foreground">
+      <footer className="mt-auto border-t px-0.5 pt-3 pb-0.5 text-sm text-muted-foreground">
         Available offline
       </footer>
     </aside>
@@ -162,13 +155,11 @@ export function MailWorkspace({
   mailboxes,
   onSelectMailbox,
   onAddAccount,
-  onMailboxChanged,
 }: {
   mailbox: MailboxSummary
   mailboxes: MailboxSummary[]
   onSelectMailbox: (mailboxId: MailboxId) => void
   onAddAccount: () => void
-  onMailboxChanged: () => Promise<void>
 }) {
   const mailboxId = mailbox.id
   const [labelId, setLabelId] = useState<LabelId>()
@@ -178,8 +169,7 @@ export function MailWorkspace({
   const [showDrafts, setShowDrafts] = useState(false)
   const [showAiSettings, setShowAiSettings] = useState(false)
   const [mailboxMenuOpen, setMailboxMenuOpen] = useState(false)
-  const [refreshStatus, setRefreshStatus] = useState<string>()
-  const [refreshing, setRefreshing] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [archiveUndo, setArchiveUndo] = useState<CommandReceipt>()
   const [composer, setComposer] = useState<{
     draft?: Draft | undefined
@@ -209,6 +199,10 @@ export function MailWorkspace({
     [labels.data],
   )
   const activeLabelId = labelId ?? inbox?.id
+  const activeLabelName = useMemo(() => {
+    if (labelId === undefined) return 'Inbox'
+    return labels.data?.find((label) => label.id === labelId)?.name ?? 'Inbox'
+  }, [labelId, labels.data])
   const executeCommand = async (command: MailCommand) => {
     const receipt = await desktopBridge.executeCommand({
       mailboxId,
@@ -220,291 +214,219 @@ export function MailWorkspace({
       setSelectedConversation(undefined)
     }
   }
-  const refresh = async () => {
-    const requestId = desktopBridge.createRequestId()
-    setRefreshing(true)
-    setRefreshStatus('Refreshing…')
-    let unsubscribe = desktopBridge.subscribe(requestId, (event: DesktopEvent) => {
-      if (event.kind === 'sync-completed') {
-        setRefreshStatus('Refresh complete.')
-        setRefreshing(false)
-      } else if (event.kind === 'sync-failed') {
-        setRefreshStatus(event.error.message)
-        setRefreshing(false)
-      } else if (event.kind === 'sync-cancelled') {
-        setRefreshStatus('Refresh cancelled.')
-        setRefreshing(false)
-      }
-    })
-    try {
-      const receipt = await desktopBridge.startSync({ requestId, mailboxId, reason: 'manual' })
-      if (receipt.state === 'deferred') {
-        unsubscribe()
-        setRefreshStatus(`Refresh deferred until ${new Date(receipt.retryAt).toLocaleString()}.`)
-        setRefreshing(false)
-      } else if (receipt.requestId !== requestId) {
-        unsubscribe()
-        unsubscribe = desktopBridge.subscribe(receipt.requestId, () => {})
-        setRefreshStatus('Refresh already active.')
-      }
-    } catch (error) {
-      unsubscribe()
-      setRefreshStatus(error instanceof Error ? error.message : 'Refresh failed.')
-      setRefreshing(false)
-    }
-  }
-  const disconnect = async () => {
-    const choice = window.prompt(
-      'Type KEEP to disconnect Gmail while retaining readable local mail, or DELETE to remove all local mailbox data. Cancel to stay connected.',
-    )
-    if (choice === null) return
-    const normalized = choice.trim().toUpperCase()
-    if (normalized !== 'KEEP' && normalized !== 'DELETE') {
-      setRefreshStatus('Disconnect cancelled: enter KEEP or DELETE.')
-      return
-    }
-    await desktopBridge.disconnectMailbox({
-      requestId: desktopBridge.createRequestId(),
-      mailboxId,
-      removeLocalData: normalized === 'DELETE',
-    })
-    await onMailboxChanged()
+  const submitSearch = () => {
+    setShowDrafts(false)
+    setShowAiSettings(false)
+    setSearchQuery(searchInput.trim())
+    setSelectedConversation(undefined)
   }
   const issue = issues.data?.[0]
   const search = useSearchPages(mailboxId, searchQuery)
+  const showSidebarToggle = sidebarCollapsed
 
   return (
     <main
-      className="grid h-full min-w-220 grid-cols-[206px_minmax(320px,370px)_minmax(420px,1fr)_216px] overflow-hidden bg-background text-xs text-foreground max-[1250px]:grid-cols-[206px_minmax(320px,370px)_minmax(420px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]"
+      className={cn(
+        'grid h-full min-w-220 overflow-hidden bg-background text-sm text-foreground',
+        sidebarCollapsed
+          ? 'grid-cols-[minmax(320px,370px)_minmax(420px,1fr)_216px] max-[1250px]:grid-cols-[minmax(320px,370px)_minmax(420px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]'
+          : 'grid-cols-[206px_minmax(320px,370px)_minmax(420px,1fr)_216px] max-[1250px]:grid-cols-[206px_minmax(320px,370px)_minmax(420px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]',
+      )}
       data-disable-window-drag={mailboxMenuOpen || undefined}
     >
-      <aside className="flex min-h-0 flex-col overflow-y-auto border-r bg-sidebar px-2.5 pb-2.5 max-[980px]:hidden">
-        <div className="window-titlebar h-11 shrink-0" aria-hidden="true" />
-        <MailboxMenu
-          mailbox={mailbox}
-          mailboxes={mailboxes}
-          open={mailboxMenuOpen}
-          onOpenChange={setMailboxMenuOpen}
-          onSelectMailbox={onSelectMailbox}
-          onAddAccount={onAddAccount}
-        />
-        <form
-          className="relative mt-4 flex items-center"
-          aria-label="Search mail"
-          onSubmit={(event) => {
-            event.preventDefault()
-            setShowDrafts(false)
-            setShowAiSettings(false)
-            setSearchQuery(searchInput.trim())
-            setSelectedConversation(undefined)
-          }}
-        >
-          <label className="sr-only" htmlFor="mail-search">
-            Search mail
-          </label>
-          <HugeiconsIcon
-            className="absolute left-2.5 z-1 text-muted-foreground"
-            icon={Search01Icon}
-            aria-hidden="true"
-          />
-          <Input
-            className="h-8 rounded-md bg-background pr-9 pl-7.5 text-xs"
-            id="mail-search"
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
-            placeholder="Search"
-          />
-          <kbd className="absolute right-2 font-mono text-[0.5rem] text-muted-foreground">⌘ K</kbd>
-        </form>
-        <nav className="mt-2.5 flex flex-col gap-0.5" aria-label="Workspace">
-          {labels.isError ? null : (
+      {sidebarCollapsed ? null : (
+        <aside className="flex min-h-0 flex-col overflow-y-auto border-r bg-sidebar max-[980px]:hidden">
+          <div className="window-titlebar flex h-10 shrink-0 items-center gap-3 pl-21 pt-0.5 pr-2">
             <Button
               type="button"
               variant="ghost"
-              className="h-8 justify-start gap-2 rounded-md px-2 text-xs aria-pressed:bg-accent"
-              aria-pressed={!showDrafts && !showAiSettings && !searchQuery}
-              onClick={() => {
-                setShowDrafts(false)
-                setShowAiSettings(false)
-                setSearchQuery('')
-                setSearchInput('')
-                setSelectedConversation(undefined)
-              }}
+              size="icon-sm"
+              className="rounded-md"
+              aria-label="Hide sidebar"
+              onClick={() => setSidebarCollapsed(true)}
             >
-              <HugeiconsIcon icon={InboxIcon} data-icon="inline-start" aria-hidden="true" />
-              <span>Inbox</span>
-              <small className="ml-auto text-[0.625rem] text-muted-foreground">
-                {inbox?.unreadCount ?? 0}
-              </small>
+              <HugeiconsIcon icon={SidebarLeftIcon} aria-hidden="true" />
             </Button>
-          )}
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-8 justify-start gap-2 rounded-md px-2 text-xs aria-pressed:bg-accent"
-            aria-label="Local drafts"
-            aria-pressed={showDrafts}
-            onClick={() => {
-              setShowDrafts(true)
-              setShowAiSettings(false)
-              setSearchInput('')
-              setSearchQuery('')
-              setSelectedConversation(undefined)
-            }}
-          >
-            <HugeiconsIcon icon={Mail02Icon} data-icon="inline-start" aria-hidden="true" />
-            <span>Drafts</span>
-            {drafts.data?.length ? (
-              <small className="ml-auto text-[0.625rem] text-muted-foreground">
-                {drafts.data.length}
-              </small>
-            ) : null}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-8 justify-start gap-2 rounded-md px-2 text-xs aria-pressed:bg-accent"
-            aria-pressed={showAiSettings}
-            onClick={() => {
-              setShowAiSettings(true)
-              setShowDrafts(false)
-              setSearchInput('')
-              setSearchQuery('')
-              setSelectedConversation(undefined)
-            }}
-          >
-            <HugeiconsIcon icon={AiMailIcon} data-icon="inline-start" aria-hidden="true" />
-            <span>AI provider</span>
-          </Button>
-        </nav>
-        <p className="mx-2 mt-5.5 mb-1 text-[0.625rem] font-medium text-muted-foreground">
-          Workspaces
-        </p>
-        <nav className="flex flex-col gap-0.5" aria-label="Labels">
-          {labels.isPending ? (
-            <p className="px-2 py-1.5 text-xs text-muted-foreground">Loading labels…</p>
-          ) : null}
-          {labels.data
-            ?.filter((label) => label.providerLabelId !== 'INBOX')
-            .map((label) => (
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-5 px-2 pt-3 pb-2.5">
+            <div className="flex h-9 items-center gap-2 px-0.5">
+              <MailboxMenu
+                mailbox={mailbox}
+                mailboxes={mailboxes}
+                open={mailboxMenuOpen}
+                onOpenChange={setMailboxMenuOpen}
+                onSelectMailbox={onSelectMailbox}
+                onAddAccount={onAddAccount}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                className="shrink-0 border-border bg-background shadow-sm"
+                aria-label="New message"
+                onClick={() => setComposer({})}
+              >
+                <HugeiconsIcon icon={PencilEdit02Icon} aria-hidden="true" />
+              </Button>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col gap-2">
+              <nav className="flex flex-col gap-1" aria-label="Workspace">
+                {labels.isError ? null : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-8 justify-start gap-2 rounded-md px-2 text-sm aria-pressed:bg-accent"
+                    aria-pressed={!showDrafts && !showAiSettings && !searchQuery}
+                    onClick={() => {
+                      setShowDrafts(false)
+                      setShowAiSettings(false)
+                      setSearchQuery('')
+                      setSearchInput('')
+                      setLabelId(undefined)
+                      setSelectedConversation(undefined)
+                    }}
+                  >
+                    <HugeiconsIcon icon={InboxIcon} data-icon="inline-start" aria-hidden="true" />
+                    <span>Inbox</span>
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-8 justify-start gap-2 rounded-md px-2 text-sm aria-pressed:bg-accent"
+                  aria-label="Local drafts"
+                  aria-pressed={showDrafts}
+                  onClick={() => {
+                    setShowDrafts(true)
+                    setShowAiSettings(false)
+                    setSearchInput('')
+                    setSearchQuery('')
+                    setSelectedConversation(undefined)
+                  }}
+                >
+                  <HugeiconsIcon icon={Mail02Icon} data-icon="inline-start" aria-hidden="true" />
+                  <span>Drafts</span>
+                  {drafts.data?.length ? (
+                    <small className="ml-auto text-sm text-muted-foreground">
+                      {drafts.data.length}
+                    </small>
+                  ) : null}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-8 justify-start gap-2 rounded-md px-2 text-sm aria-pressed:bg-accent"
+                  aria-pressed={showAiSettings}
+                  onClick={() => {
+                    setShowAiSettings(true)
+                    setShowDrafts(false)
+                    setSearchInput('')
+                    setSearchQuery('')
+                    setSelectedConversation(undefined)
+                  }}
+                >
+                  <HugeiconsIcon icon={AiMailIcon} data-icon="inline-start" aria-hidden="true" />
+                  <span>AI provider</span>
+                </Button>
+              </nav>
+              <nav className="flex flex-col gap-1" aria-label="Labels">
+                {labels.isPending ? (
+                  <p className="px-2 py-1.5 text-sm text-muted-foreground">Loading labels…</p>
+                ) : null}
+                {labels.data
+                  ?.filter((label) => label.providerLabelId !== 'INBOX')
+                  .map((label) => (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-8 justify-start gap-2 rounded-md px-2 text-sm aria-pressed:bg-accent"
+                      key={label.id}
+                      aria-pressed={label.id === activeLabelId && !searchQuery && !showDrafts}
+                      onClick={() => {
+                        setLabelId(label.id)
+                        setShowDrafts(false)
+                        setShowAiSettings(false)
+                        setSearchQuery('')
+                        setSearchInput('')
+                        setSelectedConversation(undefined)
+                      }}
+                    >
+                      <i className="size-1.5 rounded-xs bg-chart-2" aria-hidden="true" />
+                      <span>{label.name}</span>
+                      {label.unreadCount > 0 ? (
+                        <small className="ml-auto text-sm text-muted-foreground">
+                          {label.unreadCount}
+                        </small>
+                      ) : null}
+                    </Button>
+                  ))}
+              </nav>
+            </div>
+            <div className="mt-auto space-y-1 pt-1">
+              {mailbox.connectionState === 'disconnected' ? (
+                <output className="block px-0.5 text-sm leading-snug text-muted-foreground">
+                  Offline cache retained. Reconnect Gmail to refresh, send, or edit Gmail.
+                </output>
+              ) : null}
+              {mailbox.connectionState === 'connected' && mailbox.syncState !== 'ready' ? (
+                <Marker
+                  className="w-auto text-sm text-muted-foreground"
+                  render={<output aria-live="polite" />}
+                >
+                  <MarkerIcon>
+                    <Spinner aria-hidden="true" />
+                  </MarkerIcon>
+                  <MarkerContent>Importing older mail</MarkerContent>
+                </Marker>
+              ) : null}
+            </div>
+          </div>
+        </aside>
+      )}
+
+      {showAiSettings ? (
+        <section
+          className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-background"
+          aria-label="AI provider"
+        >
+          {showSidebarToggle ? (
+            <div className="window-titlebar flex h-10 shrink-0 items-center gap-3 border-b pl-21 pt-0.5 pr-2">
               <Button
                 type="button"
                 variant="ghost"
-                className="h-8 justify-start gap-2 rounded-md px-2 text-xs aria-pressed:bg-accent"
-                key={label.id}
-                aria-pressed={label.id === activeLabelId && !searchQuery}
-                onClick={() => {
-                  setLabelId(label.id)
-                  setShowDrafts(false)
-                  setShowAiSettings(false)
-                  setSearchQuery('')
-                  setSearchInput('')
-                  setSelectedConversation(undefined)
-                }}
+                size="icon-sm"
+                className="rounded-md"
+                aria-label="Show sidebar"
+                onClick={() => setSidebarCollapsed(false)}
               >
-                <i className="size-1.5 rounded-xs bg-chart-2" aria-hidden="true" />
-                <span>{label.name}</span>
-                {label.unreadCount > 0 ? (
-                  <small className="ml-auto text-[0.625rem] text-muted-foreground">
-                    {label.unreadCount}
-                  </small>
-                ) : null}
+                <HugeiconsIcon icon={SidebarLeftIcon} aria-hidden="true" />
               </Button>
-            ))}
-        </nav>
-        <Button
-          className="mt-4 h-8 justify-start gap-2 rounded-md px-2 text-xs"
-          variant="ghost"
-          onClick={() => setComposer({})}
-        >
-          <HugeiconsIcon icon={PencilEdit02Icon} data-icon="inline-start" aria-hidden="true" />
-          <span>New message</span>
-          <kbd className="ml-auto font-mono text-[0.5rem] text-muted-foreground">C</kbd>
-        </Button>
-        <div className="mt-auto flex gap-0.5 border-t pt-2.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 rounded-md px-2 text-[0.625rem] text-muted-foreground"
-            disabled={refreshing || mailbox.connectionState === 'disconnected'}
-            onClick={() => void refresh()}
-          >
-            <HugeiconsIcon icon={RefreshIcon} data-icon="inline-start" aria-hidden="true" />
-            {refreshing ? 'Refreshing…' : 'Refresh'}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 rounded-md px-2 text-[0.625rem] text-muted-foreground"
-            onClick={() => void disconnect()}
-          >
-            Disconnect
-          </Button>
-        </div>
-        {mailbox.connectionState === 'disconnected' ? (
-          <output className="mt-1 text-[0.625rem] leading-snug text-muted-foreground">
-            Offline cache retained. Reconnect Gmail to refresh, send, or edit Gmail.
-          </output>
-        ) : null}
-        {mailbox.connectionState === 'connected' && mailbox.syncState !== 'ready' ? (
-          <Marker
-            className="mt-1 w-auto text-[0.625rem] text-muted-foreground"
-            render={<output aria-live="polite" />}
-          >
-            <MarkerIcon>
-              <Spinner aria-hidden="true" />
-            </MarkerIcon>
-            <MarkerContent>Importing older mail</MarkerContent>
-          </Marker>
-        ) : null}
-        {refreshStatus ? (
-          <output className="mt-1 text-[0.625rem] leading-snug text-muted-foreground">
-            {refreshStatus}
-          </output>
-        ) : null}
-        <footer className="flex items-center gap-2 px-1 pt-2.5 pb-0.5">
-          <span className="grid size-6 place-items-center rounded-full bg-accent text-[0.5rem] font-bold text-muted-foreground">
-            AM
-          </span>
-          <div className="min-w-0 flex-1">
-            <strong className="block truncate text-[0.625rem]">
-              {mailbox.displayName || 'MailRovers user'}
-            </strong>
-            <small className="block truncate text-[0.5rem] text-muted-foreground">
-              {mailbox.emailAddress}
-            </small>
+            </div>
+          ) : null}
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+            <AiSettings mailboxId={mailboxId} onClose={() => setShowAiSettings(false)} />
           </div>
-          <HugeiconsIcon
-            className="text-muted-foreground"
-            icon={Settings02Icon}
-            aria-hidden="true"
-          />
-        </footer>
-      </aside>
-
-      {showAiSettings ? (
-        <AiSettings mailboxId={mailboxId} onClose={() => setShowAiSettings(false)} />
+        </section>
       ) : showDrafts ? (
         <section
-          className="min-w-0 overflow-hidden border-r bg-background"
+          className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-background"
           aria-label="Local drafts"
         >
-          <header className="window-titlebar flex h-20 items-center justify-between border-b px-4 py-3">
-            <div>
-              <h1 className="truncate text-lg tracking-tight">Local drafts</h1>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {drafts.data?.length ?? 0} saved on this Mac
-              </p>
-            </div>
-          </header>
-          <div className="h-[calc(100vh-132px)] overflow-y-auto">
+          <ListColumnHeader
+            title="Local drafts"
+            subtitle={`${drafts.data?.length ?? 0} saved on this Mac`}
+            searchInput={searchInput}
+            onSearchInputChange={setSearchInput}
+            onSearchSubmit={submitSearch}
+            showSidebarToggle={showSidebarToggle}
+            onShowSidebar={() => setSidebarCollapsed(false)}
+          />
+          <div className="min-h-0 flex-1 overflow-y-auto">
             {drafts.data?.map((draft) => (
               <Button
                 type="button"
                 variant="ghost"
-                className="flex w-full flex-col items-start gap-1.5 rounded-md px-4 py-3 text-start aria-pressed:bg-accent"
+                className="flex w-full flex-col items-start gap-1.5 rounded-md px-4 py-3 text-start text-sm aria-pressed:bg-accent"
                 key={draft.id}
                 onClick={() => {
                   void (async () => {
@@ -524,17 +446,21 @@ export function MailWorkspace({
                   })()
                 }}
               >
-                <strong>{draft.subject || '(No subject)'}</strong>
-                <span className="max-w-full truncate">{draft.textBody || 'Empty draft'}</span>
-                <small>{draft.syncState}</small>
+                <strong className="text-sm font-medium">{draft.subject || '(No subject)'}</strong>
+                <span className="max-w-full truncate text-sm text-muted-foreground">
+                  {draft.textBody || 'Empty draft'}
+                </span>
+                <small className="text-sm text-muted-foreground">{draft.syncState}</small>
               </Button>
             ))}
-            {drafts.data?.length === 0 ? <p className="px-4.5 py-6">No local drafts.</p> : null}
+            {drafts.data?.length === 0 ? (
+              <p className="px-4 py-6 text-sm">No local drafts.</p>
+            ) : null}
           </div>
         </section>
       ) : searchQuery ? (
         <section
-          className="min-w-0 overflow-hidden border-r bg-background"
+          className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-background"
           aria-label="Search results"
         >
           <SearchResults
@@ -543,6 +469,11 @@ export function MailWorkspace({
             hasNextPage={search.hasNextPage}
             isFetchingNextPage={search.isFetchingNextPage}
             isError={search.isError}
+            searchInput={searchInput}
+            onSearchInputChange={setSearchInput}
+            onSearchSubmit={submitSearch}
+            showSidebarToggle={showSidebarToggle}
+            onShowSidebar={() => setSidebarCollapsed(false)}
             onClear={() => {
               setSearchInput('')
               setSearchQuery('')
@@ -557,7 +488,13 @@ export function MailWorkspace({
         <InboxPage
           mailbox={mailboxId}
           labelId={activeLabelId}
+          title={activeLabelName}
           selectedId={selectedConversation}
+          searchInput={searchInput}
+          onSearchInputChange={setSearchInput}
+          onSearchSubmit={submitSearch}
+          showSidebarToggle={showSidebarToggle}
+          onShowSidebar={() => setSidebarCollapsed(false)}
           onSelect={setSelectedConversation}
         />
       )}
@@ -581,8 +518,8 @@ export function MailWorkspace({
       ) : (
         <section className="window-titlebar grid place-items-center bg-card p-12 text-center">
           <div>
-            <strong className="text-xs">Select a conversation</strong>
-            <p className="mt-2 max-w-[40ch] text-xs text-muted-foreground">
+            <strong className="text-sm">Select a conversation</strong>
+            <p className="mt-2 max-w-[40ch] text-sm text-muted-foreground">
               Messages stay on this Mac and open from the local cache.
             </p>
           </div>
@@ -591,7 +528,7 @@ export function MailWorkspace({
       <WorkspaceDetails selected={selectedConversation !== undefined} />
       {issue ? (
         <aside
-          className="fixed top-17 left-1/2 z-45 flex w-[min(620px,calc(100vw-36px))] -translate-x-1/2 items-center gap-2.5 rounded-lg border bg-popover px-3.5 py-3 text-popover-foreground shadow-sm"
+          className="fixed top-17 left-1/2 z-45 flex w-[min(620px,calc(100vw-36px))] -translate-x-1/2 items-center gap-2.5 rounded-lg border bg-popover px-3.5 py-3 text-sm text-popover-foreground shadow-sm"
           role="alert"
         >
           <div className="min-w-0 flex-1">
@@ -634,7 +571,7 @@ export function MailWorkspace({
         </aside>
       ) : null}
       {archiveUndo ? (
-        <aside className="fixed top-17 left-1/2 z-45 flex w-[min(620px,calc(100vw-36px))] -translate-x-1/2 items-center gap-2.5 rounded-lg border bg-popover px-3.5 py-3 text-popover-foreground shadow-sm">
+        <aside className="fixed top-17 left-1/2 z-45 flex w-[min(620px,calc(100vw-36px))] -translate-x-1/2 items-center gap-2.5 rounded-lg border bg-popover px-3.5 py-3 text-sm text-popover-foreground shadow-sm">
           <output className="min-w-0 flex-1">Conversation archived.</output>
           <Button
             type="button"

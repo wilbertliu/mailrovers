@@ -17,7 +17,7 @@ export const NewMessage: Story = {
   parameters: { mailrovers: storybookScenarios.composer },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Compose' }))
+    await userEvent.click(await canvas.findByRole('button', { name: 'New message' }))
     await expect(await canvas.findByRole('region', { name: 'New message' })).toBeVisible()
   },
 }
@@ -59,7 +59,7 @@ export const Autosaving: Story = {
   parameters: { mailrovers: storybookScenarios.composerSaving },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Compose' }))
+    await userEvent.click(await canvas.findByRole('button', { name: 'New message' }))
     await userEvent.type(await canvas.findByLabelText('Subject'), 'A new local draft')
     await waitFor(async () => expect(await canvas.findByText('Saving locally…')).toBeVisible(), {
       timeout: 3_000,
@@ -71,7 +71,7 @@ export const Autosaved: Story = {
   parameters: { mailrovers: storybookScenarios.composer },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Compose' }))
+    await userEvent.click(await canvas.findByRole('button', { name: 'New message' }))
     await userEvent.type(await canvas.findByLabelText('Subject'), 'A saved local draft')
     await waitFor(async () => expect(await canvas.findByText('Saved locally')).toBeVisible(), {
       timeout: 3_000,
@@ -83,7 +83,7 @@ export const AutosaveFailed: Story = {
   parameters: { mailrovers: storybookScenarios.composerSaveFailed },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Compose' }))
+    await userEvent.click(await canvas.findByRole('button', { name: 'New message' }))
     await userEvent.type(await canvas.findByLabelText('Subject'), 'A draft that cannot save')
     await waitFor(
       async () =>
@@ -97,7 +97,7 @@ export const SendPending: Story = {
   parameters: { mailrovers: storybookScenarios.composerSending },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Compose' }))
+    await userEvent.click(await canvas.findByRole('button', { name: 'New message' }))
     await userEvent.type(await canvas.findByLabelText('To'), 'maya@example.com')
     await userEvent.click(await canvas.findByRole('button', { name: 'Send' }))
     await expect(await canvas.findByRole('region', { name: 'New message' })).toBeVisible()
@@ -109,7 +109,7 @@ export const SendFailed: Story = {
   parameters: { mailrovers: storybookScenarios.composerSendFailed },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Compose' }))
+    await userEvent.click(await canvas.findByRole('button', { name: 'New message' }))
     await userEvent.type(await canvas.findByLabelText('To'), 'maya@example.com')
     await userEvent.click(await canvas.findByRole('button', { name: 'Send' }))
     await expect(await canvas.findByText('Could not save. Keep this window open.')).toBeVisible()

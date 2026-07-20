@@ -510,7 +510,6 @@ export function MailboxGate() {
           mailboxes={mailboxes.data}
           onSelectMailbox={setSelectedMailbox}
           onAddAccount={() => setShowConnect(true)}
-          onMailboxChanged={onChanged}
         />
       )
     }

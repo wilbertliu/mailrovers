@@ -108,6 +108,7 @@ async function createWindow(): Promise<void> {
     show: false,
     backgroundColor: '#ffffff',
     titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 14, y: 14 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       sandbox: true,
