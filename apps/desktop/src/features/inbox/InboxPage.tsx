@@ -25,7 +25,7 @@ export function InboxPage({
           queueMicrotask(() => onSelect(first.id))
       }}
     >
-      <header className="flex h-20 items-center justify-between px-4 py-3">
+      <header className="window-titlebar flex h-20 items-center justify-between px-4 py-3">
         <div>
           <p className="mb-1 text-[0.625rem] text-muted-foreground">Workspace</p>
           <h1 className="truncate text-lg tracking-tight">

@@ -140,6 +140,12 @@
     app-region: no-drag;
   }
 
+  /* Drag regions swallow outside-dismiss pointers; disable while a menu needs them. */
+  [data-disable-window-drag] .window-titlebar {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+
   button:not(:disabled),
   [role='button']:not(:disabled) {
     cursor: pointer;

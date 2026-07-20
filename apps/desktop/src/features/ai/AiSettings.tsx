@@ -67,7 +67,7 @@ function AiSettingsForm({
 
   return (
     <section className="min-w-0 overflow-hidden" aria-labelledby="ai-settings-title">
-      <header className="flex h-19 items-center justify-between px-4.5 py-4">
+      <header className="window-titlebar flex h-19 items-center justify-between px-4.5 py-4">
         <div>
           <h1 className="truncate" id="ai-settings-title">
             AI provider
@@ -182,7 +182,7 @@ export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClo
   if (configuration.data === undefined) {
     return (
       <section className="min-w-0 overflow-hidden" aria-labelledby="ai-settings-title">
-        <header className="flex h-19 items-center justify-between px-4.5 py-4">
+        <header className="window-titlebar flex h-19 items-center justify-between px-4.5 py-4">
           <div>
             <h1 className="truncate" id="ai-settings-title">
               AI provider

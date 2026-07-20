@@ -149,13 +149,13 @@ export function ConversationReader({
   })
   if (query.isPending)
     return (
-      <section className="px-4.5 py-6" aria-live="polite">
+      <section className="window-titlebar min-w-0 bg-card px-4.5 py-6" aria-live="polite">
         Loading conversation…
       </section>
     )
   if (query.isError || !query.data)
     return (
-      <section className="px-4.5 py-6" role="alert">
+      <section className="window-titlebar min-w-0 bg-card px-4.5 py-6" role="alert">
         Unable to open this conversation.
       </section>
     )
@@ -164,7 +164,7 @@ export function ConversationReader({
   const latestMessage = conversation.messages.at(-1)
   return (
     <section className="min-w-0 overflow-auto bg-card" aria-label={conversation.subject}>
-      <header className="sticky top-0 z-2 flex min-h-30 items-start justify-between border-b bg-card px-8 pt-11 pb-4 max-[980px]:px-5">
+      <header className="window-titlebar sticky top-0 z-2 flex min-h-30 items-start justify-between border-b bg-card px-8 pt-11 pb-4 max-[980px]:px-5">
         <div className="min-w-0">
           <p className="mb-2.5 text-[0.625rem] text-muted-foreground">Inbox / Conversation</p>
           <h1 className="max-w-2xl truncate text-xl tracking-tight">

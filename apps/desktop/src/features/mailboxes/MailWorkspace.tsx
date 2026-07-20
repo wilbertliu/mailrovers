@@ -1,6 +1,8 @@
 import { Input } from '@/components/ui/input.js'
 import {
+  Add01Icon,
   AiMailIcon,
+  ArrowDown01Icon,
   InboxIcon,
   Mail02Icon,
   PencilEdit02Icon,
@@ -16,10 +18,20 @@ import type {
   MailCommand,
   MailboxSummary,
 } from '@mailrovers/mail-contracts'
-import type { ConversationId, LabelId, MessageId } from '@mailrovers/mail-domain'
+import type { ConversationId, LabelId, MailboxId, MessageId } from '@mailrovers/mail-domain'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button.js'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu.js'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
 import { Spinner } from '@/components/ui/spinner.js'
 import { desktopBridge } from '../../desktop-bridge.js'
@@ -30,13 +42,75 @@ import { InboxPage } from '../inbox/InboxPage.js'
 import { SearchResults } from '../inbox/SearchResults.js'
 import { useSearchPages } from '../inbox/useSearchPages.js'
 
+function MailboxMenu({
+  mailbox,
+  mailboxes,
+  open,
+  onOpenChange,
+  onSelectMailbox,
+  onAddAccount,
+}: {
+  mailbox: MailboxSummary
+  mailboxes: MailboxSummary[]
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSelectMailbox: (mailboxId: MailboxId) => void
+  onAddAccount: () => void
+}) {
+  return (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-auto w-full justify-start gap-2 rounded-md px-2 py-1.5 text-xs"
+          />
+        }
+      >
+        <span
+          className="grid size-5.5 place-items-center rounded-md bg-foreground text-[0.5rem] font-bold text-background"
+          aria-hidden="true"
+        >
+          MR
+        </span>
+        <strong className="flex-1 truncate text-left text-xs">MailRovers</strong>
+        <HugeiconsIcon
+          className="text-muted-foreground"
+          icon={ArrowDown01Icon}
+          strokeWidth={2}
+          aria-hidden="true"
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-56" sideOffset={6}>
+        <DropdownMenuRadioGroup
+          value={mailbox.id}
+          onValueChange={(value) => onSelectMailbox(value as MailboxId)}
+        >
+          <DropdownMenuLabel>Mailboxes</DropdownMenuLabel>
+          {mailboxes.map((item) => (
+            <DropdownMenuRadioItem key={item.id} value={item.id} className="text-xs">
+              <span className="min-w-0 truncate">{item.emailAddress}</span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-xs" onClick={onAddAccount}>
+          <HugeiconsIcon icon={Add01Icon} strokeWidth={2} aria-hidden="true" />
+          Add Gmail account
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 function WorkspaceDetails({ selected }: { selected: boolean }) {
   return (
     <aside
       className="flex min-w-0 flex-col border-l bg-sidebar px-3 py-2.5 max-[1250px]:hidden"
       aria-label="Conversation details"
     >
-      <header className="flex h-8 items-center justify-between border-b px-0.5 pb-2 text-xs">
+      <header className="window-titlebar flex h-8 items-center justify-between border-b px-0.5 pb-2 text-xs">
         <strong>Details</strong>
         <span aria-hidden="true">⌄</span>
       </header>
@@ -85,9 +159,15 @@ function WorkspaceDetails({ selected }: { selected: boolean }) {
 
 export function MailWorkspace({
   mailbox,
+  mailboxes,
+  onSelectMailbox,
+  onAddAccount,
   onMailboxChanged,
 }: {
   mailbox: MailboxSummary
+  mailboxes: MailboxSummary[]
+  onSelectMailbox: (mailboxId: MailboxId) => void
+  onAddAccount: () => void
   onMailboxChanged: () => Promise<void>
 }) {
   const mailboxId = mailbox.id
@@ -97,6 +177,7 @@ export function MailWorkspace({
   const [searchQuery, setSearchQuery] = useState('')
   const [showDrafts, setShowDrafts] = useState(false)
   const [showAiSettings, setShowAiSettings] = useState(false)
+  const [mailboxMenuOpen, setMailboxMenuOpen] = useState(false)
   const [refreshStatus, setRefreshStatus] = useState<string>()
   const [refreshing, setRefreshing] = useState(false)
   const [archiveUndo, setArchiveUndo] = useState<CommandReceipt>()
@@ -193,18 +274,20 @@ export function MailWorkspace({
   const search = useSearchPages(mailboxId, searchQuery)
 
   return (
-    <main className="grid h-full min-w-220 grid-cols-[206px_minmax(320px,370px)_minmax(420px,1fr)_216px] overflow-hidden bg-background text-xs text-foreground max-[1250px]:grid-cols-[206px_minmax(320px,370px)_minmax(420px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]">
-      <aside className="flex min-h-0 flex-col overflow-y-auto border-r bg-sidebar px-2.5 py-2.5 max-[980px]:hidden">
-        <div className="flex items-center gap-2 px-2 py-1.5">
-          <span
-            className="grid size-5.5 place-items-center rounded-md bg-foreground text-[0.5rem] font-bold text-background"
-            aria-hidden="true"
-          >
-            MR
-          </span>
-          <strong className="flex-1 text-xs">MailRovers</strong>
-          <small className="text-muted-foreground">⌄</small>
-        </div>
+    <main
+      className="grid h-full min-w-220 grid-cols-[206px_minmax(320px,370px)_minmax(420px,1fr)_216px] overflow-hidden bg-background text-xs text-foreground max-[1250px]:grid-cols-[206px_minmax(320px,370px)_minmax(420px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]"
+      data-disable-window-drag={mailboxMenuOpen || undefined}
+    >
+      <aside className="flex min-h-0 flex-col overflow-y-auto border-r bg-sidebar px-2.5 pb-2.5 max-[980px]:hidden">
+        <div className="window-titlebar h-11 shrink-0" aria-hidden="true" />
+        <MailboxMenu
+          mailbox={mailbox}
+          mailboxes={mailboxes}
+          open={mailboxMenuOpen}
+          onOpenChange={setMailboxMenuOpen}
+          onSelectMailbox={onSelectMailbox}
+          onAddAccount={onAddAccount}
+        />
         <form
           className="relative mt-4 flex items-center"
           aria-label="Search mail"
@@ -408,7 +491,7 @@ export function MailWorkspace({
           className="min-w-0 overflow-hidden border-r bg-background"
           aria-label="Local drafts"
         >
-          <header className="flex h-20 items-center justify-between border-b px-4 py-3">
+          <header className="window-titlebar flex h-20 items-center justify-between border-b px-4 py-3">
             <div>
               <h1 className="truncate text-lg tracking-tight">Local drafts</h1>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -496,7 +579,7 @@ export function MailWorkspace({
           }
         />
       ) : (
-        <section className="grid place-items-center bg-card p-12 text-center">
+        <section className="window-titlebar grid place-items-center bg-card p-12 text-center">
           <div>
             <strong className="text-xs">Select a conversation</strong>
             <p className="mt-2 max-w-[40ch] text-xs text-muted-foreground">

@@ -26,7 +26,7 @@ export function SearchResults({
   const indexing = pages?.pages.some((page) => page.indexing) ?? false
   return (
     <>
-      <header className="flex h-20 items-center justify-between border-b px-4 py-3">
+      <header className="window-titlebar flex h-20 items-center justify-between border-b px-4 py-3">
         <div>
           <h1 className="truncate text-lg tracking-tight">Search</h1>
           <p className="mt-1 text-xs text-muted-foreground">{items.length} loaded local results</p>

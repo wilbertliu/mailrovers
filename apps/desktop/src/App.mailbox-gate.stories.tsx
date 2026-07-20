@@ -71,7 +71,9 @@ export const AddAnotherAccount: Story = {
   parameters: { mailrovers: storybookScenarios.addAccount },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Add Gmail account' }))
+    const body = within(canvasElement.ownerDocument.body)
+    await userEvent.click(await canvas.findByRole('button', { name: /MailRovers/i }))
+    await userEvent.click(await body.findByRole('menuitem', { name: 'Add Gmail account' }))
     await expect(await canvas.findByRole('heading', { name: 'Before you connect' })).toBeVisible()
     await expect(await canvas.findByRole('button', { name: 'Back' })).toBeVisible()
   },

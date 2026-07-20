@@ -7,7 +7,6 @@ import type { ReactNode } from 'react'
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button.js'
-import { NativeSelect } from '@/components/ui/native-select.js'
 import {
   Card,
   CardContent,
@@ -35,7 +34,6 @@ import {
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
 import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress.js'
 import { Spinner } from '@/components/ui/spinner.js'
-import { cn } from '@/lib/utils.js'
 import { DesktopApplicationError, desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
 import { ConnectionHandoffPage } from './ConnectionHandoffPage.js'
@@ -53,17 +51,18 @@ function connectionHandoffMinimum(): Promise<void> {
   })
 }
 
-function WindowFrame({ children, titlebar }: { children: ReactNode; titlebar?: ReactNode }) {
+function WindowFrame({
+  children,
+  dragRegion = true,
+}: {
+  children: ReactNode
+  dragRegion?: boolean
+}) {
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <header
-        className={cn(
-          'window-titlebar flex h-14 shrink-0 items-center py-2 pr-4 pl-22',
-          titlebar && 'h-11 border-b bg-sidebar pr-3 pl-22 text-foreground',
-        )}
-      >
-        {titlebar}
-      </header>
+      {dragRegion ? (
+        <header className="window-titlebar h-11 shrink-0" aria-hidden="true" />
+      ) : null}
       <div className="min-h-0 flex-1">{children}</div>
     </div>
   )
@@ -474,7 +473,7 @@ export function MailboxGate() {
   }
 
   let content: ReactNode
-  let titlebar: ReactNode
+  let dragRegion = true
 
   if (mailboxes.data === undefined && (mailboxes.isError || retryingInitialLoad)) {
     content = (
@@ -504,38 +503,18 @@ export function MailboxGate() {
     ) {
       content = <ImportPage mailbox={mailbox} onChanged={onChanged} />
     } else {
-      titlebar = (
-        <nav className="flex w-full items-center justify-between text-xs" aria-label="Mailboxes">
-          <label className="flex items-center gap-2.5">
-            <span className="text-muted-foreground">Mailbox</span>
-            <NativeSelect
-              className="h-7 min-w-55 rounded-md py-1.5 pr-7 pl-2.5 text-xs"
-              value={mailbox.id}
-              onChange={(event) =>
-                setSelectedMailbox(mailboxes.data[event.target.selectedIndex]?.id)
-              }
-            >
-              {mailboxes.data.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.emailAddress}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="h-7 rounded-md text-xs"
-            onClick={() => setShowConnect(true)}
-          >
-            Add Gmail account
-          </Button>
-        </nav>
+      dragRegion = false
+      content = (
+        <MailWorkspace
+          mailbox={mailbox}
+          mailboxes={mailboxes.data}
+          onSelectMailbox={setSelectedMailbox}
+          onAddAccount={() => setShowConnect(true)}
+          onMailboxChanged={onChanged}
+        />
       )
-      content = <MailWorkspace mailbox={mailbox} onMailboxChanged={onChanged} />
     }
   }
 
-  return <WindowFrame titlebar={titlebar}>{content}</WindowFrame>
+  return <WindowFrame dragRegion={dragRegion}>{content}</WindowFrame>
 }
