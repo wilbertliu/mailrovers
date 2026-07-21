@@ -56,30 +56,30 @@ http://127.0.0.1:6006/iframe.html?id=<story-id>&viewMode=story
 
 Story id pattern: Storybook title `Flows/Workspace` + export `PopulatedInbox` → `flows-workspace--populated-inbox` (lowercase, `/` and spaces → `-`, camelCase → kebab).
 
-| Flow | Good starting story id |
-|---|---|
-| Populated inbox (no auto-play) | `flows-workspace--populated-inbox` |
-| Search results (play auto-types) | `flows-search--results` |
-| Connect gate | `flows-mailbox-gate--no-account-connected` |
-| New message | `flows-composer--new-message` |
-| AI settings | `flows-ai--settings-configured` |
+| Flow                             | Good starting story id                     |
+| -------------------------------- | ------------------------------------------ |
+| Populated inbox (no auto-play)   | `flows-workspace--populated-inbox`         |
+| Search results (play auto-types) | `flows-search--results`                    |
+| Connect gate                     | `flows-mailbox-gate--no-account-connected` |
+| New message                      | `flows-composer--new-message`              |
+| AI settings                      | `flows-ai--settings-configured`            |
 
 Prefer **ARIA roles and accessible names** (same as `apps/desktop/src/App.*.stories.tsx`). There are no `data-testid` attributes.
 
 Stable handles:
 
-| Target | Handle |
-|---|---|
-| Inbox list | `[aria-label="Inbox"]` |
-| Conversations region | `[aria-label="Conversations"]` |
-| Search | `role=textbox` name `Search mail` |
-| Conversation row | `role=button` name matching subject (fixture: `/Launch checklist and final copy/`) |
-| Compose | `role=button` / `region` `New message` or `Reply` |
-| Workspace nav | `[aria-label="Workspace"]`, `[aria-label="Labels"]` |
-| AI settings | `role=button` / heading `AI provider` |
-| Commands | `Mark read`, `Archive`, `Star`, `Add label` |
-| Connect | `Connect Gmail`, `Waiting for Google…` |
-| Import | `Pause import`, `Resume import`, `Retry import`, `Disconnect` |
+| Target               | Handle                                                                             |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| Inbox list           | `[aria-label="Inbox"]`                                                             |
+| Conversations region | `[aria-label="Conversations"]`                                                     |
+| Search               | `role=textbox` name `Search mail`                                                  |
+| Conversation row     | `role=button` name matching subject (fixture: `/Launch checklist and final copy/`) |
+| Compose              | `role=button` / `region` `New message` or `Reply`                                  |
+| Workspace nav        | `[aria-label="Workspace"]`, `[aria-label="Labels"]`                                |
+| AI settings          | `role=button` / heading `AI provider`                                              |
+| Commands             | `Mark read`, `Archive`, `Star`, `Add label`                                        |
+| Connect              | `Connect Gmail`, `Waiting for Google…`                                             |
+| Import               | `Pause import`, `Resume import`, `Retry import`, `Disconnect`                      |
 
 Fixture subjects and copy live in `apps/desktop/src/storybook/storybook-fixtures.ts`. Catalog: `docs/storybook.md`.
 
@@ -93,12 +93,15 @@ Drive notes that bite agents:
 
 ```js
 const input = document.querySelector('#mail-search')
-Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, 'launch')
+Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(
+  input,
+  'launch',
+)
 input.dispatchEvent(new Event('input', { bubbles: true }))
 input.form.requestSubmit()
 ```
 
-  Success: `role=heading` name `Search`, region `Search results`, fixture result text about the launch checklist.
+Success: `role=heading` name `Search`, region `Search results`, fixture result text about the launch checklist.
 
 For full Electron + Gmail + AI provider gates, see `docs/m2-verification.md`, `docs/m3-verification.md`, `docs/m4-verification.md` — those are manual/human gates, not this skill's default path.
 
@@ -137,12 +140,12 @@ Kills only the Storybook process recorded in `.run/storybook.pid`. Removes `.run
 
 All scripts are executable; invoke from repo root:
 
-| Script | Role |
-|---|---|
-| `helpers/launch.sh` | Start Storybook, wait for ready, write `.run/` |
-| `helpers/doctor.sh` | Read-only health check |
-| `helpers/cleanup.sh` | Tear down launch-owned process only |
-| `helpers/evidence-dir.sh` | Print/create a fresh evidence directory path |
+| Script                    | Role                                           |
+| ------------------------- | ---------------------------------------------- |
+| `helpers/launch.sh`       | Start Storybook, wait for ready, write `.run/` |
+| `helpers/doctor.sh`       | Read-only health check                         |
+| `helpers/cleanup.sh`      | Tear down launch-owned process only            |
+| `helpers/evidence-dir.sh` | Print/create a fresh evidence directory path   |
 
 ## Feature map
 

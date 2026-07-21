@@ -27,7 +27,10 @@ Prefer the idle workspace story when capturing before/after screenshots of the s
 
 ```js
 const input = document.querySelector('#mail-search')
-Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, 'launch')
+Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(
+  input,
+  'launch',
+)
 input.dispatchEvent(new Event('input', { bubbles: true }))
 input.form.requestSubmit()
 ```
