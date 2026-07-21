@@ -16,14 +16,14 @@ const labelIdSchema = z.string().min(1).max(500).transform(labelId)
 const conversationIdSchema = z.string().min(1).max(500).transform(conversationId)
 const messageIdSchema = z.string().min(1).max(500).transform(messageId)
 const attachmentIdSchema = z.string().min(1).max(500).transform(attachmentId)
-const addressSchema = z
+export const mailAddressSchema = z
   .object({ name: z.string().max(500).optional(), address: z.string().max(1_000) })
   .strict()
 
 export const listLabelsInputSchema = z
   .object({ requestId: requestIdSchema, mailboxId: mailboxIdSchema })
   .strict()
-const labelSummarySchema = z
+export const labelSummarySchema = z
   .object({
     id: labelIdSchema,
     mailboxId: mailboxIdSchema,
@@ -47,7 +47,7 @@ export const getConversationInputSchema = z
     conversationId: conversationIdSchema,
   })
   .strict()
-const attachmentSchema = z
+export const attachmentSchema = z
   .object({
     id: attachmentIdSchema,
     filename: z.string(),
@@ -57,16 +57,16 @@ const attachmentSchema = z
     availability: z.enum(['remote', 'cached', 'unavailable']),
   })
   .strict()
-const messageDetailSchema = z
+export const messageDetailSchema = z
   .object({
     id: z.string().transform(messageId),
     conversationId: conversationIdSchema,
-    sender: addressSchema,
+    sender: mailAddressSchema,
     recipients: z
       .object({
-        to: z.array(addressSchema),
-        cc: z.array(addressSchema),
-        bcc: z.array(addressSchema),
+        to: z.array(mailAddressSchema),
+        cc: z.array(mailAddressSchema),
+        bcc: z.array(mailAddressSchema),
       })
       .strict(),
     subject: z.string(),
@@ -78,7 +78,7 @@ const messageDetailSchema = z
     attachments: z.array(attachmentSchema),
   })
   .strict()
-const conversationDetailSchema = z
+export const conversationDetailSchema = z
   .object({
     id: conversationIdSchema,
     mailboxId: mailboxIdSchema,
@@ -97,7 +97,7 @@ export const getMessageBodyInputSchema = z
     messageId: messageIdSchema,
   })
   .strict()
-const messageBodySchema = z
+export const messageBodySchema = z
   .object({
     messageId: z.string().transform(messageId),
     textBody: z
@@ -142,12 +142,12 @@ export const searchMailInputSchema = z
     limit: z.number().int().min(1).max(200).default(50),
   })
   .strict()
-const searchHitSchema = z
+export const searchHitSchema = z
   .object({
     messageId: z.string().transform(messageId),
     conversationId: conversationIdSchema,
     subject: z.string(),
-    sender: addressSchema,
+    sender: mailAddressSchema,
     receivedAt: z.string().datetime().transform(utcTimestamp),
     excerpt: z.string(),
     rank: z.number(),

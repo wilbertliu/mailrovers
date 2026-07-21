@@ -59,7 +59,7 @@ export const undoCommandInputSchema = z
     idempotencyKey: z.string().min(1).max(300),
   })
   .strict()
-const draftCommand = {
+export const draftCommandSchemaShape = {
   draftId: draft,
   expectedVersion: z.number().int().positive(),
   outboundRevisionFingerprint: z
@@ -67,13 +67,13 @@ const draftCommand = {
     .regex(/^[a-f0-9]{64}$/)
     .transform(draftRevisionFingerprint),
 }
-const durableCommandSchema = z.discriminatedUnion('kind', [
+export const durableCommandSchema = z.discriminatedUnion('kind', [
   ...mailCommandSchema.options,
-  z.object({ kind: z.literal('sync-draft'), ...draftCommand }).strict(),
-  z.object({ kind: z.literal('send-draft'), ...draftCommand }).strict(),
+  z.object({ kind: z.literal('sync-draft'), ...draftCommandSchemaShape }).strict(),
+  z.object({ kind: z.literal('send-draft'), ...draftCommandSchemaShape }).strict(),
 ])
 
-const commandReceiptSchema = z
+export const commandReceiptSchema = z
   .object({
     id: z.string().transform(commandId),
     mailboxId: mailbox,

@@ -49,6 +49,7 @@ let shutdownNormalization: (() => Promise<void>) | undefined
 let syncScheduler: SyncScheduler | undefined
 let unsubscribeScheduler: (() => void) | undefined
 let shuttingDown = false
+let smokeTerminalState: 'pending' | 'passed' | 'failed' = 'pending'
 const logger = createStructuredLogger({ component: 'desktop-main' })
 
 function checkpoint(stage: string, detail?: string): void {
@@ -64,6 +65,8 @@ function checkpoint(stage: string, detail?: string): void {
 }
 
 function writeSmokeFailure(error: unknown): void {
+  if (smokeResultPath !== undefined && smokeTerminalState !== 'pending') return
+  if (smokeResultPath !== undefined) smokeTerminalState = 'failed'
   if (eventLoopMonitor !== undefined) clearInterval(eventLoopMonitor)
   const safeError = redactLogValue(error)
   checkpoint('failed')
@@ -74,6 +77,14 @@ function writeSmokeFailure(error: unknown): void {
       redactedJson({ status: 'failed', databaseHost, error: safeError, stages }, 2),
     )
   if (smokeResultPath) setImmediate(() => app.exit(1))
+}
+
+function writeSmokeSuccess(result: Record<string, unknown>): boolean {
+  if (smokeResultPath === undefined || smokeTerminalState !== 'pending') return false
+  smokeTerminalState = 'passed'
+  if (eventLoopMonitor !== undefined) clearInterval(eventLoopMonitor)
+  writeFileSync(smokeResultPath, redactedJson(result, 2))
+  return true
 }
 
 process.on('uncaughtException', writeSmokeFailure)
@@ -181,7 +192,8 @@ async function createWindow(): Promise<void> {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) await window.loadURL(rendererUrl)
   else await window.loadFile(packagedRendererPath)
   checkpoint('windowLoaded')
-  void backfillSearch(host.store).catch((error: unknown) =>
+  const searchIndexing = backfillSearch(host.store)
+  void searchIndexing.catch((error: unknown) =>
     logger.error('search-indexing-failed', { code: 'INTERNAL_ERROR', error }),
   )
   syncScheduler?.dispose()
@@ -210,7 +222,8 @@ async function createWindow(): Promise<void> {
     .executeJavaScript(`new Promise((resolve, reject) => {
     const deadline = Date.now() + 10000;
     const inspect = () => {
-      const rows = document.querySelectorAll('.conversation-row').length;
+      const inbox = document.querySelector('[aria-label="Inbox"]');
+      const rows = inbox?.querySelectorAll('button').length ?? 0;
       if (rows > 0) {
         resolve({ rows, processType: typeof process, requireType: typeof require, bridgeKeys: Object.keys(window.mailrovers.v1) });
       } else if (Date.now() > deadline) reject(new Error('Inbox did not render: ' + document.body.innerText.slice(0, 500)));
@@ -278,23 +291,19 @@ async function createWindow(): Promise<void> {
     packagedPerformance = { idleDelayMs, workingSetMb, processes }
     checkpoint('idleComplete')
   }
-  if (eventLoopMonitor !== undefined) clearInterval(eventLoopMonitor)
-  writeFileSync(
-    smokeResultPath,
-    redactedJson(
-      {
-        status: 'passed',
-        databaseHost,
-        stages,
-        rendererProbe,
-        mainEventLoopStallMs: maxEventLoopStallMs,
-        safeStorageProbe,
-        ...(packagedPerformance ? { packagedPerformance } : {}),
-      },
-      2,
-    ),
+  await searchIndexing
+  if (
+    writeSmokeSuccess({
+      status: 'passed',
+      databaseHost,
+      stages,
+      rendererProbe,
+      mainEventLoopStallMs: maxEventLoopStallMs,
+      safeStorageProbe,
+      ...(packagedPerformance ? { packagedPerformance } : {}),
+    })
   )
-  app.quit()
+    app.quit()
 }
 
 if (hasSingleInstanceLock) {

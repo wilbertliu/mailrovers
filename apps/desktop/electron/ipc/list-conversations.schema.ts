@@ -19,7 +19,7 @@ export const listConversationsInputSchema = z
     limit: z.number().int().min(1).max(200).default(50),
   })
   .strict()
-const addressSchema = z
+export const conversationMailAddressSchema = z
   .object({ name: z.string().max(500).optional(), address: z.string().max(1_000) })
   .strict()
 
@@ -31,7 +31,7 @@ export const conversationPageSchema = z
         mailboxId: z.string().transform(mailboxId),
         subject: z.string(),
         snippet: z.string(),
-        senders: z.array(addressSchema),
+        senders: z.array(conversationMailAddressSchema),
         lastMessageAt: z.string().datetime().transform(utcTimestamp),
         messageCount: z.number().int().nonnegative(),
         unreadCount: z.number().int().nonnegative(),

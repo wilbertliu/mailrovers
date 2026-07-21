@@ -13,6 +13,7 @@ import { migrate, openDatabase } from '@mailrovers/mail-store-sqlite'
 import { redactedJson, redactLogValue, writeRedactedJsonLine } from '@mailrovers/platform-electron'
 import { seedMailboxFixture } from '@mailrovers/test-support'
 import { evaluatePerformanceBudgets, PERFORMANCE_BUDGETS } from './budgets.js'
+import { packagedAppEnvironment } from './packaged-app-environment.js'
 import { measureQueryPerformance, type QueryPerformanceReport } from './query.js'
 
 type Mode = 'main' | 'worker'
@@ -88,7 +89,7 @@ async function runMode(input: {
   const child = spawn(input.executable, [], {
     detached: true,
     env: {
-      ...process.env,
+      ...packagedAppEnvironment(process.env),
       MAILROVERS_DB_PATH: input.database,
       MAILROVERS_DATABASE_HOST: input.mode,
       MAILROVERS_SMOKE_RESULT_PATH: resultPath,
