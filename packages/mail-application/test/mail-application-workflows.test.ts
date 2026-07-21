@@ -12,6 +12,7 @@ import {
 import type { Draft } from '@mailrovers/mail-contracts'
 import {
   attachmentId,
+  commandId,
   conversationId,
   draftId,
   mailboxId,
@@ -86,6 +87,113 @@ describe('MailApplication workflow boundaries', () => {
     ).rejects.toThrow('Mailbox is disconnected')
     expect(store.enqueueCommand).not.toHaveBeenCalled()
     expect(providers.create).not.toHaveBeenCalled()
+  })
+
+  it('allocates opaque global IDs while keeping idempotency keys mailbox-local', async () => {
+    const otherMailbox = mailboxId('gmail:application-other')
+    const enqueueCommand = vi.fn<MailStore['enqueueCommand']>(async () => ({
+      id: commandId('receipt'),
+      mailboxId: id,
+      state: 'pending' as const,
+      command: {
+        kind: 'set-thread-archived' as const,
+        conversationId: conversationId('thread-1'),
+        archived: true,
+      },
+      createdAt: now,
+    }))
+    const saveDraft = vi.fn(async (input: Parameters<MailStore['saveDraft']>[0]) => ({
+      ...draft,
+      id: input.id,
+      mailboxId: input.request.mailboxId,
+    }))
+    const application = createMailApplication({
+      store: storeFake({ enqueueCommand, saveDraft }),
+      now: () => new Date(now),
+    })
+
+    await application.executeCommand({
+      requestId: operationId('command-a'),
+      mailboxId: id,
+      idempotencyKey: 'same-key',
+      command: {
+        kind: 'set-thread-archived',
+        conversationId: conversationId('thread-1'),
+        archived: true,
+      },
+    })
+    await application.executeCommand({
+      requestId: operationId('command-b'),
+      mailboxId: otherMailbox,
+      idempotencyKey: 'same-key',
+      command: {
+        kind: 'set-thread-archived',
+        conversationId: conversationId('thread-2'),
+        archived: true,
+      },
+    })
+    await application.saveDraft({
+      requestId: operationId('draft-a'),
+      mailboxId: id,
+      idempotencyKey: 'same-key',
+      to: [],
+      cc: [],
+      bcc: [],
+      subject: 'A',
+      textBody: 'A',
+    })
+    await application.saveDraft({
+      requestId: operationId('draft-b'),
+      mailboxId: otherMailbox,
+      idempotencyKey: 'same-key',
+      to: [],
+      cc: [],
+      bcc: [],
+      subject: 'B',
+      textBody: 'B',
+    })
+
+    const commandIds = enqueueCommand.mock.calls.map(([input]) => input.id)
+    const draftIds = saveDraft.mock.calls.map(([input]) => input.id)
+    expect(commandIds[0]).not.toBe(commandIds[1])
+    expect(draftIds[0]).not.toBe(draftIds[1])
+    expect(commandIds).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        ),
+      ]),
+    )
+    expect(draftIds).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+        ),
+      ]),
+    )
+  })
+
+  it('restricts renderer issue resolution to the selected mailbox and issue states', async () => {
+    const setCommandState = vi.fn(async () => undefined)
+    const application = createMailApplication({
+      store: storeFake({ setCommandState }),
+      now: () => new Date(now),
+    })
+
+    await application.resolveCommand({
+      requestId: operationId('resolve'),
+      mailboxId: id,
+      commandId: commandId('command-issue'),
+      resolution: 'retry',
+    })
+
+    expect(setCommandState).toHaveBeenCalledWith({
+      id: commandId('command-issue'),
+      mailboxId: id,
+      state: 'pending',
+      updatedAt: now,
+      allowedSourceStates: ['failed', 'needs_review'],
+    })
   })
 
   it('preserves a deferred manual-refresh receipt from the sync engine', async () => {

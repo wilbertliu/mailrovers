@@ -1,6 +1,6 @@
 import type { CommittedChangeSet, MailStore } from '@mailrovers/mail-application'
 import type { CommandReceipt, MailCommand } from '@mailrovers/mail-contracts'
-import { mailboxId, type MailboxId } from '@mailrovers/mail-domain'
+import { type MailboxId } from '@mailrovers/mail-domain'
 import type { DraftMergeOptions } from './draft-reconciliation.js'
 import type { SqliteDatabase } from './open-database.js'
 import { applyChanges } from './sqlite-provider-changes.js'
@@ -12,6 +12,8 @@ import {
   parseMailCommand,
   row,
 } from './sqlite-row-helpers.js'
+
+const commandStateTransitionError = 'COMMAND_STATE_TRANSITION_NOT_FOUND'
 
 function inverseCommand(command: MailCommand): MailCommand {
   switch (command.kind) {
@@ -264,8 +266,8 @@ export class SqliteCommandsOutbox {
           mailbox.display_name AS mailbox_display_name
           FROM drafts d
           JOIN mailboxes mailbox ON mailbox.id=d.mailbox_id
-          LEFT JOIN conversations c ON c.id=d.conversation_id
-          LEFT JOIN messages reply ON reply.id=d.reply_to_message_id
+          LEFT JOIN conversations c ON c.id=d.conversation_id AND c.mailbox_id=d.mailbox_id
+          LEFT JOIN messages reply ON reply.id=d.reply_to_message_id AND reply.mailbox_id=d.mailbox_id
           WHERE d.id=? AND d.mailbox_id=?`)
           .get(stored.command.draftId, stored.mailboxId)
         if (value === undefined) throw new Error('Command draft was not found')
@@ -416,13 +418,17 @@ export class SqliteCommandsOutbox {
   }
 
   async setCommandState(input: Parameters<MailStore['setCommandState']>[0]): Promise<void> {
-    const changedMailbox = this.db.transaction(() => {
-      const mailbox = this.db
-        .prepare('SELECT mailbox_id FROM command_outbox WHERE id=?')
-        .get(input.id)
+    this.db.transaction(() => {
+      if (input.allowedSourceStates?.length === 0) throw new Error(commandStateTransitionError)
+      const allowedStates = input.allowedSourceStates ?? []
+      const sourceStateClause =
+        allowedStates.length === 0
+          ? ''
+          : ` AND state IN (${allowedStates.map(() => '?').join(',')})`
       const result = this.db
         .prepare(`UPDATE command_outbox SET state=?,next_attempt_at=?,last_error_code=?,
-        last_error_message=?,claimed_at=NULL,lease_expires_at=NULL,updated_at=? WHERE id=?`)
+        last_error_message=?,claimed_at=NULL,lease_expires_at=NULL,updated_at=?
+        WHERE id=? AND mailbox_id=?${sourceStateClause}`)
         .run(
           input.state,
           input.nextAttemptAt ?? null,
@@ -430,13 +436,12 @@ export class SqliteCommandsOutbox {
           input.errorMessage ?? null,
           input.updatedAt,
           input.id,
+          input.mailboxId,
+          ...allowedStates,
         )
-      return result.changes === 1 && mailbox !== undefined
-        ? mailboxId(String(row(mailbox).mailbox_id))
-        : undefined
+      if (result.changes !== 1) throw new Error(commandStateTransitionError)
     })()
-    if (changedMailbox !== undefined)
-      this.publishCommitted({ mailboxId: changedMailbox, outbox: true })
+    this.publishCommitted({ mailboxId: input.mailboxId, outbox: true })
   }
 
   async cancelMailboxCommands(

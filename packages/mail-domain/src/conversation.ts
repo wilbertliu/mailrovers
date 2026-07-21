@@ -21,9 +21,11 @@ export const conversationId = (value: string): ConversationId => opaque(value, '
 export const messageId = (value: string): MessageId => opaque(value, 'MessageId')
 export const labelId = (value: string): LabelId => opaque(value, 'LabelId')
 export const draftId = (value: string): DraftId => opaque(value, 'DraftId')
+export const newDraftId = (): DraftId => draftId(globalThis.crypto.randomUUID())
 export const attachmentId = (value: string): AttachmentId => opaque(value, 'AttachmentId')
 export const operationId = (value: string): OperationId => opaque(value, 'OperationId')
 export const commandId = (value: string): CommandId => opaque(value, 'CommandId')
+export const newCommandId = (): CommandId => commandId(globalThis.crypto.randomUUID())
 export const aiArtifactId = (value: string): AiArtifactId => opaque(value, 'AiArtifactId')
 export const utcTimestamp = (value: string): UtcTimestamp => {
   if (Number.isNaN(Date.parse(value))) throw new Error('UtcTimestamp must be ISO-8601')
