@@ -65,6 +65,19 @@ export type StoredCommand = CommandReceipt & {
   attemptCount: number
 }
 
+export type CommandStateTransition = {
+  mailboxId: MailboxId
+  id: CommandId
+  state: CommandState
+  updatedAt: UtcTimestamp
+  nextAttemptAt?: UtcTimestamp | undefined
+  errorCode?: string | undefined
+  errorMessage?: string | undefined
+  allowedSourceStates?: readonly CommandState[] | undefined
+}
+
+export const ISSUE_STATES = ['failed', 'needs_review'] as const satisfies readonly CommandState[]
+
 export type ResolvedAttachment = {
   mailboxId: MailboxId
   messageId: MessageId
@@ -263,14 +276,7 @@ export interface MailStore {
     sentDraftId?: DraftId | undefined
     completedAt: UtcTimestamp
   }): Promise<void>
-  setCommandState(input: {
-    id: CommandId
-    state: CommandState
-    updatedAt: UtcTimestamp
-    nextAttemptAt?: UtcTimestamp | undefined
-    errorCode?: string | undefined
-    errorMessage?: string | undefined
-  }): Promise<void>
+  setCommandState(input: CommandStateTransition): Promise<void>
   cancelMailboxCommands(input: { mailboxId: MailboxId; updatedAt: UtcTimestamp }): Promise<void>
   listCommandIssues(mailboxId: MailboxId): Promise<CommandReceipt[]>
   saveDraft(input: {

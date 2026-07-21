@@ -40,10 +40,28 @@ import { ConnectionHandoffPage } from './ConnectionHandoffPage.js'
 
 const CONNECTION_HANDOFF_MINIMUM_MS = 800
 
-type ConnectionHandoff = {
-  mailboxId: MailboxId
-  minimumElapsed: boolean
-}
+type MailboxGateIntent =
+  | { kind: 'mailbox'; mailboxId?: MailboxId | undefined }
+  | { kind: 'connect'; mailboxId?: MailboxId | undefined }
+  | { kind: 'handoff'; mailboxId: MailboxId; minimumElapsed: boolean }
+
+type MailboxGateScreen =
+  | { kind: 'loading' }
+  | { kind: 'error'; retrying: boolean; onRetry: () => void }
+  | {
+      kind: 'connect'
+      onConnected: (mailboxId: MailboxId) => Promise<void>
+      onCancel?: (() => void) | undefined
+    }
+  | { kind: 'handoff'; emailAddress: string }
+  | { kind: 'import'; mailbox: MailboxSummary; onChanged: () => Promise<void> }
+  | {
+      kind: 'workspace'
+      mailbox: MailboxSummary
+      mailboxes: MailboxSummary[]
+      onSelectMailbox: (mailboxId: MailboxId) => void
+      onAddAccount: () => void
+    }
 
 function connectionHandoffMinimum(): Promise<void> {
   return new Promise((resolve) => {
@@ -60,9 +78,7 @@ function WindowFrame({
 }) {
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      {dragRegion ? (
-        <header className="window-titlebar h-11 shrink-0" aria-hidden="true" />
-      ) : null}
+      {dragRegion ? <header className="window-titlebar h-11 shrink-0" aria-hidden="true" /> : null}
       <div className="min-h-0 flex-1">{children}</div>
     </div>
   )
@@ -439,10 +455,7 @@ function ImportPage({
 
 export function MailboxGate() {
   const queryClient = useQueryClient()
-  const [selectedMailbox, setSelectedMailbox] = useState<MailboxId>()
-  const [connectionHandoff, setConnectionHandoff] = useState<ConnectionHandoff>()
-  const [showConnect, setShowConnect] = useState(false)
-  const [retryingInitialLoad, setRetryingInitialLoad] = useState(false)
+  const [intent, setIntent] = useState<MailboxGateIntent>({ kind: 'mailbox' })
   const mailboxes = useQuery({
     queryKey: ['mailboxes'],
     queryFn: () => desktopBridge.listMailboxes(desktopBridge.createRequestId()),
@@ -453,65 +466,112 @@ export function MailboxGate() {
   }, [queryClient])
   const onConnected = useCallback(
     async (mailboxId: MailboxId) => {
-      setSelectedMailbox(mailboxId)
-      setConnectionHandoff({ mailboxId, minimumElapsed: false })
-      setShowConnect(false)
+      setIntent({ kind: 'handoff', mailboxId, minimumElapsed: false })
       await Promise.all([onChanged(), connectionHandoffMinimum()])
-      setConnectionHandoff((current) =>
-        current?.mailboxId === mailboxId ? { ...current, minimumElapsed: true } : current,
+      setIntent((current) =>
+        current.kind === 'handoff' && current.mailboxId === mailboxId
+          ? { ...current, minimumElapsed: true }
+          : current,
       )
     },
     [onChanged],
   )
-  const retryInitialLoad = async () => {
-    setRetryingInitialLoad(true)
-    try {
-      await mailboxes.refetch()
-    } finally {
-      setRetryingInitialLoad(false)
+  const retryInitialLoad = () => void mailboxes.refetch()
+
+  let screen: MailboxGateScreen
+
+  if (mailboxes.data === undefined && mailboxes.isError) {
+    screen = {
+      kind: 'error',
+      retrying: mailboxes.isFetching,
+      onRetry: retryInitialLoad,
+    }
+  } else if (mailboxes.data === undefined) {
+    screen = { kind: 'loading' }
+  } else {
+    const selectedMailboxId = intent.mailboxId
+    const mailbox =
+      mailboxes.data.find((item) => item.id === selectedMailboxId) ?? mailboxes.data[0]
+    if (!mailbox || intent.kind === 'connect') {
+      screen = {
+        kind: 'connect',
+        onConnected,
+        ...(intent.kind === 'connect' && mailbox
+          ? {
+              onCancel: () =>
+                setIntent({
+                  kind: 'mailbox',
+                  ...(intent.mailboxId ? { mailboxId: intent.mailboxId } : {}),
+                }),
+            }
+          : {}),
+      }
+    } else if (
+      intent.kind === 'handoff' &&
+      intent.mailboxId === mailbox.id &&
+      (!intent.minimumElapsed ||
+        (mailbox.importedMessageCount === 0 && mailbox.syncState !== 'ready'))
+    ) {
+      screen = { kind: 'handoff', emailAddress: mailbox.emailAddress }
+    } else if (
+      mailbox.connectionState === 'connected' &&
+      mailbox.syncState !== 'ready' &&
+      intent.kind !== 'handoff'
+    ) {
+      screen = { kind: 'import', mailbox, onChanged }
+    } else {
+      screen = {
+        kind: 'workspace',
+        mailbox,
+        mailboxes: mailboxes.data,
+        onSelectMailbox: (mailboxId) => setIntent({ kind: 'mailbox', mailboxId }),
+        onAddAccount: () =>
+          setIntent({
+            kind: 'connect',
+            ...(selectedMailboxId ? { mailboxId: selectedMailboxId } : {}),
+          }),
+      }
     }
   }
 
   let content: ReactNode
   let dragRegion = true
-
-  if (mailboxes.data === undefined && (mailboxes.isError || retryingInitialLoad)) {
-    content = (
-      <MailboxErrorPage retrying={retryingInitialLoad} onRetry={() => void retryInitialLoad()} />
-    )
-  } else if (mailboxes.data === undefined) {
-    content = <LoadingPage message="Opening your local mailbox…" />
-  } else {
-    const mailbox = mailboxes.data.find((item) => item.id === selectedMailbox) ?? mailboxes.data[0]
-    if (!mailbox || showConnect) {
+  switch (screen.kind) {
+    case 'loading':
+      content = <LoadingPage message="Opening your local mailbox…" />
+      break
+    case 'error':
+      content = <MailboxErrorPage retrying={screen.retrying} onRetry={screen.onRetry} />
+      break
+    case 'connect':
       content = (
         <ConnectPage
-          onConnected={onConnected}
-          {...(mailbox ? { onCancel: () => setShowConnect(false) } : {})}
+          onConnected={screen.onConnected}
+          {...(screen.onCancel === undefined ? {} : { onCancel: screen.onCancel })}
         />
       )
-    } else if (
-      connectionHandoff?.mailboxId === mailbox.id &&
-      (!connectionHandoff.minimumElapsed ||
-        (mailbox.importedMessageCount === 0 && mailbox.syncState !== 'ready'))
-    ) {
-      content = <ConnectionHandoffPage emailAddress={mailbox.emailAddress} />
-    } else if (
-      mailbox.connectionState === 'connected' &&
-      mailbox.syncState !== 'ready' &&
-      connectionHandoff?.mailboxId !== mailbox.id
-    ) {
-      content = <ImportPage mailbox={mailbox} onChanged={onChanged} />
-    } else {
+      break
+    case 'handoff':
+      content = <ConnectionHandoffPage emailAddress={screen.emailAddress} />
+      break
+    case 'import':
+      content = <ImportPage mailbox={screen.mailbox} onChanged={screen.onChanged} />
+      break
+    case 'workspace':
       dragRegion = false
       content = (
         <MailWorkspace
-          mailbox={mailbox}
-          mailboxes={mailboxes.data}
-          onSelectMailbox={setSelectedMailbox}
-          onAddAccount={() => setShowConnect(true)}
+          key={screen.mailbox.id}
+          mailbox={screen.mailbox}
+          mailboxes={screen.mailboxes}
+          onSelectMailbox={screen.onSelectMailbox}
+          onAddAccount={screen.onAddAccount}
         />
       )
+      break
+    default: {
+      const _exhaustive: never = screen
+      content = _exhaustive
     }
   }
 

@@ -1,14 +1,34 @@
-import type { LabelSummary, MailCommand, MessageDetail } from '@mailrovers/mail-contracts'
+import type {
+  ConversationDetail,
+  LabelSummary,
+  MailCommand,
+  MessageDetail,
+} from '@mailrovers/mail-contracts'
 import type { AttachmentId, ConversationId, MailboxId, MessageId } from '@mailrovers/mail-domain'
-import { Archive02Icon, MailOpen01Icon, StarIcon } from '@hugeicons/core-free-icons'
+import {
+  AiMagicIcon,
+  Archive02Icon,
+  MailOpen01Icon,
+  MailReply01Icon,
+  StarIcon,
+  Tag01Icon,
+} from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { IconTooltipButton } from '@/components/icon-tooltip-button.js'
+import { MailRelativeTime } from '@/components/mail-relative-time.js'
 import { Button } from '@/components/ui/button.js'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu.js'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.js'
 import { desktopBridge } from '../../desktop-bridge.js'
-import { ConversationSummary } from '../ai/ConversationSummary.js'
+import { ConversationSummaryPanel, useConversationSummary } from '../ai/ConversationSummary.js'
 import { EmailFrame } from './EmailFrame.js'
-import { NativeSelect } from '@/components/ui/native-select.js'
 
 export function shouldLoadMessageBody(expanded: boolean, bodyAvailable: boolean): boolean {
   return expanded && bodyAvailable
@@ -41,22 +61,22 @@ function MessageCard({
   })
   return (
     <details
-      className="m-0 overflow-hidden border-b"
+      className="m-0 border-b"
       open={expanded}
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >
-      <summary className="flex min-h-17 cursor-pointer list-none items-center justify-between gap-4 py-4">
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <strong className="truncate text-sm">{addressLabel(message.sender)}</strong>
-          <small className="truncate text-sm text-muted-foreground">
-            to {message.recipients.to.map(addressLabel).join(', ') || 'me'}
-          </small>
-        </span>
-        <time className="text-sm text-muted-foreground">
-          {new Date(message.receivedAt).toLocaleString()}
-        </time>
+      <summary className="flex cursor-pointer list-none flex-col gap-0.5 px-6 py-4 max-[980px]:px-5">
+        <div className="flex items-baseline justify-between gap-4">
+          <span className="min-w-0 truncate text-sm font-medium">
+            {addressLabel(message.sender)}
+          </span>
+          <MailRelativeTime className="shrink-0" value={message.receivedAt} />
+        </div>
+        <small className="min-w-0 truncate text-sm text-muted-foreground">
+          to {message.recipients.to.map(addressLabel).join(', ') || 'me'}
+        </small>
       </summary>
-      <div className="px-0 pt-1 pb-6 text-sm leading-relaxed text-foreground/90">
+      <div className="px-6 pt-1 pb-6 text-sm leading-relaxed text-foreground/90 max-[980px]:px-5">
         {body.data?.sanitizedHtmlBody ? (
           <EmailFrame
             html={body.data.sanitizedHtmlBody}
@@ -123,6 +143,162 @@ function MessageCard({
   )
 }
 
+function ConversationReaderContent({
+  mailboxId,
+  conversationId,
+  labels,
+  onCommand,
+  onReply,
+  conversation,
+}: {
+  mailboxId: MailboxId
+  conversationId: ConversationId
+  labels: LabelSummary[]
+  onCommand: (command: MailCommand) => Promise<void>
+  onReply: (input: {
+    conversationId: ConversationId
+    messageId: MessageId
+    sourceVersion: number
+    to: string
+    subject: string
+  }) => void
+  conversation: ConversationDetail
+}) {
+  const latestMessage = conversation.messages.at(-1)
+  const summary = useConversationSummary({
+    mailboxId,
+    conversationId,
+    sourceVersion: conversation.version,
+  })
+  const userLabels = labels.filter((label) => label.kind === 'user')
+
+  return (
+    <section className="min-w-0 overflow-auto bg-card" aria-label={conversation.subject}>
+      <header className="window-titlebar sticky top-0 z-2 border-b bg-card">
+        <div className="h-10 shrink-0" aria-hidden="true" />
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 px-6 pb-2.5 max-[980px]:px-5">
+          <div className="flex h-7 min-w-0 items-center">
+            <h1 className="truncate text-sm font-semibold tracking-tight">
+              {conversation.subject || '(No subject)'}
+            </h1>
+          </div>
+          <div className="flex h-7 items-center justify-self-end gap-0.5">
+            <IconTooltipButton
+              label="Summarize conversation"
+              icon={AiMagicIcon}
+              onClick={summary.generate}
+            />
+            {latestMessage ? (
+              <IconTooltipButton
+                label="Reply"
+                icon={MailReply01Icon}
+                onClick={() =>
+                  onReply({
+                    conversationId,
+                    messageId: latestMessage.id,
+                    sourceVersion: conversation.version,
+                    to: latestMessage.sender.address,
+                    subject: conversation.subject.startsWith('Re:')
+                      ? conversation.subject
+                      : `Re: ${conversation.subject}`,
+                  })
+                }
+              />
+            ) : null}
+            <IconTooltipButton
+              label="Mark read"
+              icon={MailOpen01Icon}
+              onClick={() =>
+                void onCommand({ kind: 'set-thread-read', conversationId, read: true })
+              }
+            />
+            <IconTooltipButton
+              label="Archive"
+              icon={Archive02Icon}
+              onClick={() =>
+                void onCommand({ kind: 'set-thread-archived', conversationId, archived: true })
+              }
+            />
+            {latestMessage ? (
+              <IconTooltipButton
+                label="Star"
+                icon={StarIcon}
+                onClick={() =>
+                  void onCommand({
+                    kind: 'set-message-starred',
+                    messageId: latestMessage.id,
+                    starred: true,
+                  })
+                }
+              />
+            ) : null}
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="rounded-md"
+                          aria-label="Add label"
+                          disabled={userLabels.length === 0}
+                        />
+                      }
+                    />
+                  }
+                >
+                  <HugeiconsIcon icon={Tag01Icon} aria-hidden="true" />
+                </TooltipTrigger>
+                <TooltipContent>Add label</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="min-w-44">
+                {userLabels.map((label) => (
+                  <DropdownMenuItem
+                    key={label.id}
+                    className="text-sm"
+                    onClick={() =>
+                      void onCommand({
+                        kind: 'set-thread-label',
+                        conversationId,
+                        labelId: label.id,
+                        applied: true,
+                      })
+                    }
+                  >
+                    {label.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      </header>
+      <ConversationSummaryPanel
+        status={summary.status}
+        content={summary.content}
+        error={summary.error}
+        cleanupRef={summary.cleanupRef}
+        onCancel={summary.cancel}
+        onRegenerate={summary.regenerate}
+      />
+      <div>
+        {conversation.messages.map((message, index) => (
+          <MessageCard
+            key={message.id}
+            mailboxId={mailboxId}
+            conversationId={conversationId}
+            message={message}
+            initiallyExpanded={index === conversation.messages.length - 1}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export function ConversationReader({
   mailboxId,
   conversationId,
@@ -160,120 +336,14 @@ export function ConversationReader({
       </section>
     )
 
-  const conversation = query.data
-  const latestMessage = conversation.messages.at(-1)
   return (
-    <section className="min-w-0 overflow-auto bg-card" aria-label={conversation.subject}>
-      <header className="window-titlebar sticky top-0 z-2 flex min-h-28 items-start justify-between border-b bg-card px-6 pt-11 pb-4 max-[980px]:px-5">
-        <div className="min-w-0">
-          <p className="mb-2 text-sm text-muted-foreground">Inbox / Conversation</p>
-          <h1 className="max-w-2xl truncate text-xl tracking-tight">
-            {conversation.subject || '(No subject)'}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {conversation.messages.length} messages
-          </p>
-        </div>
-        <div className="absolute top-2 right-3 flex items-center gap-1.5">
-          {latestMessage ? (
-            <Button
-              type="button"
-              size="sm"
-              onClick={() =>
-                onReply({
-                  conversationId,
-                  messageId: latestMessage.id,
-                  sourceVersion: conversation.version,
-                  to: latestMessage.sender.address,
-                  subject: conversation.subject.startsWith('Re:')
-                    ? conversation.subject
-                    : `Re: ${conversation.subject}`,
-                })
-              }
-            >
-              Reply
-            </Button>
-          ) : null}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Mark read"
-            onClick={() => void onCommand({ kind: 'set-thread-read', conversationId, read: true })}
-          >
-            <HugeiconsIcon icon={MailOpen01Icon} aria-hidden="true" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Archive"
-            onClick={() =>
-              void onCommand({ kind: 'set-thread-archived', conversationId, archived: true })
-            }
-          >
-            <HugeiconsIcon icon={Archive02Icon} aria-hidden="true" />
-          </Button>
-          {latestMessage ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Star"
-              onClick={() =>
-                void onCommand({
-                  kind: 'set-message-starred',
-                  messageId: latestMessage.id,
-                  starred: true,
-                })
-              }
-            >
-              <HugeiconsIcon icon={StarIcon} aria-hidden="true" />
-            </Button>
-          ) : null}
-          <NativeSelect
-            className="px-2.5 py-1.5"
-            aria-label="Add label"
-            defaultValue=""
-            onChange={(event) => {
-              const label = labels.find((item) => item.id === event.target.value)
-              if (label)
-                void onCommand({
-                  kind: 'set-thread-label',
-                  conversationId,
-                  labelId: label.id,
-                  applied: true,
-                })
-              event.currentTarget.value = ''
-            }}
-          >
-            <option value="">Add label…</option>
-            {labels
-              .filter((label) => label.kind === 'user')
-              .map((label) => (
-                <option key={label.id} value={label.id}>
-                  {label.name}
-                </option>
-              ))}
-          </NativeSelect>
-        </div>
-      </header>
-      <ConversationSummary
-        mailboxId={mailboxId}
-        conversationId={conversationId}
-        sourceVersion={conversation.version}
-      />
-      <div className="max-w-190 px-6 pb-8 max-[980px]:px-5">
-        {conversation.messages.map((message, index) => (
-          <MessageCard
-            key={message.id}
-            mailboxId={mailboxId}
-            conversationId={conversationId}
-            message={message}
-            initiallyExpanded={index === conversation.messages.length - 1}
-          />
-        ))}
-      </div>
-    </section>
+    <ConversationReaderContent
+      mailboxId={mailboxId}
+      conversationId={conversationId}
+      labels={labels}
+      onCommand={onCommand}
+      onReply={onReply}
+      conversation={query.data}
+    />
   )
 }

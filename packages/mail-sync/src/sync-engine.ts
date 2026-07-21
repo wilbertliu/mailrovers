@@ -13,6 +13,12 @@ import type {
   SyncStatus,
 } from '@mailrovers/mail-contracts'
 import {
+  DRAFT_IMPORT,
+  MESSAGE_IMPORT,
+  runPagedImportPhase,
+  type SyncPhaseOutcome,
+} from './paged-import.js'
+import {
   operationId,
   utcTimestamp,
   type ImportState,
@@ -433,11 +439,10 @@ export class MailSyncEngine implements SyncEngine {
     provider: MailProvider,
   ): Promise<boolean> {
     let checkpoint = await this.requireCheckpoint(operation)
-    let state: ImportState =
-      checkpoint.importState === 'paused' || checkpoint.importState === 'failed'
-        ? (checkpoint.resumeImportState ?? 'pending')
-        : checkpoint.importState
+    let state: Exclude<ImportState, 'paused' | 'failed'>
     if (checkpoint.importState === 'paused' || checkpoint.importState === 'failed') {
+      const resumed = checkpoint.resumeImportState ?? 'pending'
+      state = resumed === 'failed' || (resumed as string) === 'paused' ? 'pending' : resumed
       await this.options.store.setImportState({
         mailboxId: operation.mailboxId,
         state,
@@ -445,130 +450,99 @@ export class MailSyncEngine implements SyncEngine {
         fence: await this.renewLease(operation),
       })
       checkpoint = await this.requireCheckpoint(operation)
+    } else {
+      state = checkpoint.importState
+    }
+    let pageTokenRestarts = 0
+    const importScope = {
+      mailboxId: operation.mailboxId,
+      provider,
+      signal: operation.controller.signal,
+      store: this.options.store,
+      now: () => this.now(),
+      renewLease: () => this.renewLease(operation),
+      requireCheckpoint: () => this.requireCheckpoint(operation),
+      publishProgress: () => this.publishProgress(operation),
     }
 
-    if (state === 'complete') return this.reconcile(operation, provider, checkpoint)
-    if (state === 'full_reconciliation') return this.fullReconcile(operation, provider, checkpoint)
-
-    if (state === 'pending' || state === 'importing_labels') {
-      await this.options.store.setImportState({
-        mailboxId: operation.mailboxId,
-        state: 'importing_labels',
-        updatedAt: this.now(),
-        fence: await this.renewLease(operation),
-      })
-      await this.renewLease(operation)
-      for await (const batch of provider.importMailbox({
-        mailboxId: operation.mailboxId,
-        phase: 'labels',
-        signal: operation.controller.signal,
-      }))
-        await this.options.store.applyImportBatch({
-          mailboxId: operation.mailboxId,
-          batch: batch.changes,
-          updatedAt: this.now(),
-          fence: await this.renewLease(operation),
-        })
-      await this.options.store.setImportState({
-        mailboxId: operation.mailboxId,
-        state: 'importing_messages',
-        updatedAt: this.now(),
-        fence: await this.renewLease(operation),
-      })
-      await this.publishProgress(operation)
-      state = 'importing_messages'
-    }
-
-    if (state === 'importing_messages') {
-      let importing = true
-      while (importing) {
-        checkpoint = await this.requireCheckpoint(operation)
-        let pageCount = 0
-        await this.renewLease(operation)
-        for await (const batch of provider.importMailbox({
-          mailboxId: operation.mailboxId,
-          phase: 'messages',
-          ...(checkpoint.importMessagePageToken === undefined
-            ? {}
-            : { pageToken: checkpoint.importMessagePageToken }),
-          signal: operation.controller.signal,
-        })) {
-          pageCount += batch.processedCount
-          await this.options.store.applyImportBatch({
-            mailboxId: operation.mailboxId,
-            batch: batch.changes,
-            ...(batch.pageComplete
-              ? {
-                  page: {
-                    kind: 'messages' as const,
-                    ...(batch.nextPageToken === undefined
-                      ? {}
-                      : { nextPageToken: batch.nextPageToken }),
-                    processedCount: pageCount,
-                    ...(batch.totalEstimate === undefined
-                      ? {}
-                      : { totalEstimate: batch.totalEstimate }),
-                    nextState:
-                      batch.nextPageToken === undefined
-                        ? ('importing_drafts' as const)
-                        : ('importing_messages' as const),
-                  },
-                }
-              : {}),
-            updatedAt: this.now(),
-            fence: await this.renewLease(operation),
-          })
-          await this.publishProgress(operation)
-          if (batch.pageComplete && batch.nextPageToken === undefined) importing = false
+    while (true) {
+      let outcome: SyncPhaseOutcome
+      switch (state) {
+        case 'pending':
+        case 'importing_labels':
+          await this.runLabelImportPhase(operation, provider)
+          outcome = { kind: 'continue', state: 'importing_messages' }
+          break
+        case 'importing_messages':
+          outcome = await runPagedImportPhase(importScope, MESSAGE_IMPORT)
+          break
+        case 'importing_drafts':
+          outcome = await runPagedImportPhase(importScope, DRAFT_IMPORT)
+          break
+        case 'reconciling_history':
+        case 'complete':
+          outcome = await this.reconcile(operation, provider, checkpoint, pageTokenRestarts)
+          break
+        case 'full_reconciliation':
+          outcome = await this.fullReconcile(operation, provider, checkpoint)
+          break
+        default: {
+          const exhaustive: never = state
+          throw new Error(`Unknown synchronization state: ${String(exhaustive)}`)
         }
       }
-      state = 'importing_drafts'
-    }
 
-    if (state === 'importing_drafts') {
-      let importing = true
-      while (importing) {
-        checkpoint = await this.requireCheckpoint(operation)
-        let pageCount = 0
-        await this.renewLease(operation)
-        for await (const batch of provider.importMailbox({
-          mailboxId: operation.mailboxId,
-          phase: 'drafts',
-          ...(checkpoint.importDraftPageToken === undefined
-            ? {}
-            : { pageToken: checkpoint.importDraftPageToken }),
-          signal: operation.controller.signal,
-        })) {
-          pageCount += batch.processedCount
-          await this.options.store.applyImportBatch({
-            mailboxId: operation.mailboxId,
-            batch: batch.changes,
-            ...(batch.pageComplete
-              ? {
-                  page: {
-                    kind: 'drafts' as const,
-                    ...(batch.nextPageToken === undefined
-                      ? {}
-                      : { nextPageToken: batch.nextPageToken }),
-                    processedCount: pageCount,
-                    nextState:
-                      batch.nextPageToken === undefined
-                        ? ('reconciling_history' as const)
-                        : ('importing_drafts' as const),
-                  },
-                }
-              : {}),
-            updatedAt: this.now(),
-            fence: await this.renewLease(operation),
-          })
-          await this.publishProgress(operation)
-          if (batch.pageComplete && batch.nextPageToken === undefined) importing = false
+      switch (outcome.kind) {
+        case 'continue':
+          if (outcome.state === 'paused' || outcome.state === 'failed')
+            throw new Error(`Unexpected terminal synchronization state: ${outcome.state}`)
+          state = outcome.state
+          checkpoint = await this.requireCheckpoint(operation)
+          break
+        case 'history-restart':
+          state = 'reconciling_history'
+          checkpoint = outcome.checkpoint
+          pageTokenRestarts = outcome.pageTokenRestarts
+          break
+        case 'complete':
+          return true
+        default: {
+          const exhaustive: never = outcome
+          throw new Error(`Unknown synchronization outcome: ${String(exhaustive)}`)
         }
       }
     }
+  }
 
-    checkpoint = await this.requireCheckpoint(operation)
-    return this.reconcile(operation, provider, checkpoint)
+  private async runLabelImportPhase(
+    operation: RunningOperation,
+    provider: MailProvider,
+  ): Promise<void> {
+    await this.options.store.setImportState({
+      mailboxId: operation.mailboxId,
+      state: 'importing_labels',
+      updatedAt: this.now(),
+      fence: await this.renewLease(operation),
+    })
+    await this.renewLease(operation)
+    for await (const batch of provider.importMailbox({
+      mailboxId: operation.mailboxId,
+      phase: 'labels',
+      signal: operation.controller.signal,
+    }))
+      await this.options.store.applyImportBatch({
+        mailboxId: operation.mailboxId,
+        batch: batch.changes,
+        updatedAt: this.now(),
+        fence: await this.renewLease(operation),
+      })
+    await this.options.store.setImportState({
+      mailboxId: operation.mailboxId,
+      state: 'importing_messages',
+      updatedAt: this.now(),
+      fence: await this.renewLease(operation),
+    })
+    await this.publishProgress(operation)
   }
 
   private async reconcile(
@@ -576,7 +550,7 @@ export class MailSyncEngine implements SyncEngine {
     provider: MailProvider,
     initialCheckpoint: SyncCheckpoint,
     pageTokenRestarts = 0,
-  ): Promise<boolean> {
+  ): Promise<SyncPhaseOutcome> {
     let checkpoint = initialCheckpoint
     const startCursor = checkpoint.historyStartCursor ?? checkpoint.providerCursor
     if (!startCursor) {
@@ -626,7 +600,7 @@ export class MailSyncEngine implements SyncEngine {
           fence: await this.renewLease(operation),
         })
         this.schedulePostImportMaintenance(operation.mailboxId)
-        return true
+        return { kind: 'complete' }
       }
     } catch (error) {
       const status = providerStatus(error)
@@ -636,12 +610,11 @@ export class MailSyncEngine implements SyncEngine {
           updatedAt: this.now(),
           fence: await this.renewLease(operation),
         })
-        return this.reconcile(
-          operation,
-          provider,
-          await this.requireCheckpoint(operation),
-          pageTokenRestarts + 1,
-        )
+        return {
+          kind: 'history-restart',
+          checkpoint: await this.requireCheckpoint(operation),
+          pageTokenRestarts: pageTokenRestarts + 1,
+        }
       }
       if (status !== 404) throw error
       await this.renewLease(operation)
@@ -662,7 +635,7 @@ export class MailSyncEngine implements SyncEngine {
     operation: RunningOperation,
     provider: MailProvider,
     initialCheckpoint: SyncCheckpoint,
-  ): Promise<boolean> {
+  ): Promise<SyncPhaseOutcome> {
     const generation = initialCheckpoint.fullReconciliationGeneration
     if (generation === undefined) throw new Error('Full reconciliation has no generation')
     let pageToken = initialCheckpoint.fullReconciliationPageToken
@@ -696,7 +669,11 @@ export class MailSyncEngine implements SyncEngine {
       updatedAt: this.now(),
       fence: await this.renewLease(operation),
     })
-    return this.reconcile(operation, provider, await this.requireCheckpoint(operation))
+    return {
+      kind: 'history-restart',
+      checkpoint: await this.requireCheckpoint(operation),
+      pageTokenRestarts: 0,
+    }
   }
 
   private async refreshFinalMetadata(

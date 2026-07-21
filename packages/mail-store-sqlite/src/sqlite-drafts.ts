@@ -1,9 +1,9 @@
 import type { CommittedChangeSet, MailStore } from '@mailrovers/mail-application'
 import type { CommandReceipt, Draft, DraftCommand } from '@mailrovers/mail-contracts'
 import {
-  commandId,
   draftId,
   draftRevisionFingerprint,
+  newCommandId,
   fingerprintDraftRevision,
   normalizeDraftHtmlBody,
   type MailboxId,
@@ -17,18 +17,27 @@ export class SqliteDrafts {
   ) {}
   async saveDraft(input: Parameters<MailStore['saveDraft']>[0]): Promise<Draft> {
     const committed = this.db.transaction(() => {
+      const existing = this.db.prepare('SELECT * FROM drafts WHERE id=?').get(input.id)
+      if (
+        existing !== undefined &&
+        String(row(existing).mailbox_id) !== String(input.request.mailboxId)
+      )
+        throw new Error('DRAFT_OWNERSHIP')
       const duplicate = this.db
-        .prepare('SELECT 1 FROM command_outbox WHERE mailbox_id=? AND idempotency_key=?')
+        .prepare(`SELECT command_kind,entity_key FROM command_outbox
+        WHERE mailbox_id=? AND idempotency_key=?`)
         .get(input.request.mailboxId, input.request.idempotencyKey)
       if (duplicate !== undefined) {
+        const duplicateRow = row(duplicate)
+        const entityKey = String(duplicateRow.entity_key)
+        if (duplicateRow.command_kind !== 'sync-draft' || !entityKey.startsWith('draft:'))
+          throw new Error('IDEMPOTENCY_KEY_OPERATION_MISMATCH')
         const duplicateDraft = this.db
           .prepare('SELECT * FROM drafts WHERE id=? AND mailbox_id=?')
-          .get(input.id, input.request.mailboxId)
-        if (duplicateDraft !== undefined) return { draft: mapDraft(duplicateDraft), changed: false }
+          .get(draftId(entityKey.slice('draft:'.length)), input.request.mailboxId)
+        if (duplicateDraft === undefined) throw new Error('DRAFT_REPLAY_NOT_FOUND')
+        return { draft: mapDraft(duplicateDraft), changed: false }
       }
-      const existing = this.db
-        .prepare('SELECT * FROM drafts WHERE id=? AND mailbox_id=?')
-        .get(input.id, input.request.mailboxId)
       if (existing !== undefined) {
         const existingDraft = mapDraft(existing)
         if (
@@ -56,6 +65,10 @@ export class SqliteDrafts {
           : this.db
               .prepare('SELECT internet_message_id FROM messages WHERE id=? AND mailbox_id=?')
               .get(input.request.replyToMessageId, input.request.mailboxId)
+      if (input.request.conversationId !== undefined && conversationValue === undefined)
+        throw new Error('DRAFT_CONVERSATION_NOT_FOUND')
+      if (input.request.replyToMessageId !== undefined && replyValue === undefined)
+        throw new Error('DRAFT_REPLY_TO_MESSAGE_NOT_FOUND')
       const providerThreadId =
         conversationValue === undefined
           ? undefined
@@ -83,36 +96,53 @@ export class SqliteDrafts {
         ...(replyInternetMessageId === undefined ? {} : { inReplyTo: replyInternetMessageId }),
         references: replyInternetMessageId === undefined ? [] : [replyInternetMessageId],
       })
-      this.db
-        .prepare(`INSERT INTO drafts
-        (id,workspace_id,mailbox_id,conversation_id,reply_to_message_id,provider_draft_id,
-        provider_message_id,internet_message_id,to_json,cc_json,bcc_json,subject,text_body,
-        html_body,version,sync_state,revision_fingerprint,created_at,updated_at)
-        VALUES (?,?,?,?,?,NULL,NULL,?,?,?,?,?,?,?,1,'local',?,?,?)
-        ON CONFLICT(id) DO UPDATE SET conversation_id=excluded.conversation_id,
-        reply_to_message_id=excluded.reply_to_message_id,to_json=excluded.to_json,
-        cc_json=excluded.cc_json,bcc_json=excluded.bcc_json,subject=excluded.subject,
-        text_body=excluded.text_body,html_body=excluded.html_body,version=drafts.version+1,
-        sync_state='local',revision_fingerprint=excluded.revision_fingerprint,
-        updated_at=excluded.updated_at`)
-        .run(
-          input.id,
-          mailboxRow.workspace_id,
-          input.request.mailboxId,
-          input.request.conversationId ?? null,
-          input.request.replyToMessageId ?? null,
-          internetMessageId,
-          JSON.stringify(input.request.to),
-          JSON.stringify(input.request.cc),
-          JSON.stringify(input.request.bcc),
-          input.request.subject,
-          input.request.textBody,
-          htmlBody ?? null,
-          revisionFingerprint,
-          input.updatedAt,
-          input.updatedAt,
-        )
-      const value = this.db.prepare('SELECT * FROM drafts WHERE id=?').get(input.id)
+      const draftWrite =
+        existing === undefined
+          ? this.db
+              .prepare(`INSERT INTO drafts
+              (id,workspace_id,mailbox_id,conversation_id,reply_to_message_id,provider_draft_id,
+              provider_message_id,internet_message_id,to_json,cc_json,bcc_json,subject,text_body,
+              html_body,version,sync_state,revision_fingerprint,created_at,updated_at)
+              VALUES (?,?,?,?,?,NULL,NULL,?,?,?,?,?,?,?,1,'local',?,?,?)`)
+              .run(
+                input.id,
+                mailboxRow.workspace_id,
+                input.request.mailboxId,
+                input.request.conversationId ?? null,
+                input.request.replyToMessageId ?? null,
+                internetMessageId,
+                JSON.stringify(input.request.to),
+                JSON.stringify(input.request.cc),
+                JSON.stringify(input.request.bcc),
+                input.request.subject,
+                input.request.textBody,
+                htmlBody ?? null,
+                revisionFingerprint,
+                input.updatedAt,
+                input.updatedAt,
+              )
+          : this.db
+              .prepare(`UPDATE drafts SET conversation_id=?,reply_to_message_id=?,to_json=?,cc_json=?,
+              bcc_json=?,subject=?,text_body=?,html_body=?,version=version+1,sync_state='local',
+              revision_fingerprint=?,updated_at=? WHERE id=? AND mailbox_id=?`)
+              .run(
+                input.request.conversationId ?? null,
+                input.request.replyToMessageId ?? null,
+                JSON.stringify(input.request.to),
+                JSON.stringify(input.request.cc),
+                JSON.stringify(input.request.bcc),
+                input.request.subject,
+                input.request.textBody,
+                htmlBody ?? null,
+                revisionFingerprint,
+                input.updatedAt,
+                input.id,
+                input.request.mailboxId,
+              )
+      if (draftWrite.changes !== 1) throw new Error('Failed to save draft')
+      const value = this.db
+        .prepare('SELECT * FROM drafts WHERE id=? AND mailbox_id=?')
+        .get(input.id, input.request.mailboxId)
       if (value === undefined) throw new Error('Failed to save draft')
       const draft = mapDraft(value)
       this.db
@@ -125,12 +155,12 @@ export class SqliteDrafts {
         expectedVersion: draft.version,
         outboundRevisionFingerprint: draft.revisionFingerprint,
       }
-      this.db
+      const commandWrite = this.db
         .prepare(`INSERT INTO command_outbox
         (id,mailbox_id,idempotency_key,command_kind,entity_key,payload_json,state,created_at,updated_at)
         VALUES (?,?,?,?,?,?,'pending',?,?)`)
         .run(
-          commandId(`draft-sync:${input.request.idempotencyKey}`),
+          newCommandId(),
           input.request.mailboxId,
           input.request.idempotencyKey,
           syncCommand.kind,
@@ -139,6 +169,7 @@ export class SqliteDrafts {
           input.updatedAt,
           input.updatedAt,
         )
+      if (commandWrite.changes !== 1) throw new Error('Failed to persist draft command')
       return { draft, changed: true }
     })()
     if (committed.changed)
@@ -189,7 +220,7 @@ export class SqliteDrafts {
           String(row(draftValue).revision_fingerprint),
         ),
       }
-      const id = commandId(`draft-send:${input.idempotencyKey}`)
+      const id = newCommandId()
       this.db
         .prepare(`INSERT INTO command_outbox
         (id,mailbox_id,idempotency_key,command_kind,entity_key,payload_json,state,created_at,updated_at)
@@ -204,7 +235,9 @@ export class SqliteDrafts {
           input.createdAt,
           input.createdAt,
         )
-      const stored = this.db.prepare('SELECT * FROM command_outbox WHERE id=?').get(id)
+      const stored = this.db
+        .prepare('SELECT * FROM command_outbox WHERE id=? AND mailbox_id=?')
+        .get(id, input.mailboxId)
       if (stored === undefined) throw new Error('Failed to persist send command')
       return { receipt: mapCommand(stored), changed: true }
     })()

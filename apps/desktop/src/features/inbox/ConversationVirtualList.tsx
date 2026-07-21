@@ -1,7 +1,12 @@
 import type { ConversationSummary } from '@mailrovers/mail-contracts'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useRef } from 'react'
+import { MailRelativeTime } from '@/components/mail-relative-time.js'
 import { Button } from '@/components/ui/button.js'
+
+function sendersLabel(senders: ConversationSummary['senders']): string {
+  return senders.map((sender) => sender.name?.trim() || sender.address).join(', ')
+}
 
 export function ConversationVirtualList({
   items,
@@ -40,7 +45,7 @@ export function ConversationVirtualList({
               type="button"
               key={item.id}
               variant="ghost"
-              className="absolute inset-x-0 grid h-21 w-full grid-cols-[8px_minmax(0,1fr)_auto] items-start gap-2 rounded-md px-2.5 py-3 text-start text-sm font-medium aria-pressed:bg-accent"
+              className="absolute inset-x-0 grid h-21 w-full grid-cols-[8px_minmax(0,1fr)_auto] items-start gap-2 rounded-md px-2.5 py-2.5 text-start text-sm font-medium aria-pressed:bg-accent"
               aria-pressed={selectedId === item.id}
               data-unread={item.unreadCount > 0}
               onClick={() => onSelect(item)}
@@ -53,15 +58,16 @@ export function ConversationVirtualList({
                 data-unread={item.unreadCount > 0}
                 aria-label={item.unreadCount > 0 ? 'Unread' : undefined}
               />
-              <div className="flex min-w-0 flex-col gap-1">
-                <strong className="truncate text-sm">{item.subject || '(No subject)'}</strong>
-                <span className="truncate text-sm font-normal text-muted-foreground">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate text-sm font-medium">{sendersLabel(item.senders)}</span>
+                <strong className="truncate text-xs font-normal">
+                  {item.subject || '(No subject)'}
+                </strong>
+                <span className="truncate text-xs font-normal text-muted-foreground">
                   {item.snippet}
                 </span>
               </div>
-              <time className="truncate text-sm font-normal text-muted-foreground">
-                {new Date(item.lastMessageAt).toLocaleDateString()}
-              </time>
+              <MailRelativeTime value={item.lastMessageAt} />
             </Button>
           )
         })}

@@ -76,6 +76,8 @@ export const AddAnotherAccount: Story = {
     await userEvent.click(await body.findByRole('menuitem', { name: 'Add Gmail account' }))
     await expect(await canvas.findByRole('heading', { name: 'Before you connect' })).toBeVisible()
     await expect(await canvas.findByRole('button', { name: 'Back' })).toBeVisible()
+    await userEvent.click(await canvas.findByRole('button', { name: 'Back' }))
+    await expect(await canvas.findByRole('textbox', { name: 'Search mail' })).toBeVisible()
   },
 }
 

@@ -1,8 +1,10 @@
 import type {
   MailProvider,
   MailProviderFactory,
+  MailStore,
   ProviderImportBatch,
   PullChangesResult,
+  ImportPageCommit,
 } from '@mailrovers/mail-application'
 import { GMAIL_CAPABILITIES, type DesktopEvent } from '@mailrovers/mail-contracts'
 import {
@@ -145,6 +147,20 @@ class FakeFactory implements MailProviderFactory {
   }
 }
 
+class FailingMessagesProvider extends FakeProvider {
+  failMessageImport = true
+
+  override async *importMailbox(input: {
+    phase: 'labels' | 'messages' | 'drafts'
+    pageToken?: string | undefined
+    signal: AbortSignal
+  }): AsyncIterable<ProviderImportBatch> {
+    if (input.phase === 'messages' && this.failMessageImport)
+      throw new Error('planned import failure')
+    for await (const batch of super.importMailbox(input)) yield batch
+  }
+}
+
 class BlockingLabelsProvider extends FakeProvider {
   private enteredResolve?: (() => void) | undefined
   private releaseResolve?: (() => void) | undefined
@@ -178,7 +194,7 @@ afterEach(() => {
   database = undefined
 })
 
-async function setup(provider: FakeProvider) {
+async function setup(provider: FakeProvider, onImportPage?: (page: ImportPageCommit) => void) {
   database = openDatabase(join(mkdtempSync(join(tmpdir(), 'mailrovers-sync-')), 'mail.sqlite'))
   migrate(database)
   const store = new SqliteMailStore(database)
@@ -199,8 +215,20 @@ async function setup(provider: FakeProvider) {
   const terminal = new Promise<void>((resolve) => {
     terminalResolve = resolve
   })
+  const engineStore =
+    onImportPage === undefined
+      ? store
+      : new Proxy(store, {
+          get(target, property, receiver) {
+            if (property !== 'applyImportBatch') return Reflect.get(target, property, receiver)
+            return async (input: Parameters<MailStore['applyImportBatch']>[0]) => {
+              if (input.page !== undefined) onImportPage(input.page)
+              return target.applyImportBatch(input)
+            }
+          },
+        })
   const engine = new MailSyncEngine({
-    store,
+    store: engineStore,
     providers: new FakeFactory(provider),
     now: () => new Date(now),
     publish(event) {
@@ -229,17 +257,64 @@ class RejectedTokenProvider extends FakeProvider {
 }
 
 class ExpiredCursorProvider extends FakeProvider {
+  readonly pageTokens: Array<string | undefined> = []
   private pullCount = 0
 
   override async getCurrentCursor(): Promise<string> {
     return this.pullCount > 1 ? '250' : '100'
   }
 
-  override async pullChanges(): Promise<PullChangesResult> {
+  override async pullChanges(input: {
+    pageToken?: string | undefined
+  }): Promise<PullChangesResult> {
+    this.pageTokens.push(input.pageToken)
     this.pullCount += 1
     if (this.pullCount === 1) return { changes: {}, historyId: '201' }
-    if (this.pullCount === 2) throw Object.assign(new Error('History expired'), { status: 404 })
+    if (this.pullCount === 2)
+      return { changes: {}, historyId: '202', nextPageToken: 'expired-page' }
+    if (this.pullCount === 3) throw Object.assign(new Error('Invalid page token'), { status: 400 })
+    if (this.pullCount === 4) throw Object.assign(new Error('History expired'), { status: 404 })
+    if (this.pullCount === 5) return { changes: {}, historyId: '302', nextPageToken: 'fresh-page' }
+    if (this.pullCount === 6) throw Object.assign(new Error('Invalid page token'), { status: 400 })
     return { changes: {}, historyId: '300' }
+  }
+}
+
+type PagedImportCase = {
+  name: string
+  phase: 'messages' | 'drafts'
+  plans: Record<'messages' | 'drafts', ProviderImportBatch[][]>
+  expectedTokens: Array<string | undefined>
+  expectedPages: ImportPageCommit[]
+}
+
+class PagedImportProvider extends FakeProvider {
+  readonly pageTokens: Record<'messages' | 'drafts', Array<string | undefined>> = {
+    messages: [],
+    drafts: [],
+  }
+  private readonly calls = { messages: 0, drafts: 0 }
+
+  constructor(private readonly plans: PagedImportCase['plans']) {
+    super()
+  }
+
+  override async *importMailbox(input: {
+    phase: 'labels' | 'messages' | 'drafts'
+    pageToken?: string | undefined
+    signal: AbortSignal
+  }): AsyncIterable<ProviderImportBatch> {
+    if (input.phase === 'labels') {
+      yield { changes: {}, processedCount: 0, pageComplete: true }
+      return
+    }
+    this.pageTokens[input.phase].push(input.pageToken)
+    const call = this.calls[input.phase]
+    this.calls[input.phase] += 1
+    const plan = this.plans[input.phase][call] ?? [
+      { changes: {}, processedCount: 0, pageComplete: true },
+    ]
+    for (const batch of plan) yield batch
   }
 }
 
@@ -331,6 +406,93 @@ describe('synchronization lease fencing', () => {
 })
 
 describe('resumable Gmail import', () => {
+  const pagedImportCases: PagedImportCase[] = [
+    {
+      name: 'messages',
+      phase: 'messages',
+      plans: {
+        messages: [
+          [
+            { changes: {}, processedCount: 2, pageComplete: false },
+            {
+              changes: {},
+              processedCount: 1,
+              pageComplete: true,
+              nextPageToken: 'message-2',
+              totalEstimate: 8,
+            },
+          ],
+          [{ changes: {}, processedCount: 4, pageComplete: true }],
+        ],
+        drafts: [[{ changes: {}, processedCount: 0, pageComplete: true }]],
+      },
+      expectedTokens: [undefined, 'message-2'],
+      expectedPages: [
+        {
+          kind: 'messages',
+          nextPageToken: 'message-2',
+          processedCount: 3,
+          totalEstimate: 8,
+          nextState: 'importing_messages',
+        },
+        { kind: 'messages', processedCount: 4, nextState: 'importing_drafts' },
+      ],
+    },
+    {
+      name: 'drafts',
+      phase: 'drafts',
+      plans: {
+        messages: [[{ changes: {}, processedCount: 0, pageComplete: true }]],
+        drafts: [
+          [
+            { changes: {}, processedCount: 1, pageComplete: false },
+            { changes: {}, processedCount: 2, pageComplete: true, nextPageToken: 'draft-2' },
+          ],
+          [{ changes: {}, processedCount: 3, pageComplete: true }],
+        ],
+      },
+      expectedTokens: [undefined, 'draft-2'],
+      expectedPages: [
+        {
+          kind: 'drafts',
+          nextPageToken: 'draft-2',
+          processedCount: 3,
+          nextState: 'importing_drafts',
+        },
+        { kind: 'drafts', processedCount: 3, nextState: 'reconciling_history' },
+      ],
+    },
+  ]
+
+  it.each(pagedImportCases)(
+    '$name pages preserve tokens, counts, estimates, and next states',
+    async (testCase) => {
+      const provider = new PagedImportProvider(testCase.plans)
+      const pageCommits: ImportPageCommit[] = []
+      const { store, engine, terminal } = await setup(provider, (page) => pageCommits.push(page))
+      await engine.start({
+        mailboxId: mailbox.id,
+        requestId: operationId(`paged-${testCase.name}`),
+      })
+      await terminal
+
+      expect(provider.pageTokens[testCase.phase].slice(0, testCase.expectedTokens.length)).toEqual(
+        testCase.expectedTokens,
+      )
+      expect(pageCommits.filter((page) => page.kind === testCase.phase)).toEqual(
+        testCase.expectedPages,
+      )
+      expect(await store.getSyncCheckpoint(mailbox.id)).toEqual(
+        expect.objectContaining({
+          importState: 'complete',
+          importedMessageCount: testCase.phase === 'messages' ? 7 : 0,
+          importedDraftCount: testCase.phase === 'drafts' ? 6 : 0,
+          ...(testCase.phase === 'messages' ? { importTotalEstimate: 8 } : {}),
+        }),
+      )
+    },
+  )
+
   it('imports pages and advances history only on the final page', async () => {
     const provider = new FakeProvider()
     const { store, engine, events, terminal } = await setup(provider)
@@ -379,7 +541,33 @@ describe('resumable Gmail import', () => {
     expect((await first.store.getSyncCheckpoint(mailbox.id))?.providerCursor).toBe('301')
   })
 
-  it('uses non-destructive full reconciliation when history expires', async () => {
+  it('resumes a failed import from its persisted phase', async () => {
+    const provider = new FailingMessagesProvider()
+    const { store, engine, events, terminal } = await setup(provider)
+    await engine.start({ mailboxId: mailbox.id, requestId: operationId('sync-failed') })
+    await terminal
+
+    expect(await store.getSyncCheckpoint(mailbox.id)).toEqual(
+      expect.objectContaining({ importState: 'failed', resumeImportState: 'importing_messages' }),
+    )
+    expect(events.at(-1)?.kind).toBe('sync-failed')
+
+    provider.failMessageImport = false
+    let completedResolve: (() => void) | undefined
+    const completed = new Promise<void>((resolve) => {
+      completedResolve = resolve
+    })
+    const unsubscribe = setInterval(() => {
+      if (events.some((event) => event.kind === 'sync-completed')) completedResolve?.()
+    }, 1)
+    await engine.start({ mailboxId: mailbox.id, requestId: operationId('sync-failed-resume') })
+    await completed
+    clearInterval(unsubscribe)
+
+    expect((await store.getSyncCheckpoint(mailbox.id))?.importState).toBe('complete')
+  })
+
+  it('resets the history page-token allowance after full reconciliation', async () => {
     const provider = new ExpiredCursorProvider()
     const first = await setup(provider)
     await first.engine.start({
@@ -392,19 +580,106 @@ describe('resumable Gmail import', () => {
     const terminal = new Promise<void>((resolve) => {
       terminalResolve = resolve
     })
+    const events: DesktopEvent[] = []
     const engine = new MailSyncEngine({
       store: first.store,
       providers: new FakeFactory(provider),
       now: () => new Date(now),
       publish(event) {
+        events.push(event)
         if (event.kind !== 'sync-progress') terminalResolve?.()
       },
     })
     await engine.start({ mailboxId: mailbox.id, requestId: operationId('sync-expiry-reconcile') })
     await terminal
 
+    expect(provider.pageTokens).toEqual([
+      undefined,
+      undefined,
+      'expired-page',
+      undefined,
+      undefined,
+      'fresh-page',
+      undefined,
+    ])
+    expect(events.at(-1)?.kind).toBe('sync-completed')
     expect((await first.store.getSyncCheckpoint(mailbox.id))?.providerCursor).toBe('300')
     expect((await first.store.listConversations({ mailboxId: mailbox.id })).items).toHaveLength(3)
+  })
+
+  it('recovers when create fails while paused without rewriting resume to paused', async () => {
+    const provider = new FakeProvider()
+    provider.blockSecondPage = true
+    const { store, engine, events } = await setup(provider)
+    await engine.start({ mailboxId: mailbox.id, requestId: operationId('sync-corrupt-pause') })
+    await provider.secondPageStarted
+    await engine.cancelMailbox(mailbox.id)
+
+    expect(await store.getSyncCheckpoint(mailbox.id)).toEqual(
+      expect.objectContaining({
+        importState: 'paused',
+        resumeImportState: 'importing_messages',
+      }),
+    )
+
+    let createAttempts = 0
+    const failingFactory: MailProviderFactory = {
+      async create() {
+        createAttempts += 1
+        if (createAttempts === 1) throw new Error('provider create failed before resume')
+        return provider
+      },
+    }
+    let failedResolve: (() => void) | undefined
+    const failed = new Promise<void>((resolve) => {
+      failedResolve = resolve
+    })
+    const failingEngine = new MailSyncEngine({
+      store,
+      providers: failingFactory,
+      now: () => new Date(now),
+      publish(event) {
+        events.push(event)
+        if (event.kind === 'sync-failed') failedResolve?.()
+      },
+    })
+    await failingEngine.start({
+      mailboxId: mailbox.id,
+      requestId: operationId('sync-corrupt-create'),
+    })
+    await failed
+
+    const afterCreateFailure = await store.getSyncCheckpoint(mailbox.id)
+    expect(afterCreateFailure?.importState).toBe('failed')
+    expect(afterCreateFailure?.resumeImportState).toBe('importing_messages')
+
+    provider.blockSecondPage = false
+    let completedResolve: (() => void) | undefined
+    const completed = new Promise<void>((resolve) => {
+      completedResolve = resolve
+    })
+    const resumeEvents: DesktopEvent[] = []
+    const resumeEngine = new MailSyncEngine({
+      store,
+      providers: new FakeFactory(provider),
+      now: () => new Date(now),
+      publish(event) {
+        resumeEvents.push(event)
+        if (event.kind === 'sync-completed') completedResolve?.()
+      },
+    })
+    await resumeEngine.start({
+      mailboxId: mailbox.id,
+      requestId: operationId('sync-corrupt-resume'),
+    })
+    await Promise.race([
+      completed,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('sync resume hung after corrupt create failure')), 2_000)
+      }),
+    ])
+
+    expect((await store.getSyncCheckpoint(mailbox.id))?.importState).toBe('complete')
   })
 
   it('pauses at cancellation and resumes from the committed page token', async () => {

@@ -8,19 +8,40 @@ import { desktopBridge } from '../../desktop-bridge.js'
 import { Input } from '@/components/ui/input.js'
 import { Textarea } from '@/components/ui/textarea.js'
 
-type ComposerSeed = {
-  draft?: Draft | undefined
-  conversationId?: ConversationId | undefined
-  replyToMessageId?: MessageId | undefined
+export type ComposerReplyContext = {
+  conversationId: ConversationId
+  replyToMessageId: MessageId
   sourceVersion?: number | undefined
-  to?: string | undefined
-  subject?: string | undefined
 }
+
+export type ComposerMode =
+  | { kind: 'new' }
+  | {
+      kind: 'reply'
+      context: ComposerReplyContext
+      to: string
+      subject: string
+    }
+  | {
+      kind: 'edit'
+      draft: Draft
+      replyContext?: ComposerReplyContext | undefined
+    }
 
 type ComposerSnapshot = {
   to: string
   subject: string
   body: string
+}
+
+function initialSnapshot(mode: ComposerMode): ComposerSnapshot {
+  if (mode.kind === 'new') return { to: '', subject: '', body: '' }
+  if (mode.kind === 'reply') return { to: mode.to, subject: mode.subject, body: '' }
+  return {
+    to: mode.draft.to.map((address) => address.address).join(', '),
+    subject: mode.draft.subject,
+    body: mode.draft.textBody,
+  }
 }
 
 function addresses(value: string): Array<{ address: string }> {
@@ -31,28 +52,53 @@ function addresses(value: string): Array<{ address: string }> {
     .map((address) => ({ address }))
 }
 
+export function draftAnchors(
+  mode: ComposerMode,
+  replyContext: ComposerReplyContext | undefined,
+): { conversationId?: ConversationId; replyToMessageId?: MessageId } {
+  if (replyContext !== undefined) {
+    return {
+      conversationId: replyContext.conversationId,
+      replyToMessageId: replyContext.replyToMessageId,
+    }
+  }
+  if (mode.kind !== 'edit') return {}
+  return {
+    ...(mode.draft.conversationId === undefined
+      ? {}
+      : { conversationId: mode.draft.conversationId }),
+    ...(mode.draft.replyToMessageId === undefined
+      ? {}
+      : { replyToMessageId: mode.draft.replyToMessageId }),
+  }
+}
+
 export function Composer({
   mailboxId,
-  seed,
+  mode,
   onClose,
 }: {
   mailboxId: MailboxId
-  seed?: ComposerSeed | undefined
+  mode: ComposerMode
   onClose: () => void
 }) {
-  const [to, setTo] = useState(
-    seed?.draft?.to.map((address) => address.address).join(', ') ?? seed?.to ?? '',
+  const initial = initialSnapshot(mode)
+  const [to, setTo] = useState(initial.to)
+  const [subject, setSubject] = useState(initial.subject)
+  const [body, setBody] = useState(initial.body)
+  const [draft, setDraft] = useState<Draft | undefined>(
+    mode.kind === 'edit' ? mode.draft : undefined,
   )
-  const [subject, setSubject] = useState(seed?.draft?.subject ?? seed?.subject ?? '')
-  const [body, setBody] = useState(seed?.draft?.textBody ?? '')
-  const [draft, setDraft] = useState<Draft | undefined>(seed?.draft)
+  const replyContext =
+    mode.kind === 'reply' ? mode.context : mode.kind === 'edit' ? mode.replyContext : undefined
+  const isReply = replyContext !== undefined
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'sending' | 'error'>('idle')
   const [aiStatus, setAiStatus] = useState<'idle' | 'streaming' | 'ready' | 'error'>('idle')
   const [suggestion, setSuggestion] = useState('')
   const [artifact, setArtifact] = useState<AiArtifact>()
   const [aiError, setAiError] = useState<string>()
   const queue = useRef(Promise.resolve<Draft | undefined>(undefined))
-  const draftRef = useRef<Draft | undefined>(seed?.draft)
+  const draftRef = useRef<Draft | undefined>(mode.kind === 'edit' ? mode.draft : undefined)
   const aiOperation = useRef<OperationId | undefined>(undefined)
   const aiUnsubscribe = useRef<(() => void) | undefined>(undefined)
   const [autosave] = useState(() => createDebouncedAction(750))
@@ -67,12 +113,7 @@ export function Composer({
           ...(current === undefined
             ? {}
             : { draftId: current.id, expectedVersion: current.version }),
-          ...(seed?.draft?.conversationId === undefined && seed?.conversationId === undefined
-            ? {}
-            : { conversationId: seed?.draft?.conversationId ?? seed?.conversationId }),
-          ...(seed?.draft?.replyToMessageId === undefined && seed?.replyToMessageId === undefined
-            ? {}
-            : { replyToMessageId: seed?.draft?.replyToMessageId ?? seed?.replyToMessageId }),
+          ...draftAnchors(mode, replyContext),
           idempotencyKey: crypto.randomUUID(),
           to: addresses(snapshot.to),
           cc: [],
@@ -88,7 +129,7 @@ export function Composer({
       queue.current.catch(() => setStatus('error'))
       return queue.current
     },
-    [mailboxId, seed],
+    [mailboxId, mode, replyContext],
   )
 
   const scheduleAutosave = (snapshot: ComposerSnapshot) => {
@@ -128,9 +169,8 @@ export function Composer({
   )
 
   const generateReply = async () => {
-    const conversationId = seed?.draft?.conversationId ?? seed?.conversationId
-    const sourceVersion = seed?.sourceVersion
-    if (!conversationId || sourceVersion === undefined) return
+    if (replyContext?.sourceVersion === undefined) return
+    const { conversationId, sourceVersion } = replyContext
     setAiStatus('streaming')
     setSuggestion('')
     setArtifact(undefined)
@@ -242,18 +282,16 @@ export function Composer({
     onClose()
   }
 
-  const canGenerateReply =
-    (seed?.draft?.conversationId !== undefined || seed?.conversationId !== undefined) &&
-    seed?.sourceVersion !== undefined
+  const canGenerateReply = replyContext?.sourceVersion !== undefined
 
   return (
     <section
       ref={composerRef}
       className="fixed right-4.5 bottom-4.5 z-40 flex h-[min(560px,calc(100vh-92px))] w-[min(520px,calc(100vw-36px))] flex-col overflow-hidden"
-      aria-label={seed?.replyToMessageId ? 'Reply' : 'New message'}
+      aria-label={isReply ? 'Reply' : 'New message'}
     >
       <header className="flex h-12 items-center justify-between py-2 pr-3 pl-4">
-        <strong>{seed?.replyToMessageId ? 'Reply' : 'New message'}</strong>
+        <strong>{isReply ? 'Reply' : 'New message'}</strong>
         <Button
           type="button"
           variant="ghost"

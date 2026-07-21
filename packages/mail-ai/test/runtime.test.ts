@@ -46,6 +46,20 @@ function streamResponse(frames: string[], chunkSize = 7): Response {
   )
 }
 
+function configurationResponse(content: unknown): Response {
+  return new Response(JSON.stringify(content), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function runtimeForValidation(response: Response): OpenAiCompatibleRuntime {
+  return new OpenAiCompatibleRuntime(
+    { baseUrl: 'https://api.example.test/v1', model: 'test-model', apiKey: 'secret' },
+    { fetch: vi.fn<typeof fetch>().mockResolvedValue(response) },
+  )
+}
+
 describe('OpenAI-compatible runtime', () => {
   it('normalizes allowed base URLs and rejects unsafe ones', () => {
     expect(chatCompletionsUrl('https://api.example.test/v1')).toBe(
@@ -137,14 +151,11 @@ describe('OpenAI-compatible runtime', () => {
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
   })
 
-  it('validates configuration without sending email content', async () => {
+  it('validates a small completion without sending email content', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(
-        new Response(
-          JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'OK' } }] }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
+        configurationResponse({ choices: [{ message: { role: 'assistant', content: 'OK' } }] }),
       )
     const runtime = new OpenAiCompatibleRuntime(
       { baseUrl: 'https://api.example.test/v1', model: 'test-model', apiKey: 'secret' },
@@ -154,5 +165,112 @@ describe('OpenAI-compatible runtime', () => {
     const body = fetchMock.mock.calls[0]?.[1]?.body
     if (typeof body !== 'string') throw new Error('Expected serialized request body')
     expect(body).not.toContain('sender@example.test')
+  })
+
+  it('rejects an oversized declared validation response before reading it', async () => {
+    let cancelled = false
+    let pulled = false
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull() {
+          pulled = true
+        },
+        cancel() {
+          cancelled = true
+        },
+      },
+      { highWaterMark: 0 },
+    )
+    const response = new Response(body, {
+      status: 200,
+      headers: { 'Content-Length': `${64 * 1024 + 1}` },
+    })
+
+    await expect(
+      runtimeForValidation(response).validateConfiguration(new AbortController().signal),
+    ).rejects.toMatchObject({ code: 'AI_RESPONSE_INVALID' })
+    expect(pulled).toBe(false)
+    expect(cancelled).toBe(true)
+  })
+
+  it('rejects a chunked validation response that crosses the byte limit and cancels its reader', async () => {
+    let cancelled = false
+    let pullCount = 0
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pullCount += 1
+          if (pullCount === 1) controller.enqueue(new Uint8Array(64 * 1024))
+          else controller.enqueue(new Uint8Array(1))
+        },
+        cancel() {
+          cancelled = true
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )
+
+    await expect(
+      runtimeForValidation(response).validateConfiguration(new AbortController().signal),
+    ).rejects.toMatchObject({ code: 'AI_RESPONSE_INVALID' })
+    expect(cancelled).toBe(true)
+  })
+
+  it('rejects malformed validation JSON', async () => {
+    const response = new Response('{', {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+    await expect(
+      runtimeForValidation(response).validateConfiguration(new AbortController().signal),
+    ).rejects.toMatchObject({ code: 'AI_RESPONSE_INVALID' })
+  })
+
+  it('rejects malformed UTF-8 validation JSON', async () => {
+    const response = new Response(new Uint8Array([0xc3]), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+
+    await expect(
+      runtimeForValidation(response).validateConfiguration(new AbortController().signal),
+    ).rejects.toMatchObject({ code: 'AI_RESPONSE_INVALID' })
+  })
+
+  it('rejects validation responses without completion text', async () => {
+    await expect(
+      runtimeForValidation(
+        configurationResponse({ choices: [{ message: { role: 'assistant' } }] }),
+      ).validateConfiguration(new AbortController().signal),
+    ).rejects.toMatchObject({ code: 'AI_RESPONSE_INVALID' })
+  })
+
+  it('rejects validation responses without a body', async () => {
+    await expect(
+      runtimeForValidation(new Response(null, { status: 200 })).validateConfiguration(
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ code: 'AI_RESPONSE_INVALID' })
+  })
+
+  it('propagates caller aborts while reading a validation response', async () => {
+    let cancelled = false
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        cancel() {
+          cancelled = true
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )
+    const controller = new AbortController()
+    const pending = runtimeForValidation(response).validateConfiguration(controller.signal)
+
+    await Promise.resolve()
+    controller.abort()
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    expect(cancelled).toBe(true)
   })
 })

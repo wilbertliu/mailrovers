@@ -48,9 +48,9 @@ import type {
 } from '@mailrovers/mail-contracts'
 import {
   aiArtifactId,
-  commandId,
-  draftId,
   mailboxId,
+  newCommandId,
+  newDraftId,
   utcTimestamp,
   workspaceId,
   type Mailbox,
@@ -67,7 +67,7 @@ import {
   type AiRuntimeFactory,
 } from './ai-runtime.js'
 import type { AttachmentStorage, GmailConnector, MailProviderFactory } from './mail-provider.js'
-import type { MailStore, StoredAiConfiguration } from './mail-store.js'
+import { ISSUE_STATES, type MailStore, type StoredAiConfiguration } from './mail-store.js'
 import type { CommandDispatcher, SecretSealer, SyncEngine } from './sync-engine.js'
 
 export interface MailApplication {
@@ -262,7 +262,7 @@ export function createMailApplication(
     async executeCommand(request) {
       await requireConnectedMailbox(request.mailboxId)
       const receipt = await dependencies.store.enqueueCommand({
-        id: commandId(request.idempotencyKey),
+        id: newCommandId(),
         mailboxId: request.mailboxId,
         idempotencyKey: request.idempotencyKey,
         command: request.command,
@@ -274,7 +274,7 @@ export function createMailApplication(
     async undoCommand(request) {
       await requireConnectedMailbox(request.mailboxId)
       const receipt = await dependencies.store.enqueueInverseCommand({
-        id: commandId(request.idempotencyKey),
+        id: newCommandId(),
         mailboxId: request.mailboxId,
         sourceCommandId: request.sourceCommandId,
         idempotencyKey: request.idempotencyKey,
@@ -287,16 +287,19 @@ export function createMailApplication(
     async resolveCommand(request) {
       await dependencies.store.setCommandState({
         id: request.commandId,
+        mailboxId: request.mailboxId,
         state: request.resolution === 'cancel' ? 'cancelled' : 'pending',
         updatedAt: utcTimestamp(now().toISOString()),
+        allowedSourceStates: ISSUE_STATES,
       })
       if (request.resolution !== 'cancel') dependencies.commandDispatcher?.wake()
     },
     async saveDraft(request) {
+      const id = request.draftId ?? newDraftId()
       const saved = await dependencies.store.saveDraft({
         request,
-        id: request.draftId ?? draftId(`draft:${request.idempotencyKey}`),
-        internetMessageId: `<${request.draftId ?? request.idempotencyKey}@mailrovers.local>`,
+        id,
+        internetMessageId: `<${id}@mailrovers.local>`,
         updatedAt: utcTimestamp(now().toISOString()),
       })
       dependencies.commandDispatcher?.wake()

@@ -251,7 +251,11 @@ export class SqliteMailboxesSync {
       this.assertSyncFence(input.mailboxId, input.fence)
       this.db
         .prepare(`UPDATE sync_checkpoints SET
-        resume_import_state=CASE WHEN ? IN ('paused','failed') THEN import_state ELSE NULL END,
+        resume_import_state=CASE
+          WHEN ? NOT IN ('paused','failed') THEN NULL
+          WHEN import_state IN ('paused','failed') THEN resume_import_state
+          ELSE import_state
+        END,
         import_state=?,updated_at=? WHERE mailbox_id=?`)
         .run(input.state, input.state, input.updatedAt, input.mailboxId)
       const mailboxState =

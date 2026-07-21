@@ -1,8 +1,8 @@
 import type { CommittedChangeSet, MailStore } from '@mailrovers/mail-application'
 import type { AiArtifact, Draft, DraftCommand } from '@mailrovers/mail-contracts'
 import {
-  commandId,
   fingerprintDraftRevision,
+  newCommandId,
   normalizeDraftHtmlBody,
   utcTimestamp,
   type MailboxId,
@@ -271,7 +271,7 @@ export class SqliteAiArtifacts {
           (id,mailbox_id,idempotency_key,command_kind,entity_key,payload_json,state,created_at,updated_at)
           VALUES (?,?,?,?,?,?,'pending',?,?)`)
         .run(
-          commandId(`draft-sync:${input.idempotencyKey}`),
+          newCommandId(),
           input.mailboxId,
           input.idempotencyKey,
           syncCommand.kind,

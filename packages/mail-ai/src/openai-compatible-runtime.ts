@@ -59,6 +59,76 @@ function textFromCompletion(value: unknown): string | undefined {
   return typeof message.content === 'string' ? message.content : undefined
 }
 
+const MAX_VALIDATION_RESPONSE_BYTES = 64 * 1024
+
+type ReadBoundedJsonInput = {
+  response: Response
+  maxBytes: number
+  signal: AbortSignal
+}
+
+async function readBoundedJson({
+  response,
+  maxBytes,
+  signal,
+}: ReadBoundedJsonInput): Promise<unknown> {
+  signal.throwIfAborted()
+  const body = response.body
+  if (!body)
+    throw new AiProviderError('AI_RESPONSE_INVALID', 'AI provider returned no response body')
+
+  const contentLength = response.headers.get('Content-Length')
+  if (
+    contentLength !== null &&
+    /^\d+$/u.test(contentLength) &&
+    BigInt(contentLength) > BigInt(maxBytes)
+  ) {
+    await body.cancel().catch(() => undefined)
+    signal.throwIfAborted()
+    throw new AiProviderError('AI_RESPONSE_INVALID', 'AI provider response exceeded size limit')
+  }
+
+  const reader = body.getReader()
+  let rejectAbort: ((reason?: unknown) => void) | undefined
+  const aborted = new Promise<never>((_resolve, reject) => {
+    rejectAbort = reject
+  })
+  const abort = () => {
+    void reader.cancel(signal.reason).catch(() => undefined)
+    rejectAbort?.(signal.reason)
+  }
+  signal.addEventListener('abort', abort, { once: true })
+
+  try {
+    const chunks: Uint8Array[] = []
+    let totalBytes = 0
+    for (;;) {
+      signal.throwIfAborted()
+      const { done, value } = await Promise.race([reader.read(), aborted])
+      if (done) break
+      totalBytes += value.byteLength
+      if (totalBytes > maxBytes) {
+        await reader.cancel().catch(() => undefined)
+        signal.throwIfAborted()
+        throw new AiProviderError('AI_RESPONSE_INVALID', 'AI provider response exceeded size limit')
+      }
+      chunks.push(value)
+    }
+
+    signal.throwIfAborted()
+    const bytes = new Uint8Array(totalBytes)
+    let offset = 0
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))
+  } finally {
+    signal.removeEventListener('abort', abort)
+    reader.releaseLock()
+  }
+}
+
 export class OpenAiCompatibleRuntime implements AiRuntime {
   private readonly fetchImplementation: typeof fetch
   private readonly endpoint: string
@@ -138,8 +208,14 @@ export class OpenAiCompatibleRuntime implements AiRuntime {
     }
     let value: unknown
     try {
-      value = await response.json()
-    } catch {
+      value = await readBoundedJson({
+        response,
+        maxBytes: MAX_VALIDATION_RESPONSE_BYTES,
+        signal,
+      })
+    } catch (error) {
+      if (signal.aborted) throw error
+      if (error instanceof AiProviderError) throw error
       throw new AiProviderError('AI_RESPONSE_INVALID', 'AI provider returned invalid JSON')
     }
     if (textFromCompletion(value) === undefined)

@@ -14,7 +14,7 @@ import { resultSchema } from './mailboxes.schema.js'
 const requestId = z.string().min(1).max(200).transform(operationId)
 const mailbox = z.string().min(1).max(300).transform(mailboxId)
 const draft = z.string().min(1).max(500).transform(draftId)
-const address = z
+export const draftMailAddressSchema = z
   .object({ name: z.string().max(500).optional(), address: z.string().email().max(1_000) })
   .strict()
 
@@ -27,24 +27,24 @@ export const saveDraftInputSchema = z
     replyToMessageId: z.string().transform(messageId).optional(),
     expectedVersion: z.number().int().positive().optional(),
     idempotencyKey: z.string().min(1).max(300),
-    to: z.array(address).max(100),
-    cc: z.array(address).max(100),
-    bcc: z.array(address).max(100),
+    to: z.array(draftMailAddressSchema).max(100),
+    cc: z.array(draftMailAddressSchema).max(100),
+    bcc: z.array(draftMailAddressSchema).max(100),
     subject: z.string().max(2_000),
     textBody: z.string().max(20_000_000),
     htmlBody: z.string().max(20_000_000).optional(),
   })
   .strict()
-const draftSchema = z
+export const draftSchema = z
   .object({
     id: draft,
     mailboxId: mailbox,
     conversationId: z.string().transform(conversationId).optional(),
     replyToMessageId: z.string().transform(messageId).optional(),
     providerDraftId: z.string().optional(),
-    to: z.array(address),
-    cc: z.array(address),
-    bcc: z.array(address),
+    to: z.array(draftMailAddressSchema),
+    cc: z.array(draftMailAddressSchema),
+    bcc: z.array(draftMailAddressSchema),
     subject: z.string(),
     textBody: z.string(),
     htmlBody: z.string().optional(),
