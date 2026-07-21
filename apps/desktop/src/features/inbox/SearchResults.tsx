@@ -26,7 +26,7 @@ export function SearchResults({
   isError: boolean
   searchInput: string
   onSearchInputChange: (value: string) => void
-  onSearchSubmit: () => void
+  onSearchSubmit: (value: string) => void
   onClear: () => void
   onLoadMore: () => void
   onSelect: (conversationId: ConversationId) => void

@@ -20,7 +20,7 @@ export function ListColumnHeader({
   subtitle?: ReactNode
   searchInput: string
   onSearchInputChange: (value: string) => void
-  onSearchSubmit: () => void
+  onSearchSubmit: (value: string) => void
   showSidebarToggle?: boolean | undefined
   onShowSidebar?: (() => void) | undefined
   trailing?: ReactNode
@@ -36,11 +36,7 @@ export function ListColumnHeader({
         )}
       >
         {showSidebarToggle && onShowSidebar ? (
-          <IconTooltipButton
-            label="Show sidebar"
-            icon={SidebarLeftIcon}
-            onClick={onShowSidebar}
-          />
+          <IconTooltipButton label="Show sidebar" icon={SidebarLeftIcon} onClick={onShowSidebar} />
         ) : null}
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-semibold tracking-tight">{title}</h1>
@@ -55,7 +51,8 @@ export function ListColumnHeader({
         aria-label="Search mail"
         onSubmit={(event) => {
           event.preventDefault()
-          onSearchSubmit()
+          const value = new FormData(event.currentTarget).get('query')
+          onSearchSubmit(typeof value === 'string' ? value : '')
         }}
       >
         <label className="sr-only" htmlFor="mail-search">
@@ -73,6 +70,7 @@ export function ListColumnHeader({
           <Input
             className="h-7 rounded-md bg-muted/30 pr-2.5 pl-8 text-xs leading-none md:text-xs"
             id="mail-search"
+            name="query"
             value={searchInput}
             onChange={(event) => onSearchInputChange(event.target.value)}
             placeholder="Search"

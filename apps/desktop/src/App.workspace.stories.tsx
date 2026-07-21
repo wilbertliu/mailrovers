@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, userEvent, within } from 'storybook/test'
 import { App } from './App.js'
-import { openLaunchConversation } from './storybook/story-helpers.js'
+import { openLaunchConversation, submitSearch } from './storybook/story-helpers.js'
 import { storybookScenarios } from './storybook/storybook-scenarios.js'
 
 const meta = {
@@ -65,15 +65,29 @@ export const ConversationSelected: Story = {
   },
 }
 
+export const MailboxSwitchResetsWorkspaceState: Story = {
+  parameters: { mailrovers: storybookScenarios.workspace },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const body = within(canvasElement.ownerDocument.body)
+    await userEvent.click(await canvas.findByRole('button', { name: /Travel/ }))
+    await expect(await canvas.findByRole('heading', { name: /Travel/ })).toBeVisible()
+    await submitSearch(canvasElement)
+    await openLaunchConversation(canvasElement)
+    await userEvent.click(await canvas.findByRole('button', { name: 'Reply' }))
+    await expect(await canvas.findByRole('region', { name: 'Reply' })).toBeVisible()
+    await userEvent.click(await canvas.findByRole('button', { name: /MailRovers/ }))
+    await userEvent.click(await body.findByRole('menuitemradio', { name: 'alex@studio.example' }))
+    await expect(await canvas.findByRole('heading', { name: /Inbox/ })).toBeVisible()
+    await expect(canvas.queryByRole('heading', { name: 'Search' })).not.toBeInTheDocument()
+    await expect(canvas.queryByRole('region', { name: 'Reply' })).not.toBeInTheDocument()
+  },
+}
+
 export const SearchResults: Story = {
   parameters: { mailrovers: storybookScenarios.searchResults },
   play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.type(
-      await canvas.findByRole('textbox', { name: 'Search mail' }),
-      'launch{Enter}',
-    )
-    await expect(await canvas.findByRole('heading', { name: 'Search' })).toBeVisible()
+    const canvas = await submitSearch(canvasElement)
     await expect(await canvas.findByText(/attached launch checklist/i)).toBeVisible()
   },
 }

@@ -8,8 +8,8 @@ import {
   SidebarLeftIcon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import type { CommandReceipt, Draft, MailCommand, MailboxSummary } from '@mailrovers/mail-contracts'
-import type { ConversationId, LabelId, MailboxId, MessageId } from '@mailrovers/mail-domain'
+import type { CommandReceipt, MailCommand, MailboxSummary } from '@mailrovers/mail-contracts'
+import type { ConversationId, LabelId, MailboxId } from '@mailrovers/mail-domain'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button.js'
@@ -28,13 +28,10 @@ import { Spinner } from '@/components/ui/spinner.js'
 import { IconTooltipButton } from '@/components/icon-tooltip-button.js'
 import { cn } from '@/lib/utils.js'
 import { desktopBridge } from '../../desktop-bridge.js'
-import { AiSettings } from '../ai/AiSettings.js'
-import { Composer } from '../composer/Composer.js'
+import { Composer, type ComposerMode } from '../composer/Composer.js'
 import { ConversationReader } from '../conversation/ConversationReader.js'
-import { InboxPage } from '../inbox/InboxPage.js'
-import { ListColumnHeader } from '../inbox/ListColumnHeader.js'
-import { SearchResults } from '../inbox/SearchResults.js'
 import { useSearchPages } from '../inbox/useSearchPages.js'
+import { WorkspaceRouteColumn } from './WorkspaceRouteColumn.js'
 
 function MailboxMenu({
   mailbox,
@@ -106,6 +103,12 @@ function SidebarCount({ value }: { value: number }) {
   return <small className="ml-auto text-sm font-normal text-muted-foreground">{value}</small>
 }
 
+export type WorkspaceRoute =
+  | { kind: 'inbox'; labelId?: LabelId | undefined }
+  | { kind: 'search'; query: string }
+  | { kind: 'drafts' }
+  | { kind: 'ai-settings' }
+
 export function MailWorkspace({
   mailbox,
   mailboxes,
@@ -118,32 +121,20 @@ export function MailWorkspace({
   onAddAccount: () => void
 }) {
   const mailboxId = mailbox.id
-  const [labelId, setLabelId] = useState<LabelId>()
+  const [route, setRoute] = useState<WorkspaceRoute>({ kind: 'inbox' })
   const [selectedConversation, setSelectedConversation] = useState<ConversationId>()
   const [searchInput, setSearchInput] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
-  const [showDrafts, setShowDrafts] = useState(false)
-  const [showAiSettings, setShowAiSettings] = useState(false)
   const [mailboxMenuOpen, setMailboxMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [archiveUndo, setArchiveUndo] = useState<CommandReceipt>()
-  const [composer, setComposer] = useState<{
-    draft?: Draft | undefined
-    conversationId?: ConversationId | undefined
-    replyToMessageId?: MessageId | undefined
-    sourceVersion?: number | undefined
-    to?: string | undefined
-    subject?: string | undefined
-  }>()
+  const [composer, setComposer] = useState<ComposerMode>()
   const drafts = useQuery({
     queryKey: ['drafts', mailboxId],
     queryFn: () => desktopBridge.listDrafts(mailboxId),
-    refetchInterval: 5_000,
   })
   const issues = useQuery({
     queryKey: ['command-issues', mailboxId],
     queryFn: () => desktopBridge.listCommandIssues(mailboxId),
-    refetchInterval: 5_000,
   })
   const labels = useQuery({
     queryKey: ['labels', mailboxId],
@@ -154,33 +145,31 @@ export function MailWorkspace({
     () => labels.data?.find((label) => label.providerLabelId === 'INBOX'),
     [labels.data],
   )
-  const activeLabelId = labelId ?? inbox?.id
+  const activeLabelId = route.kind === 'inbox' ? (route.labelId ?? inbox?.id) : undefined
   const activeLabel = useMemo(() => {
-    if (labelId !== undefined) return labels.data?.find((label) => label.id === labelId)
-    return inbox
-  }, [inbox, labelId, labels.data])
-  const activeLabelName = labelId === undefined ? 'Inbox' : (activeLabel?.name ?? 'Inbox')
+    if (route.kind !== 'inbox' || route.labelId === undefined) return inbox
+    return labels.data?.find((label) => label.id === route.labelId)
+  }, [inbox, labels.data, route])
+  const activeLabelName =
+    route.kind === 'inbox' && route.labelId !== undefined ? (activeLabel?.name ?? 'Inbox') : 'Inbox'
   const activeLabelUnreadCount = activeLabel?.unreadCount ?? 0
-  const clearConversationChrome = () => {
+  const clearWorkspaceSelection = () => {
     setSearchInput('')
-    setSearchQuery('')
     setSelectedConversation(undefined)
   }
   const showInbox = (nextLabelId?: LabelId) => {
-    setShowDrafts(false)
-    setShowAiSettings(false)
-    setLabelId(nextLabelId)
-    clearConversationChrome()
+    setRoute(
+      nextLabelId === undefined ? { kind: 'inbox' } : { kind: 'inbox', labelId: nextLabelId },
+    )
+    clearWorkspaceSelection()
   }
   const showDraftsView = () => {
-    setShowDrafts(true)
-    setShowAiSettings(false)
-    clearConversationChrome()
+    setRoute({ kind: 'drafts' })
+    clearWorkspaceSelection()
   }
   const showAiSettingsView = () => {
-    setShowAiSettings(true)
-    setShowDrafts(false)
-    clearConversationChrome()
+    setRoute({ kind: 'ai-settings' })
+    clearWorkspaceSelection()
   }
   const executeCommand = async (command: MailCommand) => {
     const receipt = await desktopBridge.executeCommand({
@@ -193,14 +182,14 @@ export function MailWorkspace({
       setSelectedConversation(undefined)
     }
   }
-  const submitSearch = () => {
-    setShowDrafts(false)
-    setShowAiSettings(false)
-    setSearchQuery(searchInput.trim())
+  const submitSearch = (value: string) => {
+    setSearchInput(value)
+    const query = value.trim()
+    setRoute(query.length === 0 ? { kind: 'inbox' } : { kind: 'search', query })
     setSelectedConversation(undefined)
   }
   const issue = issues.data?.[0]
-  const search = useSearchPages(mailboxId, searchQuery)
+  const search = useSearchPages(mailboxId, route.kind === 'search' ? route.query : '')
   const showSidebarToggle = sidebarCollapsed
 
   return (
@@ -237,7 +226,7 @@ export function MailWorkspace({
                 icon={PencilEdit02Icon}
                 variant="outline"
                 className="ml-auto shrink-0 rounded-full border-border bg-background shadow-sm hover:bg-muted hover:text-foreground"
-                onClick={() => setComposer({})}
+                onClick={() => setComposer({ kind: 'new' })}
               />
             </div>
             <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -247,7 +236,7 @@ export function MailWorkspace({
                     type="button"
                     variant="ghost"
                     className={sidebarNavClassName}
-                    aria-pressed={!showDrafts && !showAiSettings && !searchQuery}
+                    aria-pressed={route.kind === 'inbox' && route.labelId === undefined}
                     onClick={() => showInbox()}
                   >
                     <HugeiconsIcon icon={InboxIcon} data-icon="inline-start" aria-hidden="true" />
@@ -260,7 +249,7 @@ export function MailWorkspace({
                   variant="ghost"
                   className={sidebarNavClassName}
                   aria-label="Local drafts"
-                  aria-pressed={showDrafts}
+                  aria-pressed={route.kind === 'drafts'}
                   onClick={showDraftsView}
                 >
                   <HugeiconsIcon icon={Mail02Icon} data-icon="inline-start" aria-hidden="true" />
@@ -271,7 +260,7 @@ export function MailWorkspace({
                   type="button"
                   variant="ghost"
                   className={sidebarNavClassName}
-                  aria-pressed={showAiSettings}
+                  aria-pressed={route.kind === 'ai-settings'}
                   onClick={showAiSettingsView}
                 >
                   <HugeiconsIcon icon={AiMailIcon} data-icon="inline-start" aria-hidden="true" />
@@ -290,12 +279,7 @@ export function MailWorkspace({
                       variant="ghost"
                       className={sidebarNavClassName}
                       key={label.id}
-                      aria-pressed={
-                        label.id === activeLabelId &&
-                        !searchQuery &&
-                        !showDrafts &&
-                        !showAiSettings
-                      }
+                      aria-pressed={route.kind === 'inbox' && label.id === activeLabelId}
                       onClick={() => showInbox(label.id)}
                     >
                       <i className="size-1.5 rounded-xs bg-chart-2" aria-hidden="true" />
@@ -327,116 +311,31 @@ export function MailWorkspace({
         </aside>
       )}
 
-      {showAiSettings ? (
-        <section
-          className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-background"
-          aria-label="AI provider"
-        >
-          {showSidebarToggle ? (
-            <div className="window-titlebar flex h-10 shrink-0 items-center gap-3 border-b pl-21 pt-0.5 pr-2">
-              <IconTooltipButton
-                label="Show sidebar"
-                icon={SidebarLeftIcon}
-                onClick={() => setSidebarCollapsed(false)}
-              />
-            </div>
-          ) : null}
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-            <AiSettings mailboxId={mailboxId} onClose={() => setShowAiSettings(false)} />
-          </div>
-        </section>
-      ) : showDrafts ? (
-        <section
-          className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-background"
-          aria-label="Local drafts"
-        >
-          <ListColumnHeader
-            title="Local drafts"
-            subtitle={`${drafts.data?.length ?? 0} saved on this Mac`}
-            searchInput={searchInput}
-            onSearchInputChange={setSearchInput}
-            onSearchSubmit={submitSearch}
-            showSidebarToggle={showSidebarToggle}
-            onShowSidebar={() => setSidebarCollapsed(false)}
-          />
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {drafts.data?.map((draft) => (
-              <Button
-                type="button"
-                variant="ghost"
-                className="flex w-full flex-col items-start gap-1.5 rounded-md px-4 py-3 text-start text-sm aria-pressed:bg-accent"
-                key={draft.id}
-                onClick={() => {
-                  void (async () => {
-                    const conversation =
-                      draft.conversationId === undefined
-                        ? undefined
-                        : await desktopBridge.getConversation({
-                            mailboxId,
-                            conversationId: draft.conversationId,
-                          })
-                    setComposer({
-                      draft,
-                      ...(conversation === undefined
-                        ? {}
-                        : { sourceVersion: conversation.version }),
-                    })
-                  })()
-                }}
-              >
-                <strong className="text-sm font-medium">{draft.subject || '(No subject)'}</strong>
-                <span className="max-w-full truncate text-sm text-muted-foreground">
-                  {draft.textBody || 'Empty draft'}
-                </span>
-                <small className="text-sm text-muted-foreground">{draft.syncState}</small>
-              </Button>
-            ))}
-            {drafts.data?.length === 0 ? (
-              <p className="px-4 py-6 text-sm">No local drafts.</p>
-            ) : null}
-          </div>
-        </section>
-      ) : searchQuery ? (
-        <section
-          className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-background"
-          aria-label="Search results"
-        >
-          <SearchResults
-            pages={search.data}
-            selectedConversation={selectedConversation}
-            hasNextPage={search.hasNextPage}
-            isFetchingNextPage={search.isFetchingNextPage}
-            isError={search.isError}
-            searchInput={searchInput}
-            onSearchInputChange={setSearchInput}
-            onSearchSubmit={submitSearch}
-            showSidebarToggle={showSidebarToggle}
-            onShowSidebar={() => setSidebarCollapsed(false)}
-            onClear={() => {
-              setSearchInput('')
-              setSearchQuery('')
-            }}
-            onLoadMore={() => {
-              if (search.hasNextPage && !search.isFetchingNextPage) void search.fetchNextPage()
-            }}
-            onSelect={setSelectedConversation}
-          />
-        </section>
-      ) : (
-        <InboxPage
-          mailbox={mailboxId}
-          labelId={activeLabelId}
-          title={activeLabelName}
-          unreadCount={activeLabelUnreadCount}
-          selectedId={selectedConversation}
-          searchInput={searchInput}
-          onSearchInputChange={setSearchInput}
-          onSearchSubmit={submitSearch}
-          showSidebarToggle={showSidebarToggle}
-          onShowSidebar={() => setSidebarCollapsed(false)}
-          onSelect={setSelectedConversation}
-        />
-      )}
+      <WorkspaceRouteColumn
+        route={route}
+        mailboxId={mailboxId}
+        activeLabelId={activeLabelId}
+        activeLabelName={activeLabelName}
+        activeLabelUnreadCount={activeLabelUnreadCount}
+        selectedConversation={selectedConversation}
+        searchInput={searchInput}
+        onSearchInputChange={setSearchInput}
+        onSearchSubmit={submitSearch}
+        showSidebarToggle={showSidebarToggle}
+        onShowSidebar={() => setSidebarCollapsed(false)}
+        onSelectConversation={setSelectedConversation}
+        searchPages={search.data}
+        searchHasNextPage={search.hasNextPage}
+        searchIsFetchingNextPage={search.isFetchingNextPage}
+        searchIsError={search.isError}
+        onClearSearch={showInbox}
+        onLoadMoreSearch={() => {
+          if (search.hasNextPage && !search.isFetchingNextPage) void search.fetchNextPage()
+        }}
+        drafts={drafts.data}
+        onOpenComposer={setComposer}
+        onCloseAiSettings={showInbox}
+      />
 
       {selectedConversation ? (
         <ConversationReader
@@ -446,9 +345,12 @@ export function MailWorkspace({
           onCommand={executeCommand}
           onReply={(input) =>
             setComposer({
-              conversationId: input.conversationId,
-              replyToMessageId: input.messageId,
-              sourceVersion: input.sourceVersion,
+              kind: 'reply',
+              context: {
+                conversationId: input.conversationId,
+                replyToMessageId: input.messageId,
+                sourceVersion: input.sourceVersion,
+              },
               to: input.to,
               subject: input.subject,
             })
@@ -537,7 +439,18 @@ export function MailWorkspace({
         </aside>
       ) : null}
       {composer ? (
-        <Composer mailboxId={mailboxId} seed={composer} onClose={() => setComposer(undefined)} />
+        <Composer
+          key={
+            composer.kind === 'new'
+              ? 'new'
+              : composer.kind === 'reply'
+                ? `reply-${composer.context.conversationId}-${composer.context.replyToMessageId}`
+                : `edit-${composer.draft.id}`
+          }
+          mailboxId={mailboxId}
+          mode={composer}
+          onClose={() => setComposer(undefined)}
+        />
       ) : null}
     </main>
   )

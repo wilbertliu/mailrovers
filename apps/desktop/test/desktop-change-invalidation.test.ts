@@ -32,6 +32,42 @@ describe('desktop change invalidation', () => {
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['sync-status', id] })
   })
 
+  it('refreshes scoped drafts, outbox, conversations, labels, and search queries', () => {
+    const queryClient = new QueryClient()
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries')
+    let publish: (event: CommittedChangesEvent | EventRecoveryRequired) => void = () => undefined
+
+    subscribeDesktopChangeInvalidation({
+      queryClient,
+      changes: {
+        subscribe(callback) {
+          publish = callback
+          return () => undefined
+        },
+      },
+    })
+
+    const id = mailboxId('mailbox-2')
+    publish({
+      kind: 'mail-changed',
+      requestId: operationId('committed-changes-scoped'),
+      mailboxId: id,
+      changes: {
+        drafts: true,
+        outbox: true,
+        conversations: true,
+        labels: true,
+      },
+    })
+
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['drafts', id] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['command-issues', id] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['conversations', id] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['conversation', id] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['search', id] })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['labels', id] })
+  })
+
   it('invalidates the whole cache after an event overflow', () => {
     const queryClient = new QueryClient()
     const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries')

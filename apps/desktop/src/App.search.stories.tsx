@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, userEvent, within } from 'storybook/test'
+import { expect, userEvent } from 'storybook/test'
 import { App } from './App.js'
+import { submitSearch } from './storybook/story-helpers.js'
 import { storybookScenarios } from './storybook/storybook-scenarios.js'
 
 const meta = {
@@ -11,13 +12,6 @@ const meta = {
 
 export default meta
 type Story = StoryObj<typeof meta>
-
-async function submitSearch(canvasElement: HTMLElement) {
-  const canvas = within(canvasElement)
-  await userEvent.type(await canvas.findByRole('textbox', { name: 'Search mail' }), 'launch{Enter}')
-  await expect(await canvas.findByRole('heading', { name: 'Search' })).toBeVisible()
-  return canvas
-}
 
 export const Results: Story = {
   parameters: { mailrovers: storybookScenarios.searchResults },

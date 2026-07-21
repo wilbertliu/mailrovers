@@ -24,7 +24,7 @@ export function InboxPage({
   selectedId?: ConversationId | undefined
   searchInput: string
   onSearchInputChange: (value: string) => void
-  onSearchSubmit: () => void
+  onSearchSubmit: (value: string) => void
   showSidebarToggle?: boolean | undefined
   onShowSidebar?: (() => void) | undefined
   onSelect: (id: ConversationId) => void
