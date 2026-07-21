@@ -1,5 +1,11 @@
-import type { MailboxId, ConversationId, UtcTimestamp } from '@mailrovers/mail-domain'
-import type { LabelId, OperationId } from '@mailrovers/mail-domain'
+import type {
+  ConversationId,
+  LabelId,
+  MailAddress,
+  MailboxId,
+  OperationId,
+  UtcTimestamp,
+} from '@mailrovers/mail-domain'
 export type ListConversationsInput = {
   requestId?: OperationId | undefined
   mailboxId: MailboxId
@@ -13,6 +19,7 @@ export type ConversationSummary = {
   mailboxId: MailboxId
   subject: string
   snippet: string
+  senders: MailAddress[]
   lastMessageAt: UtcTimestamp
   messageCount: number
   unreadCount: number

@@ -15,6 +15,7 @@ import {
   mailboxId,
   messageId,
   utcTimestamp,
+  type MailAddress,
   type MailboxId,
 } from '@mailrovers/mail-domain'
 import type { SqliteDatabase } from './open-database.js'
@@ -26,6 +27,30 @@ import {
   parseAddresses,
   row,
 } from './sqlite-row-helpers.js'
+
+function uniqueSenders(value: unknown): MailAddress[] {
+  if (typeof value !== 'string' || value.length === 0) return [{ address: 'unknown@invalid' }]
+  let entries: unknown
+  try {
+    entries = JSON.parse(value)
+  } catch {
+    return [{ address: 'unknown@invalid' }]
+  }
+  if (!Array.isArray(entries) || entries.length === 0) return [{ address: 'unknown@invalid' }]
+  const seen = new Set<string>()
+  const senders: MailAddress[] = []
+  for (const entry of entries) {
+    // json_group_array wraps each TEXT sender_json as a JSON string.
+    const raw = typeof entry === 'string' ? entry : JSON.stringify(entry)
+    const address = parseAddress(raw)
+    const key = address.address.trim().toLowerCase()
+    if (key.length === 0 || key === 'unknown@invalid' || seen.has(key)) continue
+    seen.add(key)
+    senders.push(address)
+  }
+  return senders.length > 0 ? senders : [{ address: 'unknown@invalid' }]
+}
+
 export class SqliteConversations {
   constructor(private readonly db: SqliteDatabase) {}
   async listConversations(input: ListConversationsInput): Promise<ConversationPage> {
@@ -50,8 +75,18 @@ export class SqliteConversations {
     }
     parameters.push(limit + 1)
     const rows = this.db
-      .prepare(`SELECT c.* FROM conversations c WHERE ${conditions.join(' AND ')}
-      ORDER BY c.last_message_at DESC,c.id DESC LIMIT ?`)
+      .prepare(
+        `SELECT c.*, (
+        SELECT json_group_array(m.sender_json)
+        FROM (
+          SELECT sender_json FROM messages
+          WHERE conversation_id=c.id
+          ORDER BY received_at ASC, id ASC
+        ) m
+      ) AS senders_json
+      FROM conversations c WHERE ${conditions.join(' AND ')}
+      ORDER BY c.last_message_at DESC,c.id DESC LIMIT ?`,
+      )
       .all(...parameters)
     const hasNext = rows.length > limit
     const items = rows.slice(0, limit).map((value): ConversationSummary => {
@@ -61,6 +96,7 @@ export class SqliteConversations {
         mailboxId: mailboxId(String(result.mailbox_id)),
         subject: String(result.subject),
         snippet: String(result.snippet),
+        senders: uniqueSenders(result.senders_json),
         lastMessageAt: utcTimestamp(String(result.last_message_at)),
         messageCount: Number(result.message_count),
         unreadCount: Number(result.unread_count),

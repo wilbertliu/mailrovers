@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button.js'
 import { useOperationCleanup } from '@/hooks/use-operation-cleanup.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 
-export function ConversationSummary({
+export type ConversationSummaryStatus = 'idle' | 'streaming' | 'complete' | 'error'
+
+export function useConversationSummary({
   mailboxId,
   conversationId,
   sourceVersion,
@@ -13,17 +15,21 @@ export function ConversationSummary({
   conversationId: ConversationId
   sourceVersion: number
 }) {
-  const [status, setStatus] = useState<'idle' | 'streaming' | 'complete' | 'error'>('idle')
+  const [status, setStatus] = useState<ConversationSummaryStatus>('idle')
   const [content, setContent] = useState('')
   const [error, setError] = useState<string>()
   const operation = useRef<OperationId | undefined>(undefined)
   const unsubscribe = useRef<(() => void) | undefined>(undefined)
 
-  const cancel = async () => {
-    const active = operation.current
+  const clearOperation = () => {
+    operation.current = undefined
     unsubscribe.current?.()
     unsubscribe.current = undefined
-    operation.current = undefined
+  }
+
+  const cancel = async () => {
+    const active = operation.current
+    clearOperation()
     if (active)
       await desktopBridge.cancelOperation({
         requestId: desktopBridge.createRequestId(),
@@ -68,22 +74,16 @@ export function ConversationSummary({
             case 'ai-completed':
               setContent(event.artifact.content)
               setStatus('complete')
-              operation.current = undefined
-              unsubscribe.current?.()
-              unsubscribe.current = undefined
+              clearOperation()
               break
             case 'ai-failed':
               setError(event.error.message)
               setStatus('error')
-              operation.current = undefined
-              unsubscribe.current?.()
-              unsubscribe.current = undefined
+              clearOperation()
               break
             case 'ai-cancelled':
               setStatus('idle')
-              operation.current = undefined
-              unsubscribe.current?.()
-              unsubscribe.current = undefined
+              clearOperation()
               break
           }
         },
@@ -94,41 +94,60 @@ export function ConversationSummary({
     }
   }
 
+  return {
+    status,
+    content,
+    error,
+    cleanupRef,
+    generate: () => void generate(),
+    regenerate: () => void generate(true),
+    cancel: () => void cancel(),
+  }
+}
+
+export function ConversationSummaryPanel({
+  status,
+  content,
+  error,
+  cleanupRef,
+  onCancel,
+  onRegenerate,
+}: {
+  status: ConversationSummaryStatus
+  content: string
+  error?: string | undefined
+  cleanupRef: (node: HTMLDivElement | null) => (() => void) | undefined
+  onCancel: () => void
+  onRegenerate: () => void
+}) {
+  if (status === 'idle') return <div ref={cleanupRef} className="hidden" />
+
   return (
-    <div ref={cleanupRef} className="contents">
-      {status === 'idle' ? (
-        <div className="px-3.5 pt-3">
-          <Button type="button" variant="secondary" size="sm" onClick={() => void generate()}>
-            Summarize conversation
-          </Button>
-        </div>
+    <section
+      ref={cleanupRef}
+      className="border-b px-6 py-3 max-[980px]:px-5"
+      aria-label="Conversation summary"
+    >
+      <header className="flex min-h-8 items-center justify-between gap-2">
+        <strong className="text-sm">AI summary</strong>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          onClick={status === 'streaming' ? onCancel : onRegenerate}
+        >
+          {status === 'streaming' ? 'Cancel' : 'Regenerate'}
+        </Button>
+      </header>
+      {error ? (
+        <p role="alert" className="mt-2 whitespace-pre-wrap text-sm">
+          {error}
+        </p>
       ) : (
-        <section className="mx-3.5 mt-3.5" aria-label="Conversation summary">
-          <header className="flex min-h-10.5 items-center justify-between px-3 py-2">
-            <strong>AI summary</strong>
-            <div>
-              {status === 'streaming' ? (
-                <Button type="button" variant="ghost" size="xs" onClick={() => void cancel()}>
-                  Cancel
-                </Button>
-              ) : (
-                <Button type="button" variant="ghost" size="xs" onClick={() => void generate(true)}>
-                  Regenerate
-                </Button>
-              )}
-            </div>
-          </header>
-          {error ? (
-            <p role="alert" className="whitespace-pre-wrap p-3">
-              {error}
-            </p>
-          ) : (
-            <p className="whitespace-pre-wrap p-3" aria-live="polite">
-              {content || 'Writing summary…'}
-            </p>
-          )}
-        </section>
+        <p className="mt-2 whitespace-pre-wrap text-sm" aria-live="polite">
+          {content || 'Writing summary…'}
+        </p>
       )}
-    </div>
+    </section>
   )
 }

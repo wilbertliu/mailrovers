@@ -1,7 +1,7 @@
 import { Search01Icon, SidebarLeftIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import type { ReactNode } from 'react'
-import { Button } from '@/components/ui/button.js'
+import { IconTooltipButton } from '@/components/icon-tooltip-button.js'
 import { Input } from '@/components/ui/input.js'
 import { cn } from '@/lib/utils.js'
 
@@ -28,53 +28,57 @@ export function ListColumnHeader({
 }) {
   return (
     <header className={cn('window-titlebar flex shrink-0 flex-col border-b', className)}>
-      {showSidebarToggle && onShowSidebar ? (
-        <div className="flex h-10 shrink-0 items-center gap-3 pl-21 pt-0.5 pr-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="rounded-md"
-            aria-label="Show sidebar"
+      <div
+        className={cn(
+          'flex min-h-10 shrink-0 items-center gap-2 pt-0.5 pr-3',
+          showSidebarToggle && onShowSidebar ? 'pl-21' : 'pl-4',
+          subtitle ? 'py-1.5' : null,
+        )}
+      >
+        {showSidebarToggle && onShowSidebar ? (
+          <IconTooltipButton
+            label="Show sidebar"
+            icon={SidebarLeftIcon}
             onClick={onShowSidebar}
-          >
-            <HugeiconsIcon icon={SidebarLeftIcon} aria-hidden="true" />
-          </Button>
-        </div>
-      ) : null}
-      <div className="flex flex-col gap-3 px-4 pt-3 pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <h1 className="truncate text-lg tracking-tight">{title}</h1>
-            {subtitle ? <div className="mt-0.5 text-sm text-muted-foreground">{subtitle}</div> : null}
-          </div>
-          {trailing}
-        </div>
-        <form
-          className="relative flex items-center"
-          aria-label="Search mail"
-          onSubmit={(event) => {
-            event.preventDefault()
-            onSearchSubmit()
-          }}
-        >
-          <label className="sr-only" htmlFor="mail-search">
-            Search mail
-          </label>
-          <HugeiconsIcon
-            className="absolute left-2.5 z-1 text-muted-foreground"
-            icon={Search01Icon}
-            aria-hidden="true"
           />
+        ) : null}
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-sm font-semibold tracking-tight">{title}</h1>
+          {subtitle ? (
+            <div className="truncate text-xs text-muted-foreground">{subtitle}</div>
+          ) : null}
+        </div>
+        {trailing}
+      </div>
+      <form
+        className="px-3 pb-2.5"
+        aria-label="Search mail"
+        onSubmit={(event) => {
+          event.preventDefault()
+          onSearchSubmit()
+        }}
+      >
+        <label className="sr-only" htmlFor="mail-search">
+          Search mail
+        </label>
+        <div className="relative flex h-7 items-center">
+          <span className="pointer-events-none absolute top-1/2 left-2.5 z-1 flex size-3.5 -translate-y-1/2 items-center justify-center text-muted-foreground">
+            <HugeiconsIcon
+              className="size-3.5"
+              icon={Search01Icon}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+          </span>
           <Input
-            className="h-9 rounded-md bg-muted/40 pr-3 pl-8 text-sm"
+            className="h-7 rounded-md bg-muted/30 pr-2.5 pl-8 text-xs leading-none md:text-xs"
             id="mail-search"
             value={searchInput}
             onChange={(event) => onSearchInputChange(event.target.value)}
             placeholder="Search"
           />
-        </form>
-      </div>
+        </div>
+      </form>
     </header>
   )
 }

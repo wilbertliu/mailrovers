@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dropdown-menu.js'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
 import { Spinner } from '@/components/ui/spinner.js'
+import { IconTooltipButton } from '@/components/icon-tooltip-button.js'
 import { cn } from '@/lib/utils.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { AiSettings } from '../ai/AiSettings.js'
@@ -57,7 +58,7 @@ function MailboxMenu({
           <Button
             type="button"
             variant="ghost"
-            className="h-auto min-w-0 flex-1 justify-start gap-2 rounded-md px-2 py-1.5 text-sm"
+            className="h-auto w-auto min-w-0 justify-start gap-2 rounded-md px-2 py-1.5 text-sm"
           />
         }
       >
@@ -67,9 +68,9 @@ function MailboxMenu({
         >
           MR
         </span>
-        <strong className="min-w-0 flex-1 truncate text-left text-sm">MailRovers</strong>
+        <strong className="min-w-0 truncate text-left text-sm">MailRovers</strong>
         <HugeiconsIcon
-          className="shrink-0 text-muted-foreground"
+          className="size-3.5 shrink-0 text-muted-foreground"
           icon={ArrowDown01Icon}
           strokeWidth={2}
           aria-hidden="true"
@@ -97,57 +98,12 @@ function MailboxMenu({
   )
 }
 
-function WorkspaceDetails({ selected }: { selected: boolean }) {
-  return (
-    <aside
-      className="flex min-w-0 flex-col border-l bg-sidebar px-3 py-2.5 max-[1250px]:hidden"
-      aria-label="Conversation details"
-    >
-      <header className="window-titlebar flex h-8 items-center justify-between border-b px-0.5 pb-2 text-sm">
-        <strong>Details</strong>
-        <span aria-hidden="true">⌄</span>
-      </header>
-      {selected ? (
-        <>
-          <dl className="mt-3 text-sm">
-            {[
-              ['Status', 'Open'],
-              ['Priority', 'Normal'],
-              ['Storage', 'Local'],
-              ['Updated', 'Just now'],
-            ].map(([term, description]) => (
-              <div
-                className="grid min-h-7 grid-cols-[4.4rem_minmax(0,1fr)] items-center"
-                key={term}
-              >
-                <dt className="text-muted-foreground">{term}</dt>
-                <dd className="m-0 flex items-center gap-1.5">
-                  {term === 'Status' ? <i className="size-1.5 rounded-full bg-chart-2" /> : null}
-                  {description}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          <section className="border-t px-0.5 py-4">
-            <h2 className="mb-2.5 text-sm font-medium text-muted-foreground">People</h2>
-            <span className="flex items-center gap-2 text-sm">
-              <i className="grid size-5 place-items-center rounded-full bg-accent text-[0.5rem] not-italic text-muted-foreground">
-                AM
-              </i>
-              <b>Alex Morgan</b>
-            </span>
-          </section>
-        </>
-      ) : (
-        <p className="mx-0.5 my-4 text-sm leading-relaxed text-muted-foreground">
-          Select a conversation to inspect its details.
-        </p>
-      )}
-      <footer className="mt-auto border-t px-0.5 pt-3 pb-0.5 text-sm text-muted-foreground">
-        Available offline
-      </footer>
-    </aside>
-  )
+const sidebarNavClassName =
+  'h-8 justify-start gap-2 rounded-md px-2 text-sm text-muted-foreground aria-pressed:bg-accent aria-pressed:font-semibold aria-pressed:text-foreground'
+
+function SidebarCount({ value }: { value: number }) {
+  if (value <= 0) return null
+  return <small className="ml-auto text-sm font-normal text-muted-foreground">{value}</small>
 }
 
 export function MailWorkspace({
@@ -199,10 +155,33 @@ export function MailWorkspace({
     [labels.data],
   )
   const activeLabelId = labelId ?? inbox?.id
-  const activeLabelName = useMemo(() => {
-    if (labelId === undefined) return 'Inbox'
-    return labels.data?.find((label) => label.id === labelId)?.name ?? 'Inbox'
-  }, [labelId, labels.data])
+  const activeLabel = useMemo(() => {
+    if (labelId !== undefined) return labels.data?.find((label) => label.id === labelId)
+    return inbox
+  }, [inbox, labelId, labels.data])
+  const activeLabelName = labelId === undefined ? 'Inbox' : (activeLabel?.name ?? 'Inbox')
+  const activeLabelUnreadCount = activeLabel?.unreadCount ?? 0
+  const clearConversationChrome = () => {
+    setSearchInput('')
+    setSearchQuery('')
+    setSelectedConversation(undefined)
+  }
+  const showInbox = (nextLabelId?: LabelId) => {
+    setShowDrafts(false)
+    setShowAiSettings(false)
+    setLabelId(nextLabelId)
+    clearConversationChrome()
+  }
+  const showDraftsView = () => {
+    setShowDrafts(true)
+    setShowAiSettings(false)
+    clearConversationChrome()
+  }
+  const showAiSettingsView = () => {
+    setShowAiSettings(true)
+    setShowDrafts(false)
+    clearConversationChrome()
+  }
   const executeCommand = async (command: MailCommand) => {
     const receipt = await desktopBridge.executeCommand({
       mailboxId,
@@ -229,24 +208,19 @@ export function MailWorkspace({
       className={cn(
         'grid h-full min-w-220 overflow-hidden bg-background text-sm text-foreground',
         sidebarCollapsed
-          ? 'grid-cols-[minmax(320px,370px)_minmax(390px,1fr)_216px] max-[1250px]:grid-cols-[minmax(320px,370px)_minmax(390px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]'
-          : 'grid-cols-[236px_minmax(320px,370px)_minmax(390px,1fr)_216px] max-[1250px]:grid-cols-[236px_minmax(320px,370px)_minmax(390px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]',
+          ? 'grid-cols-[minmax(320px,370px)_minmax(390px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]'
+          : 'grid-cols-[236px_minmax(320px,370px)_minmax(390px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]',
       )}
       data-disable-window-drag={mailboxMenuOpen || undefined}
     >
       {sidebarCollapsed ? null : (
         <aside className="flex min-h-0 flex-col overflow-y-auto border-r bg-sidebar max-[980px]:hidden">
           <div className="window-titlebar flex h-10 shrink-0 items-center gap-3 pl-21 pt-0.5 pr-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="rounded-md"
-              aria-label="Hide sidebar"
+            <IconTooltipButton
+              label="Hide sidebar"
+              icon={SidebarLeftIcon}
               onClick={() => setSidebarCollapsed(true)}
-            >
-              <HugeiconsIcon icon={SidebarLeftIcon} aria-hidden="true" />
-            </Button>
+            />
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-5 px-2 pt-3 pb-2.5">
             <div className="flex h-9 items-center gap-2 px-0.5">
@@ -258,16 +232,13 @@ export function MailWorkspace({
                 onSelectMailbox={onSelectMailbox}
                 onAddAccount={onAddAccount}
               />
-              <Button
-                type="button"
+              <IconTooltipButton
+                label="Write email"
+                icon={PencilEdit02Icon}
                 variant="outline"
-                size="icon-sm"
-                className="shrink-0 border-border bg-background shadow-sm"
-                aria-label="New message"
+                className="ml-auto shrink-0 rounded-full border-border bg-background shadow-sm hover:bg-muted hover:text-foreground"
                 onClick={() => setComposer({})}
-              >
-                <HugeiconsIcon icon={PencilEdit02Icon} aria-hidden="true" />
-              </Button>
+              />
             </div>
             <div className="flex min-h-0 flex-1 flex-col gap-2">
               <nav className="flex flex-col gap-1" aria-label="Workspace">
@@ -275,55 +246,33 @@ export function MailWorkspace({
                   <Button
                     type="button"
                     variant="ghost"
-                    className="h-8 justify-start gap-2 rounded-md px-2 text-sm aria-pressed:bg-accent"
+                    className={sidebarNavClassName}
                     aria-pressed={!showDrafts && !showAiSettings && !searchQuery}
-                    onClick={() => {
-                      setShowDrafts(false)
-                      setShowAiSettings(false)
-                      setSearchQuery('')
-                      setSearchInput('')
-                      setLabelId(undefined)
-                      setSelectedConversation(undefined)
-                    }}
+                    onClick={() => showInbox()}
                   >
                     <HugeiconsIcon icon={InboxIcon} data-icon="inline-start" aria-hidden="true" />
                     <span>Inbox</span>
+                    <SidebarCount value={inbox?.unreadCount ?? 0} />
                   </Button>
                 )}
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-8 justify-start gap-2 rounded-md px-2 text-sm aria-pressed:bg-accent"
+                  className={sidebarNavClassName}
                   aria-label="Local drafts"
                   aria-pressed={showDrafts}
-                  onClick={() => {
-                    setShowDrafts(true)
-                    setShowAiSettings(false)
-                    setSearchInput('')
-                    setSearchQuery('')
-                    setSelectedConversation(undefined)
-                  }}
+                  onClick={showDraftsView}
                 >
                   <HugeiconsIcon icon={Mail02Icon} data-icon="inline-start" aria-hidden="true" />
                   <span>Drafts</span>
-                  {drafts.data?.length ? (
-                    <small className="ml-auto text-sm text-muted-foreground">
-                      {drafts.data.length}
-                    </small>
-                  ) : null}
+                  <SidebarCount value={drafts.data?.length ?? 0} />
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-8 justify-start gap-2 rounded-md px-2 text-sm aria-pressed:bg-accent"
+                  className={sidebarNavClassName}
                   aria-pressed={showAiSettings}
-                  onClick={() => {
-                    setShowAiSettings(true)
-                    setShowDrafts(false)
-                    setSearchInput('')
-                    setSearchQuery('')
-                    setSelectedConversation(undefined)
-                  }}
+                  onClick={showAiSettingsView}
                 >
                   <HugeiconsIcon icon={AiMailIcon} data-icon="inline-start" aria-hidden="true" />
                   <span>AI provider</span>
@@ -339,25 +288,19 @@ export function MailWorkspace({
                     <Button
                       type="button"
                       variant="ghost"
-                      className="h-8 justify-start gap-2 rounded-md px-2 text-sm aria-pressed:bg-accent"
+                      className={sidebarNavClassName}
                       key={label.id}
-                      aria-pressed={label.id === activeLabelId && !searchQuery && !showDrafts}
-                      onClick={() => {
-                        setLabelId(label.id)
-                        setShowDrafts(false)
-                        setShowAiSettings(false)
-                        setSearchQuery('')
-                        setSearchInput('')
-                        setSelectedConversation(undefined)
-                      }}
+                      aria-pressed={
+                        label.id === activeLabelId &&
+                        !searchQuery &&
+                        !showDrafts &&
+                        !showAiSettings
+                      }
+                      onClick={() => showInbox(label.id)}
                     >
                       <i className="size-1.5 rounded-xs bg-chart-2" aria-hidden="true" />
                       <span>{label.name}</span>
-                      {label.unreadCount > 0 ? (
-                        <small className="ml-auto text-sm text-muted-foreground">
-                          {label.unreadCount}
-                        </small>
-                      ) : null}
+                      <SidebarCount value={label.unreadCount} />
                     </Button>
                   ))}
               </nav>
@@ -391,16 +334,11 @@ export function MailWorkspace({
         >
           {showSidebarToggle ? (
             <div className="window-titlebar flex h-10 shrink-0 items-center gap-3 border-b pl-21 pt-0.5 pr-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="rounded-md"
-                aria-label="Show sidebar"
+              <IconTooltipButton
+                label="Show sidebar"
+                icon={SidebarLeftIcon}
                 onClick={() => setSidebarCollapsed(false)}
-              >
-                <HugeiconsIcon icon={SidebarLeftIcon} aria-hidden="true" />
-              </Button>
+              />
             </div>
           ) : null}
           <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -489,6 +427,7 @@ export function MailWorkspace({
           mailbox={mailboxId}
           labelId={activeLabelId}
           title={activeLabelName}
+          unreadCount={activeLabelUnreadCount}
           selectedId={selectedConversation}
           searchInput={searchInput}
           onSearchInputChange={setSearchInput}
@@ -525,7 +464,6 @@ export function MailWorkspace({
           </div>
         </section>
       )}
-      <WorkspaceDetails selected={selectedConversation !== undefined} />
       {issue ? (
         <aside
           className="fixed top-17 left-1/2 z-45 flex w-[min(620px,calc(100vw-36px))] -translate-x-1/2 items-center gap-2.5 rounded-lg border bg-popover px-3.5 py-3 text-sm text-popover-foreground shadow-sm"
