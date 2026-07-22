@@ -301,10 +301,7 @@ export function createMailApplication(
           createdAt: utcTimestamp(now().toISOString()),
         }
         if (!(await dependencies.store.saveAiArtifactIfCurrent(artifact)))
-          throw new AiApplicationError(
-            'AI_CONTEXT_STALE',
-            'Conversation changed during generation',
-          )
+          throw new AiApplicationError('AI_CONTEXT_STALE', 'Conversation changed during generation')
         return artifact
       },
     })

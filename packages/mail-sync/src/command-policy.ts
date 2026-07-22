@@ -27,7 +27,10 @@ export type CommandFailureDisposition =
     }
 
 type CompleteCommandInput = Parameters<MailStore['completeCommand']>[0]
-type SettledFailureDisposition = Exclude<CommandFailureDisposition, { kind: 'reconcile-after-failure' }>
+type SettledFailureDisposition = Exclude<
+  CommandFailureDisposition,
+  { kind: 'reconcile-after-failure' }
+>
 
 export function policyFor(command: DurableCommand): CommandExecutionPolicy {
   switch (command.kind) {

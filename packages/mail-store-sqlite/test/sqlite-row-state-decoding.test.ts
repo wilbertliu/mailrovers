@@ -7,12 +7,7 @@ import {
   decodeResumeImportState,
 } from '@mailrovers/mail-contracts'
 import { describe, expect, it } from 'vitest'
-import {
-  mapCheckpoint,
-  mapCommand,
-  mapDraft,
-  mapMailbox,
-} from '../src/sqlite-row-helpers.js'
+import { mapCheckpoint, mapCommand, mapDraft, mapMailbox } from '../src/sqlite-row-helpers.js'
 
 const mailboxId = 'gmail:test-mailbox'
 const workspaceId = 'workspace:test'

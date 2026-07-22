@@ -69,9 +69,7 @@ export const DRAFT_IMPORT: PagedImportSpec = {
   }),
 }
 
-export async function runLabelImportPhase(
-  scope: LabelImportRunScope,
-): Promise<SyncPhaseOutcome> {
+export async function runLabelImportPhase(scope: LabelImportRunScope): Promise<SyncPhaseOutcome> {
   await scope.withFence((fence) =>
     scope.store.setImportState({
       mailboxId: scope.mailboxId,
