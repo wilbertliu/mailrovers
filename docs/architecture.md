@@ -257,7 +257,7 @@ The root commands are:
 - `pnpm typecheck` to run TypeScript 7 directly across all workspaces.
 - `pnpm check` to run formatting, linting, type checking, tests, and builds.
 
-The Electron Forge configuration remains CommonJS because TypeScript 7.0 does not expose the programmatic compiler API required by TypeScript runtime loaders. Vite continues to load its TypeScript configuration files through its own transformer.
+The Electron Forge configuration remains CommonJS because TypeScript 7.0 does not expose the programmatic compiler API required by TypeScript runtime loaders. Vite continues to load its TypeScript configuration files through its own transformer. The packaged app name and bundle id are `MailRovers` / `app.mailrovers.desktop`. The macOS Dock and Cmd+Tab icon is the squircle-masked `apps/desktop/resources/icon.icns` (via `packagerConfig.icon`); development uses `resources/icon.png` through `app.dock.setIcon`. Before `electron-forge start`, `scripts/set-electron-app-name.cjs` renames the local Electron.app bundle to `MailRovers.app` (executable, Info.plist, icon, and `path.txt`) so Cmd+Tab shows MailRovers in development too.
 
 ## 9. Domain language
 

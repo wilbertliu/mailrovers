@@ -4,7 +4,7 @@
   "private": true,
   "main": ".vite/build/main.js",
   "scripts": {
-    "dev": "electron-forge start",
+    "dev": "node ./scripts/set-electron-app-name.cjs && electron-forge start",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
     "build": "tsc -b tsconfig.json --force && electron-forge package",

@@ -9,8 +9,15 @@ const runtimeNativeModules = ['better-sqlite3', 'bindings', 'file-uri-to-path']
 /** @type {import('@electron-forge/shared-types').ForgeConfig} */
 const config = {
   packagerConfig: {
+    name: 'MailRovers',
+    appBundleId: 'app.mailrovers.desktop',
+    icon: path.resolve(__dirname, 'resources/icon'),
     asar: { unpack: '**/*.node' },
     prune: false,
+    extendInfo: {
+      CFBundleDisplayName: 'MailRovers',
+      CFBundleName: 'MailRovers',
+    },
     afterCopy: [
       (buildPath, electronVersion, _platform, arch, callback) => {
         try {
@@ -45,6 +52,11 @@ const config = {
     onlyModules: ['better-sqlite3'],
   },
   makers: [],
+  hooks: {
+    preStart: async () => {
+      require('./scripts/set-electron-app-name.cjs')
+    },
+  },
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new VitePlugin({

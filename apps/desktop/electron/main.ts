@@ -24,6 +24,9 @@ import { registerMailApplication } from './ipc/register-mail-application.js'
 import { isAllowedRendererUrl } from './ipc/authorization.js'
 import { acquireSingleInstance, presentWindow } from './single-instance.js'
 
+app.setName('MailRovers')
+app.setAboutPanelOptions({ applicationName: 'MailRovers' })
+
 let mainWindow: BrowserWindow | undefined
 const hasSingleInstanceLock = acquireSingleInstance(app, () => mainWindow)
 const stages: Record<string, number> = { mainEntry: performance.now() }
@@ -106,6 +109,11 @@ async function backfillSearch(store: MailStore): Promise<void> {
   }
 }
 
+function applyDevelopmentDockIcon(): void {
+  if (app.isPackaged || process.platform !== 'darwin') return
+  app.dock?.setIcon(path.join(app.getAppPath(), 'resources/icon.png'))
+}
+
 async function createWindow(): Promise<void> {
   const packagedRendererPath = path.join(
     __dirname,
@@ -117,6 +125,7 @@ async function createWindow(): Promise<void> {
     width: 1200,
     height: 800,
     show: false,
+    title: 'MailRovers',
     backgroundColor: '#ffffff',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 14, y: 14 },
@@ -311,6 +320,7 @@ if (hasSingleInstanceLock) {
     .whenReady()
     .then(async () => {
       checkpoint('ready')
+      applyDevelopmentDockIcon()
       await createWindow()
     })
     .catch(writeSmokeFailure)
