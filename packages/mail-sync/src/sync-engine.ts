@@ -18,6 +18,7 @@ import {
   runPagedImportPhase,
   type SyncPhaseOutcome,
 } from './paged-import.js'
+import { providerHttpStatus } from './provider-http-status.js'
 import { withFence } from './sync-lease.js'
 import {
   operationId,
@@ -59,7 +60,7 @@ function applicationError(error: unknown, requestId: OperationId): ApplicationEr
       requestId,
       userAction: 'retry',
     }
-  const status = providerStatus(error)
+  const status = providerHttpStatus(error)
   if (status === 401)
     return {
       code: 'AUTHENTICATION_REQUIRED',
@@ -83,11 +84,6 @@ function applicationError(error: unknown, requestId: OperationId): ApplicationEr
     requestId,
     userAction: 'retry',
   }
-}
-
-function providerStatus(error: unknown): number | undefined {
-  if (typeof error !== 'object' || error === null || !('status' in error)) return undefined
-  return typeof error.status === 'number' ? error.status : undefined
 }
 
 function phaseFor(checkpoint: SyncCheckpoint): SyncStatus['phase'] {
@@ -388,7 +384,7 @@ export class MailSyncEngine implements SyncEngine {
         return
       }
       const timestamp = this.now()
-      const status = providerStatus(error)
+      const status = providerHttpStatus(error)
       const checkpoint = await this.options.store.getSyncCheckpoint(operation.mailboxId)
       if (status === 401) {
         await this.withFence(operation, (fence) =>
@@ -627,7 +623,7 @@ export class MailSyncEngine implements SyncEngine {
         return { kind: 'complete' }
       }
     } catch (error) {
-      const status = providerStatus(error)
+      const status = providerHttpStatus(error)
       if (status === 400 && checkpoint.historyPageToken !== undefined && pageTokenRestarts < 1) {
         await this.withFence(operation, (fence) =>
           this.options.store.resetHistoryPagination({

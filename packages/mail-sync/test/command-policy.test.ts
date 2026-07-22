@@ -10,7 +10,14 @@ import {
   utcTimestamp,
 } from '@mailrovers/mail-domain'
 import { describe, expect, it } from 'vitest'
-import { commandCompletionFor, needsReviewTransitionFor, policyFor } from '../src/command-policy.js'
+import {
+  commandCompletionFor,
+  failureTransitionFor,
+  needsReviewTransitionFor,
+  policyFor,
+  resolveFailure,
+} from '../src/command-policy.js'
+import { providerHttpStatus } from '../src/provider-http-status.js'
 
 const mailbox = mailboxId('gmail:policy')
 const now = utcTimestamp('2026-07-13T00:00:00.000Z')
@@ -131,5 +138,173 @@ describe('command policy', () => {
       changes: {},
       completedAt: now,
     })
+  })
+})
+
+describe('resolveFailure dispositions', () => {
+  const retrySafe = { kind: 'retry-safe' as const }
+  const reconcileBeforeRetry = { kind: 'reconcile-before-retry' as const }
+
+  it('cancels superseded drafts', () => {
+    expect(
+      resolveFailure({
+        error: new Error('DRAFT_SUPERSEDED'),
+        policy: reconcileBeforeRetry,
+        status: undefined,
+        attemptCount: 1,
+        requestMayHaveBeenSent: true,
+      }),
+    ).toEqual({ kind: 'cancelled', errorCode: 'DRAFT_SUPERSEDED' })
+  })
+
+  it('fails when the command target is gone', () => {
+    expect(
+      resolveFailure({
+        error: Object.assign(new Error('missing'), { code: 'COMMAND_TARGET_NOT_FOUND' }),
+        policy: retrySafe,
+        status: undefined,
+        attemptCount: 1,
+        requestMayHaveBeenSent: false,
+      }),
+    ).toEqual({
+      kind: 'failed',
+      errorCode: 'COMMAND_TARGET_NOT_FOUND',
+      errorMessage: 'The command target no longer exists in this mailbox.',
+    })
+  })
+
+  it.each([
+    {
+      name: 'after the request may have been sent',
+      requestMayHaveBeenSent: true,
+      attemptCount: 1,
+      status: undefined as number | undefined,
+    },
+    {
+      name: 'on a retry attempt',
+      requestMayHaveBeenSent: false,
+      attemptCount: 2,
+      status: 503 as number | undefined,
+    },
+    {
+      name: 'when throttled after send',
+      requestMayHaveBeenSent: true,
+      attemptCount: 1,
+      status: 429 as number | undefined,
+    },
+  ])(
+    'reconciles ambiguous reconcile-before-retry failures $name',
+    ({ requestMayHaveBeenSent, attemptCount, status }) => {
+      expect(
+        resolveFailure({
+          error: new Error('network lost'),
+          policy: reconcileBeforeRetry,
+          status,
+          attemptCount,
+          requestMayHaveBeenSent,
+        }),
+      ).toEqual({ kind: 'reconcile-after-failure' })
+    },
+  )
+
+  it('does not reconcile retry-safe commands on transport failure', () => {
+    expect(
+      resolveFailure({
+        error: new Error('network lost'),
+        policy: retrySafe,
+        status: undefined,
+        attemptCount: 1,
+        requestMayHaveBeenSent: true,
+      }),
+    ).toEqual({
+      kind: 'retry_wait',
+      errorCode: 'COMMAND_RETRY',
+      errorMessage: 'The change will retry when Gmail is available.',
+      delayMs: 5_000,
+      markAuthRequired: false,
+    })
+  })
+
+  it('marks auth-required for 401', () => {
+    expect(
+      resolveFailure({
+        error: Object.assign(new Error('unauthorized'), { status: 401 }),
+        policy: retrySafe,
+        status: 401,
+        attemptCount: 1,
+        requestMayHaveBeenSent: true,
+      }),
+    ).toEqual({
+      kind: 'retry_wait',
+      errorCode: 'AUTHENTICATION_REQUIRED',
+      errorMessage: 'Gmail needs to be connected again.',
+      delayMs: 5 * 60_000,
+      markAuthRequired: true,
+    })
+  })
+
+  it('fails on non-retryable 4xx', () => {
+    expect(
+      resolveFailure({
+        error: Object.assign(new Error('bad request'), { status: 400 }),
+        policy: retrySafe,
+        status: 400,
+        attemptCount: 1,
+        requestMayHaveBeenSent: true,
+      }),
+    ).toEqual({
+      kind: 'failed',
+      errorCode: 'PROVIDER_REJECTED_COMMAND',
+      errorMessage: 'Gmail rejected this change.',
+    })
+  })
+
+  it('throttles on 429 for retry-safe commands', () => {
+    expect(
+      resolveFailure({
+        error: Object.assign(new Error('throttled'), { status: 429 }),
+        policy: retrySafe,
+        status: 429,
+        attemptCount: 3,
+        requestMayHaveBeenSent: true,
+      }),
+    ).toEqual({
+      kind: 'retry_wait',
+      errorCode: 'PROVIDER_THROTTLED',
+      errorMessage: 'The change will retry when Gmail is available.',
+      delayMs: 20_000,
+      markAuthRequired: false,
+    })
+  })
+
+  it('builds setCommandState input from settled dispositions', () => {
+    expect(
+      failureTransitionFor({
+        disposition: {
+          kind: 'retry_wait',
+          errorCode: 'COMMAND_RETRY',
+          errorMessage: 'The change will retry when Gmail is available.',
+          delayMs: 5_000,
+          markAuthRequired: false,
+        },
+        commandId: commandId('command'),
+        mailboxId: mailbox,
+        updatedAt: now,
+        nowMs: Date.parse('2026-07-13T00:00:00.000Z'),
+      }),
+    ).toEqual({
+      id: commandId('command'),
+      mailboxId: mailbox,
+      state: 'retry_wait',
+      nextAttemptAt: utcTimestamp('2026-07-13T00:00:05.000Z'),
+      errorCode: 'COMMAND_RETRY',
+      errorMessage: 'The change will retry when Gmail is available.',
+      updatedAt: now,
+    })
+  })
+
+  it('reads numeric provider HTTP status from errors', () => {
+    expect(providerHttpStatus(Object.assign(new Error('x'), { status: 503 }))).toBe(503)
+    expect(providerHttpStatus(new Error('x'))).toBeUndefined()
   })
 })

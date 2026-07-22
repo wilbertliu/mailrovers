@@ -6,17 +6,15 @@ import type {
   StoredCommand,
 } from '@mailrovers/mail-application'
 import { utcTimestamp, type MailboxId } from '@mailrovers/mail-domain'
-import { commandCompletionFor, needsReviewTransitionFor, policyFor } from './command-policy.js'
-
-function providerStatus(error: unknown): number | undefined {
-  if (typeof error !== 'object' || error === null || !('status' in error)) return undefined
-  return typeof error.status === 'number' ? error.status : undefined
-}
-
-function errorCode(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null || !('code' in error)) return undefined
-  return typeof error.code === 'string' ? error.code : undefined
-}
+import {
+  commandCompletionFor,
+  failureTransitionFor,
+  needsReviewTransitionFor,
+  policyFor,
+  resolveFailure,
+  type CommandFailureDisposition,
+} from './command-policy.js'
+import { providerHttpStatus } from './provider-http-status.js'
 
 export class MailCommandExecutor implements CommandDispatcher {
   private running = false
@@ -66,6 +64,10 @@ export class MailCommandExecutor implements CommandDispatcher {
     return utcTimestamp((this.options.now?.() ?? new Date()).toISOString())
   }
 
+  private clockMs(): number {
+    return (this.options.now?.() ?? new Date()).getTime()
+  }
+
   private async completeApplied(
     command: Pick<StoredCommand, 'id' | 'mailboxId' | 'command'>,
     result: ProviderCommandResult,
@@ -89,6 +91,57 @@ export class MailCommandExecutor implements CommandDispatcher {
         updatedAt: this.now(),
       }),
     )
+  }
+
+  private async applyFailureDisposition(
+    command: StoredCommand,
+    disposition: CommandFailureDisposition,
+    signal: AbortSignal,
+  ): Promise<void> {
+    switch (disposition.kind) {
+      case 'reconcile-after-failure': {
+        try {
+          const provider = await this.options.providers.create(command.mailboxId)
+          const resolved = await this.options.store.resolveProviderCommand(command)
+          const reconciliation = await provider.reconcileCommand({
+            ...resolved,
+            signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
+          })
+          if (reconciliation.kind === 'applied') {
+            await this.completeApplied(command, reconciliation.result)
+          } else {
+            await this.pauseForReview(command)
+          }
+        } catch {
+          await this.pauseForReview(command)
+        }
+        return
+      }
+      case 'cancelled':
+      case 'failed':
+      case 'retry_wait': {
+        if (disposition.kind === 'retry_wait' && disposition.markAuthRequired) {
+          await this.options.store.setMailboxAuthRequired({
+            mailboxId: command.mailboxId,
+            updatedAt: this.now(),
+          })
+        }
+        await this.options.store.setCommandState(
+          failureTransitionFor({
+            disposition,
+            commandId: command.id,
+            mailboxId: command.mailboxId,
+            updatedAt: this.now(),
+            nowMs: this.clockMs(),
+          }),
+        )
+        return
+      }
+      default: {
+        const _exhaustive: never = disposition
+        return _exhaustive
+      }
+    }
   }
 
   private async drain(): Promise<void> {
@@ -116,15 +169,21 @@ export class MailCommandExecutor implements CommandDispatcher {
               ...resolved,
               signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]),
             })
-            if (reconciliation.kind === 'applied') {
-              await this.completeApplied(command, reconciliation.result)
-              this.options.onChanged?.(command.mailboxId)
-              continue
-            }
-            if (reconciliation.kind === 'uncertain') {
-              await this.pauseForReview(command)
-              this.options.onChanged?.(command.mailboxId)
-              continue
+            switch (reconciliation.kind) {
+              case 'applied':
+                await this.completeApplied(command, reconciliation.result)
+                this.options.onChanged?.(command.mailboxId)
+                continue
+              case 'uncertain':
+                await this.pauseForReview(command)
+                this.options.onChanged?.(command.mailboxId)
+                continue
+              case 'not-applied':
+                break
+              default: {
+                const _exhaustive: never = reconciliation
+                return _exhaustive
+              }
             }
           }
           requestMayHaveBeenSent = true
@@ -134,82 +193,17 @@ export class MailCommandExecutor implements CommandDispatcher {
           })
           await this.completeApplied(command, result)
         } catch (error) {
-          const status = providerStatus(error)
-          const code = errorCode(error)
-          if (error instanceof Error && error.message === 'DRAFT_SUPERSEDED') {
-            await this.options.store.setCommandState({
-              id: command.id,
-              mailboxId: command.mailboxId,
-              state: 'cancelled',
-              errorCode: 'DRAFT_SUPERSEDED',
-              updatedAt: this.now(),
-            })
-          } else if (code === 'COMMAND_TARGET_NOT_FOUND') {
-            await this.options.store.setCommandState({
-              id: command.id,
-              mailboxId: command.mailboxId,
-              state: 'failed',
-              errorCode: code,
-              errorMessage: 'The command target no longer exists in this mailbox.',
-              updatedAt: this.now(),
-            })
-          } else if (
-            policy.kind === 'reconcile-before-retry' &&
-            (requestMayHaveBeenSent || command.attemptCount > 1) &&
-            (status === undefined || status >= 500 || status === 429)
-          ) {
-            try {
-              const provider = await this.options.providers.create(command.mailboxId)
-              const resolved = await this.options.store.resolveProviderCommand(command)
-              const reconciliation = await provider.reconcileCommand({
-                ...resolved,
-                signal: AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]),
-              })
-              if (reconciliation.kind === 'applied')
-                await this.completeApplied(command, reconciliation.result)
-              else await this.pauseForReview(command)
-            } catch {
-              await this.pauseForReview(command)
-            }
-          } else if (status === 401) {
-            await this.options.store.setMailboxAuthRequired({
-              mailboxId: command.mailboxId,
-              updatedAt: this.now(),
-            })
-            await this.options.store.setCommandState({
-              id: command.id,
-              mailboxId: command.mailboxId,
-              state: 'retry_wait',
-              nextAttemptAt: utcTimestamp(
-                new Date((this.options.now?.() ?? new Date()).getTime() + 5 * 60_000).toISOString(),
-              ),
-              errorCode: 'AUTHENTICATION_REQUIRED',
-              errorMessage: 'Gmail needs to be connected again.',
-              updatedAt: this.now(),
-            })
-          } else if (status !== undefined && status >= 400 && status < 500 && status !== 429) {
-            await this.options.store.setCommandState({
-              id: command.id,
-              mailboxId: command.mailboxId,
-              state: 'failed',
-              errorCode: 'PROVIDER_REJECTED_COMMAND',
-              errorMessage: 'Gmail rejected this change.',
-              updatedAt: this.now(),
-            })
-          } else {
-            const delay = Math.min(2 ** Math.max(0, command.attemptCount - 1) * 5_000, 15 * 60_000)
-            await this.options.store.setCommandState({
-              id: command.id,
-              mailboxId: command.mailboxId,
-              state: 'retry_wait',
-              nextAttemptAt: utcTimestamp(
-                new Date((this.options.now?.() ?? new Date()).getTime() + delay).toISOString(),
-              ),
-              errorCode: status === 429 ? 'PROVIDER_THROTTLED' : 'COMMAND_RETRY',
-              errorMessage: 'The change will retry when Gmail is available.',
-              updatedAt: this.now(),
-            })
-          }
+          await this.applyFailureDisposition(
+            command,
+            resolveFailure({
+              error,
+              policy,
+              status: providerHttpStatus(error),
+              attemptCount: command.attemptCount,
+              requestMayHaveBeenSent,
+            }),
+            controller.signal,
+          )
         }
         this.options.onChanged?.(command.mailboxId)
       } finally {
