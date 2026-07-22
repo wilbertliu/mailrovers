@@ -1,12 +1,12 @@
-import type { AiArtifact, Draft } from '@mailrovers/mail-contracts'
-import type { ConversationId, MailboxId, MessageId, OperationId } from '@mailrovers/mail-domain'
+import type { Draft } from '@mailrovers/mail-contracts'
+import type { ConversationId, MailboxId, MessageId } from '@mailrovers/mail-domain'
 import { useCallback, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button.js'
-import { useOperationCleanup } from '@/hooks/use-operation-cleanup.js'
 import { createDebouncedAction } from '@/lib/debounced-action.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { Input } from '@/components/ui/input.js'
 import { Textarea } from '@/components/ui/textarea.js'
+import { useAiReplyDraft } from './useAiReplyDraft.js'
 
 export type ComposerReplyContext = {
   conversationId: ConversationId
@@ -93,14 +93,8 @@ export function Composer({
     mode.kind === 'reply' ? mode.context : mode.kind === 'edit' ? mode.replyContext : undefined
   const isReply = replyContext !== undefined
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'sending' | 'error'>('idle')
-  const [aiStatus, setAiStatus] = useState<'idle' | 'streaming' | 'ready' | 'error'>('idle')
-  const [suggestion, setSuggestion] = useState('')
-  const [artifact, setArtifact] = useState<AiArtifact>()
-  const [aiError, setAiError] = useState<string>()
   const queue = useRef(Promise.resolve<Draft | undefined>(undefined))
   const draftRef = useRef<Draft | undefined>(mode.kind === 'edit' ? mode.draft : undefined)
-  const aiOperation = useRef<OperationId | undefined>(undefined)
-  const aiUnsubscribe = useRef<(() => void) | undefined>(undefined)
   const [autosave] = useState(() => createDebouncedAction(750))
 
   const save = useCallback(
@@ -140,123 +134,29 @@ export function Composer({
     autosave.schedule(() => void save(snapshot))
   }
 
-  const cancelAi = useCallback(async () => {
-    const active = aiOperation.current
-    aiUnsubscribe.current?.()
-    aiUnsubscribe.current = undefined
-    aiOperation.current = undefined
-    if (active)
-      await desktopBridge.cancelOperation({
-        requestId: desktopBridge.createRequestId(),
-        operationId: active,
-      })
-    setAiStatus('idle')
-  }, [])
-
-  const cleanupOperation = useOperationCleanup({
-    operation: aiOperation,
-    unsubscribe: aiUnsubscribe,
+  const ai = useAiReplyDraft({
+    mailboxId,
+    replyContext,
+    save,
+    cancelAutosave: () => autosave.cancel(),
+    onAccepted: (accepted) => {
+      draftRef.current = accepted
+      setDraft(accepted)
+      setBody(accepted.textBody)
+      setStatus('saved')
+    },
   })
+
   const composerRef = useCallback(
     (node: HTMLElement | null) => {
       if (node === null) return
       return () => {
         autosave.cancel()
-        cleanupOperation()
+        ai.cleanupOperation()
       }
     },
-    [autosave, cleanupOperation],
+    [autosave, ai.cleanupOperation],
   )
-
-  const generateReply = async () => {
-    if (replyContext?.sourceVersion === undefined) return
-    const { conversationId, sourceVersion } = replyContext
-    setAiStatus('streaming')
-    setSuggestion('')
-    setArtifact(undefined)
-    setAiError(undefined)
-    try {
-      autosave.cancel()
-      const saved = await save({ to, subject, body })
-      if (!saved) throw new Error('Draft could not be saved')
-      const receipt = await desktopBridge.startReplyDraft({
-        mailboxId,
-        conversationId,
-        sourceVersion,
-        draftId: saved.id,
-        draftVersion: saved.version,
-      })
-      aiOperation.current = receipt.requestId
-      aiUnsubscribe.current = desktopBridge.subscribeOperation(
-        receipt.requestId,
-        mailboxId,
-        (event) => {
-          switch (event.kind) {
-            case 'ai-started':
-              setSuggestion('')
-              break
-            case 'ai-delta':
-              setSuggestion((current) => current + event.text)
-              break
-            case 'ai-completed':
-              setSuggestion(event.artifact.content)
-              setArtifact(event.artifact)
-              setAiStatus('ready')
-              aiOperation.current = undefined
-              aiUnsubscribe.current?.()
-              aiUnsubscribe.current = undefined
-              break
-            case 'ai-failed':
-              setAiError(event.error.message)
-              setAiStatus('error')
-              aiOperation.current = undefined
-              aiUnsubscribe.current?.()
-              aiUnsubscribe.current = undefined
-              break
-            case 'ai-cancelled':
-              setAiStatus('idle')
-              aiOperation.current = undefined
-              aiUnsubscribe.current?.()
-              aiUnsubscribe.current = undefined
-              break
-          }
-        },
-      )
-    } catch (caught) {
-      setAiError(caught instanceof Error ? caught.message : 'Could not draft a reply.')
-      setAiStatus('error')
-    }
-  }
-
-  const acceptSuggestion = async () => {
-    if (!artifact?.draftVersion) return
-    try {
-      const accepted = await desktopBridge.acceptAiReply({
-        mailboxId,
-        artifactId: artifact.id,
-        expectedDraftVersion: artifact.draftVersion,
-        idempotencyKey: crypto.randomUUID(),
-      })
-      autosave.cancel()
-      draftRef.current = accepted
-      setDraft(accepted)
-      setBody(accepted.textBody)
-      setStatus('saved')
-      setAiStatus('idle')
-      setSuggestion('')
-      setArtifact(undefined)
-    } catch (caught) {
-      setAiError(caught instanceof Error ? caught.message : 'The draft changed. Generate again.')
-      setAiStatus('error')
-    }
-  }
-
-  const rejectSuggestion = async () => {
-    if (artifact) await desktopBridge.rejectAiArtifact({ mailboxId, artifactId: artifact.id })
-    setAiStatus('idle')
-    setSuggestion('')
-    setArtifact(undefined)
-  }
 
   const send = async () => {
     if (addresses(to).length === 0) return
@@ -278,11 +178,9 @@ export function Composer({
   }
 
   const close = async () => {
-    if (aiOperation.current) await cancelAi()
+    if (ai.hasActiveOperation()) await ai.cancel()
     onClose()
   }
-
-  const canGenerateReply = replyContext?.sourceVersion !== undefined
 
   return (
     <section
@@ -342,38 +240,38 @@ export function Composer({
         }}
         placeholder="Write a message…"
       />
-      {aiStatus !== 'idle' ? (
+      {ai.status !== 'idle' ? (
         <section className="max-h-57.5 overflow-y-auto" aria-label="AI reply suggestion">
           <header className="flex min-h-10.5 items-center justify-between px-3 py-2">
             <strong>AI suggestion</strong>
-            {aiStatus === 'streaming' ? <span>Drafting…</span> : null}
+            {ai.status === 'streaming' ? <span>Drafting…</span> : null}
           </header>
-          {aiError ? (
+          {ai.error ? (
             <p role="alert" className="px-3.5 py-2.5">
-              {aiError}
+              {ai.error}
             </p>
           ) : (
             <p className="whitespace-pre-wrap px-3.5 py-2.5" aria-live="polite">
-              {suggestion || 'Starting…'}
+              {ai.suggestion || 'Starting…'}
             </p>
           )}
           <div className="flex items-center gap-2 px-3.5 pb-3">
-            {aiStatus === 'ready' ? (
+            {ai.status === 'ready' ? (
               <>
-                <Button type="button" size="sm" onClick={() => void acceptSuggestion()}>
+                <Button type="button" size="sm" onClick={() => void ai.accept()}>
                   Use suggestion
                 </Button>
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
-                  onClick={() => void rejectSuggestion()}
+                  onClick={() => void ai.reject()}
                 >
                   Discard
                 </Button>
               </>
-            ) : aiStatus === 'streaming' ? (
-              <Button type="button" variant="secondary" size="sm" onClick={() => void cancelAi()}>
+            ) : ai.status === 'streaming' ? (
+              <Button type="button" variant="secondary" size="sm" onClick={() => void ai.cancel()}>
                 Cancel
               </Button>
             ) : (
@@ -381,7 +279,7 @@ export function Composer({
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => void generateReply()}
+                onClick={() => void ai.generate({ to, subject, body })}
               >
                 Try again
               </Button>
@@ -393,12 +291,16 @@ export function Composer({
         <Button
           type="button"
           onClick={() => void send()}
-          disabled={status === 'sending' || aiStatus === 'streaming' || !to}
+          disabled={status === 'sending' || ai.status === 'streaming' || !to}
         >
           {status === 'sending' ? 'Queueing…' : 'Send'}
         </Button>
-        {canGenerateReply && aiStatus === 'idle' ? (
-          <Button type="button" variant="secondary" onClick={() => void generateReply()}>
+        {ai.canGenerate && ai.status === 'idle' ? (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void ai.generate({ to, subject, body })}
+          >
             Draft with AI
           </Button>
         ) : null}
