@@ -36,6 +36,16 @@ export type PagedImportRunScope = {
   publishProgress(): Promise<void>
 }
 
+export type LabelImportRunScope = {
+  mailboxId: MailboxId
+  provider: MailProvider
+  signal: AbortSignal
+  store: Pick<MailStore, 'applyImportBatch' | 'setImportState'>
+  now(): UtcTimestamp
+  withFence<T>(write: (fence: SyncLeaseFence) => Promise<T>): Promise<T>
+  publishProgress(): Promise<void>
+}
+
 export const MESSAGE_IMPORT: PagedImportSpec = {
   phase: 'messages',
   pageToken: (checkpoint) => checkpoint.importMessagePageToken,
@@ -57,6 +67,42 @@ export const DRAFT_IMPORT: PagedImportSpec = {
     processedCount,
     nextState: nextPageToken === undefined ? 'reconciling_history' : 'importing_drafts',
   }),
+}
+
+export async function runLabelImportPhase(
+  scope: LabelImportRunScope,
+): Promise<SyncPhaseOutcome> {
+  await scope.withFence((fence) =>
+    scope.store.setImportState({
+      mailboxId: scope.mailboxId,
+      state: 'importing_labels',
+      updatedAt: scope.now(),
+      fence,
+    }),
+  )
+  for await (const batch of scope.provider.importMailbox({
+    mailboxId: scope.mailboxId,
+    phase: 'labels',
+    signal: scope.signal,
+  }))
+    await scope.withFence((fence) =>
+      scope.store.applyImportBatch({
+        mailboxId: scope.mailboxId,
+        batch: batch.changes,
+        updatedAt: scope.now(),
+        fence,
+      }),
+    )
+  await scope.withFence((fence) =>
+    scope.store.setImportState({
+      mailboxId: scope.mailboxId,
+      state: 'importing_messages',
+      updatedAt: scope.now(),
+      fence,
+    }),
+  )
+  await scope.publishProgress()
+  return { kind: 'continue', state: 'importing_messages' }
 }
 
 export async function runPagedImportPhase(

@@ -1,5 +1,5 @@
 import type { CommittedChangeSet, MailStore } from '@mailrovers/mail-application'
-import type { CommandReceipt, MailCommand } from '@mailrovers/mail-contracts'
+import type { CommandReceipt, DurableCommand, MailCommand } from '@mailrovers/mail-contracts'
 import { type MailboxId } from '@mailrovers/mail-domain'
 import type { DraftMergeOptions } from './draft-reconciliation.js'
 import type { SqliteDatabase } from './open-database.js'
@@ -75,43 +75,25 @@ export class SqliteCommandsOutbox {
     }
   }
 
-  async enqueueCommand(input: Parameters<MailStore['enqueueCommand']>[0]): Promise<CommandReceipt> {
-    const committed = this.db.transaction(() => {
-      const existing = this.db
-        .prepare('SELECT * FROM command_outbox WHERE mailbox_id=? AND idempotency_key=?')
-        .get(input.mailboxId, input.idempotencyKey)
-      if (existing !== undefined) return { receipt: mapCommand(existing), changed: false }
-      this.assertCommandOwnership(input.mailboxId, input.command)
-      this.db
-        .prepare(`INSERT INTO command_outbox
-        (id,mailbox_id,idempotency_key,command_kind,entity_key,payload_json,state,created_at,updated_at)
-        VALUES (?,?,?,?,?,?,'pending',?,?)`)
-        .run(
-          input.id,
-          input.mailboxId,
-          input.idempotencyKey,
-          input.command.kind,
-          commandEntity(input.command),
-          JSON.stringify(input.command),
-          input.createdAt,
-          input.createdAt,
-        )
-      const stored = this.db.prepare('SELECT * FROM command_outbox WHERE id=?').get(input.id)
-      if (stored === undefined) throw new Error('Failed to persist command')
-      return { receipt: mapCommand(stored), changed: true }
-    })()
-    if (committed.changed) this.publishCommitted({ mailboxId: input.mailboxId, outbox: true })
-    return committed.receipt
-  }
-
-  async enqueueDraftCommand(
-    input: Parameters<MailStore['enqueueDraftCommand']>[0],
+  private async enqueueDurableCommand(
+    input: {
+      id: Parameters<MailStore['enqueueCommand']>[0]['id']
+      mailboxId: MailboxId
+      idempotencyKey: string
+      command: DurableCommand
+      createdAt: Parameters<MailStore['enqueueCommand']>[0]['createdAt']
+    },
+    options: {
+      beforeInsert?: (() => void) | undefined
+      persistError: string
+    },
   ): Promise<CommandReceipt> {
     const committed = this.db.transaction(() => {
       const existing = this.db
         .prepare('SELECT * FROM command_outbox WHERE mailbox_id=? AND idempotency_key=?')
         .get(input.mailboxId, input.idempotencyKey)
       if (existing !== undefined) return { receipt: mapCommand(existing), changed: false }
+      options.beforeInsert?.()
       this.db
         .prepare(`INSERT INTO command_outbox
         (id,mailbox_id,idempotency_key,command_kind,entity_key,payload_json,state,created_at,updated_at)
@@ -127,11 +109,26 @@ export class SqliteCommandsOutbox {
           input.createdAt,
         )
       const stored = this.db.prepare('SELECT * FROM command_outbox WHERE id=?').get(input.id)
-      if (stored === undefined) throw new Error('Failed to persist draft command')
+      if (stored === undefined) throw new Error(options.persistError)
       return { receipt: mapCommand(stored), changed: true }
     })()
     if (committed.changed) this.publishCommitted({ mailboxId: input.mailboxId, outbox: true })
     return committed.receipt
+  }
+
+  async enqueueCommand(input: Parameters<MailStore['enqueueCommand']>[0]): Promise<CommandReceipt> {
+    return this.enqueueDurableCommand(input, {
+      beforeInsert: () => this.assertCommandOwnership(input.mailboxId, input.command),
+      persistError: 'Failed to persist command',
+    })
+  }
+
+  async enqueueDraftCommand(
+    input: Parameters<MailStore['enqueueDraftCommand']>[0],
+  ): Promise<CommandReceipt> {
+    return this.enqueueDurableCommand(input, {
+      persistError: 'Failed to persist draft command',
+    })
   }
 
   async enqueueInverseCommand(

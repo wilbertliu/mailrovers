@@ -15,6 +15,7 @@ import type {
 import {
   DRAFT_IMPORT,
   MESSAGE_IMPORT,
+  runLabelImportPhase,
   runPagedImportPhase,
   type SyncPhaseOutcome,
 } from './paged-import.js'
@@ -481,8 +482,7 @@ export class MailSyncEngine implements SyncEngine {
       switch (state) {
         case 'pending':
         case 'importing_labels':
-          await this.runLabelImportPhase(operation, provider)
-          outcome = { kind: 'continue', state: 'importing_messages' }
+          outcome = await runLabelImportPhase(importScope)
           break
         case 'importing_messages':
           outcome = await runPagedImportPhase(importScope, MESSAGE_IMPORT)
@@ -523,42 +523,6 @@ export class MailSyncEngine implements SyncEngine {
         }
       }
     }
-  }
-
-  private async runLabelImportPhase(
-    operation: RunningOperation,
-    provider: MailProvider,
-  ): Promise<void> {
-    await this.withFence(operation, (fence) =>
-      this.options.store.setImportState({
-        mailboxId: operation.mailboxId,
-        state: 'importing_labels',
-        updatedAt: this.now(),
-        fence,
-      }),
-    )
-    for await (const batch of provider.importMailbox({
-      mailboxId: operation.mailboxId,
-      phase: 'labels',
-      signal: operation.controller.signal,
-    }))
-      await this.withFence(operation, (fence) =>
-        this.options.store.applyImportBatch({
-          mailboxId: operation.mailboxId,
-          batch: batch.changes,
-          updatedAt: this.now(),
-          fence,
-        }),
-      )
-    await this.withFence(operation, (fence) =>
-      this.options.store.setImportState({
-        mailboxId: operation.mailboxId,
-        state: 'importing_messages',
-        updatedAt: this.now(),
-        fence,
-      }),
-    )
-    await this.publishProgress(operation)
   }
 
   private async reconcile(

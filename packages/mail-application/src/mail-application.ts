@@ -203,6 +203,113 @@ export function createMailApplication(
     ),
   })
 
+  const startAiArtifact = async (input: {
+    requestId: SummarizeConversationInput['requestId']
+    mailboxId: MailboxId
+    conversationId: ConversationId
+    sourceVersion: number
+    artifactType: 'conversation_summary' | 'reply_draft'
+    policyVersion: string
+    force?: boolean | undefined
+    userInstructions?: string | undefined
+    cache?: boolean | undefined
+    draftGate?:
+      | (() => Promise<{
+          id: Draft['id']
+          version: number
+          recipients: Draft['to']
+          subject: string
+          textBody: string
+          recipientFingerprint: string
+        }>)
+      | undefined
+  }): Promise<AiStreamReceipt> => {
+    const context = await loadAiContext(
+      input.mailboxId,
+      input.conversationId,
+      input.sourceVersion,
+      input.artifactType,
+    )
+    const draft = input.draftGate === undefined ? undefined : await input.draftGate()
+    const configuration = await loadAiConfiguration(input.mailboxId)
+    const receipt: AiStreamReceipt = {
+      requestId: input.requestId,
+      mailboxId: input.mailboxId,
+      conversationId: input.conversationId,
+      artifactType: input.artifactType,
+      sourceVersion: input.sourceVersion,
+    }
+    if (input.cache && !input.force) {
+      const cached = await dependencies.store.findAiArtifact({
+        mailboxId: input.mailboxId,
+        conversationId: input.conversationId,
+        artifactType: input.artifactType,
+        sourceVersion: input.sourceVersion,
+        model: configuration.model,
+        policyVersion: input.policyVersion,
+      })
+      if (cached) return aiOperations.registerCached(receipt, cached)
+    }
+    return aiOperations.registerRuntime({
+      receipt,
+      prepare: async () => ({
+        runtime: required(dependencies.aiRuntimeFactory, 'AI runtime').create(
+          await resolveRuntimeConfiguration(configuration),
+        ),
+        request: {
+          requestId: input.requestId,
+          mailboxId: input.mailboxId,
+          conversationId: input.conversationId,
+          artifactType: input.artifactType,
+          sourceVersion: input.sourceVersion,
+          policyVersion: input.policyVersion,
+          messages: context.messages,
+          contextTruncated: context.truncated,
+          ...(draft === undefined
+            ? {}
+            : {
+                draft: {
+                  id: draft.id,
+                  version: draft.version,
+                  recipients: draft.recipients,
+                  subject: draft.subject,
+                  textBody: draft.textBody,
+                },
+              }),
+          ...(input.userInstructions === undefined
+            ? {}
+            : { userInstructions: input.userInstructions }),
+        },
+      }),
+      complete: async (content, model) => {
+        const artifact: AiArtifact = {
+          id: aiArtifactId(`ai:${input.requestId}`),
+          mailboxId: input.mailboxId,
+          conversationId: input.conversationId,
+          artifactType: input.artifactType,
+          sourceVersion: input.sourceVersion,
+          model,
+          policyVersion: input.policyVersion,
+          content,
+          ...(draft === undefined
+            ? {}
+            : {
+                draftId: draft.id,
+                draftVersion: draft.version,
+                recipientFingerprint: draft.recipientFingerprint,
+              }),
+          createdAt: utcTimestamp(now().toISOString()),
+        }
+        if (!(await dependencies.store.saveAiArtifactIfCurrent(artifact)))
+          throw new AiApplicationError(
+            'AI_CONTEXT_STALE',
+            'Conversation changed during generation',
+          )
+        return artifact
+      },
+    })
+  }
+
   const application: MailApplication & MailApplicationOperations = {
     listMailboxes: () => dependencies.store.listMailboxes(),
     listConversations: (request) => dependencies.store.listConversations(request),
@@ -383,146 +490,46 @@ export function createMailApplication(
       }
     },
     async startConversationSummary(request) {
-      const context = await loadAiContext(
-        request.mailboxId,
-        request.conversationId,
-        request.sourceVersion,
-        'conversation_summary',
-      )
-      const configuration = await loadAiConfiguration(request.mailboxId)
-      const receipt: AiStreamReceipt = {
+      return startAiArtifact({
         requestId: request.requestId,
         mailboxId: request.mailboxId,
         conversationId: request.conversationId,
-        artifactType: 'conversation_summary',
         sourceVersion: request.sourceVersion,
-      }
-      if (!request.force) {
-        const cached = await dependencies.store.findAiArtifact({
-          mailboxId: request.mailboxId,
-          conversationId: request.conversationId,
-          artifactType: 'conversation_summary',
-          sourceVersion: request.sourceVersion,
-          model: configuration.model,
-          policyVersion: SUMMARY_POLICY_VERSION,
-        })
-        if (cached) return aiOperations.registerCached(receipt, cached)
-      }
-      return aiOperations.registerRuntime({
-        receipt,
-        prepare: async () => ({
-          runtime: required(dependencies.aiRuntimeFactory, 'AI runtime').create(
-            await resolveRuntimeConfiguration(configuration),
-          ),
-          request: {
-            requestId: request.requestId,
-            mailboxId: request.mailboxId,
-            conversationId: request.conversationId,
-            artifactType: 'conversation_summary',
-            sourceVersion: request.sourceVersion,
-            policyVersion: SUMMARY_POLICY_VERSION,
-            messages: context.messages,
-            contextTruncated: context.truncated,
-            ...(request.userInstructions === undefined
-              ? {}
-              : { userInstructions: request.userInstructions }),
-          },
-        }),
-        complete: async (content, model) => {
-          const artifact: AiArtifact = {
-            id: aiArtifactId(`ai:${request.requestId}`),
-            mailboxId: request.mailboxId,
-            conversationId: request.conversationId,
-            artifactType: 'conversation_summary',
-            sourceVersion: request.sourceVersion,
-            model,
-            policyVersion: SUMMARY_POLICY_VERSION,
-            content,
-            createdAt: utcTimestamp(now().toISOString()),
-          }
-          if (!(await dependencies.store.saveAiArtifactIfCurrent(artifact)))
-            throw new AiApplicationError(
-              'AI_CONTEXT_STALE',
-              'Conversation changed during generation',
-            )
-          return artifact
-        },
+        artifactType: 'conversation_summary',
+        policyVersion: SUMMARY_POLICY_VERSION,
+        force: request.force,
+        userInstructions: request.userInstructions,
+        cache: true,
       })
     },
     async startReplyDraft(request) {
-      const context = await loadAiContext(
-        request.mailboxId,
-        request.conversationId,
-        request.sourceVersion,
-        'reply_draft',
-      )
-      const draft = await dependencies.store.getDraft({
-        mailboxId: request.mailboxId,
-        draftId: request.draftId,
-      })
-      if (
-        !draft ||
-        draft.version !== request.draftVersion ||
-        draft.conversationId !== request.conversationId
-      )
-        throw new AiApplicationError('AI_CONTEXT_STALE', 'Draft changed before generation')
-      const configuration = await loadAiConfiguration(request.mailboxId)
-      const fingerprint = recipientFingerprint(draft)
-      const receipt: AiStreamReceipt = {
+      return startAiArtifact({
         requestId: request.requestId,
         mailboxId: request.mailboxId,
         conversationId: request.conversationId,
-        artifactType: 'reply_draft',
         sourceVersion: request.sourceVersion,
-      }
-      return aiOperations.registerRuntime({
-        receipt,
-        prepare: async () => ({
-          runtime: required(dependencies.aiRuntimeFactory, 'AI runtime').create(
-            await resolveRuntimeConfiguration(configuration),
-          ),
-          request: {
-            requestId: request.requestId,
+        artifactType: 'reply_draft',
+        policyVersion: REPLY_POLICY_VERSION,
+        userInstructions: request.userInstructions,
+        draftGate: async () => {
+          const draft = await dependencies.store.getDraft({
             mailboxId: request.mailboxId,
-            conversationId: request.conversationId,
-            artifactType: 'reply_draft',
-            sourceVersion: request.sourceVersion,
-            policyVersion: REPLY_POLICY_VERSION,
-            messages: context.messages,
-            contextTruncated: context.truncated,
-            draft: {
-              id: draft.id,
-              version: draft.version,
-              recipients: [...draft.to, ...draft.cc, ...draft.bcc],
-              subject: draft.subject,
-              textBody: draft.textBody,
-            },
-            ...(request.userInstructions === undefined
-              ? {}
-              : { userInstructions: request.userInstructions }),
-          },
-        }),
-        complete: async (content, model) => {
-          const artifact: AiArtifact = {
-            id: aiArtifactId(`ai:${request.requestId}`),
-            mailboxId: request.mailboxId,
-            conversationId: request.conversationId,
-            artifactType: 'reply_draft',
-            sourceVersion: request.sourceVersion,
-            model,
-            policyVersion: REPLY_POLICY_VERSION,
-            content,
-            draftId: draft.id,
-            draftVersion: draft.version,
-            recipientFingerprint: fingerprint,
-            createdAt: utcTimestamp(now().toISOString()),
+            draftId: request.draftId,
+          })
+          if (
+            !draft ||
+            draft.version !== request.draftVersion ||
+            draft.conversationId !== request.conversationId
+          )
+            throw new AiApplicationError('AI_CONTEXT_STALE', 'Draft changed before generation')
+          return {
+            id: draft.id,
+            version: draft.version,
+            recipients: [...draft.to, ...draft.cc, ...draft.bcc],
+            subject: draft.subject,
+            textBody: draft.textBody,
+            recipientFingerprint: recipientFingerprint(draft),
           }
-          if (!(await dependencies.store.saveAiArtifactIfCurrent(artifact)))
-            throw new AiApplicationError(
-              'AI_CONTEXT_STALE',
-              'Conversation changed during generation',
-            )
-          return artifact
         },
       })
     },
