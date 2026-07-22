@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { expect, userEvent, within } from 'storybook/test'
+import { expect, userEvent, waitFor, within } from 'storybook/test'
 import { App } from './App.js'
 import { storybookScenarios } from './storybook/storybook-scenarios.js'
 
@@ -86,10 +86,11 @@ export const GoogleConnectionFailed: Story = {
   parameters: { mailrovers: storybookScenarios.connectFailed },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
+    const body = within(canvasElement.ownerDocument.body)
     await userEvent.click(await canvas.findByRole('button', { name: 'Connect Gmail' }))
-    await expect(
-      await canvas.findByText('Google authorization could not be completed.'),
-    ).toBeVisible()
+    await waitFor(async () =>
+      expect(await body.findByText('Gmail connection failed')).toBeVisible(),
+    )
   },
 }
 
@@ -97,11 +98,12 @@ export const GoogleCancellationFailed: Story = {
   parameters: { mailrovers: storybookScenarios.cancelConnectionFailed },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
+    const body = within(canvasElement.ownerDocument.body)
     await userEvent.click(await canvas.findByRole('button', { name: 'Connect Gmail' }))
     await userEvent.click(await canvas.findByRole('button', { name: 'Cancel' }))
-    await expect(
-      await canvas.findByText('The authorization window could not be cancelled.'),
-    ).toBeVisible()
+    await waitFor(async () =>
+      expect(await body.findByText("Couldn't cancel connection")).toBeVisible(),
+    )
     await expect(await canvas.findByRole('button', { name: 'Cancel' })).toBeEnabled()
   },
 }
