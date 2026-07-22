@@ -14,6 +14,7 @@ export function applyChanges(
   batch: ProviderChangeBatch,
   draftOptions?: DraftMergeOptions,
 ): void {
+  assertBatchMailbox(mailbox, batch)
   const affectedConversations = new Set<string>()
   const sourceChangedConversations = new Set<string>()
   const createdConversations = new Set<string>()
@@ -181,31 +182,38 @@ export function applyChanges(
   for (const draft of batch.drafts ?? []) mergeProviderDraft(db, draft, draftOptions)
 
   const latestMessage = db.prepare(`SELECT subject,snippet,received_at,updated_at FROM messages
-    WHERE conversation_id=? ORDER BY received_at DESC,id DESC LIMIT 1`)
-  const messageCount = db.prepare('SELECT count(*) AS count FROM messages WHERE conversation_id=?')
+    WHERE conversation_id=? AND mailbox_id=? ORDER BY received_at DESC,id DESC LIMIT 1`)
+  const messageCount = db.prepare(
+    'SELECT count(*) AS count FROM messages WHERE conversation_id=? AND mailbox_id=?',
+  )
   const unreadCount = db.prepare(`SELECT count(DISTINCT ml.message_id) AS count
     FROM message_labels ml JOIN labels l ON l.id=ml.label_id
     JOIN messages m ON m.id=ml.message_id
-    WHERE m.conversation_id=? AND l.provider_label_id='UNREAD'`)
+    WHERE m.conversation_id=? AND m.mailbox_id=? AND l.mailbox_id=?
+      AND l.provider_label_id='UNREAD'`)
   const attachmentCount = db.prepare(`SELECT count(*) AS count FROM attachments a
-    JOIN messages m ON m.id=a.message_id WHERE m.conversation_id=?`)
+    JOIN messages m ON m.id=a.message_id WHERE m.conversation_id=? AND m.mailbox_id=?`)
   const getConversation = db.prepare(
-    'SELECT subject,snippet,last_message_at,message_count,unread_count,has_attachments,version FROM conversations WHERE id=?',
+    `SELECT subject,snippet,last_message_at,message_count,unread_count,has_attachments,version
+    FROM conversations WHERE id=? AND mailbox_id=?`,
   )
   const updateConversation = db.prepare(`UPDATE conversations SET
     subject=?,snippet=?,last_message_at=?,message_count=?,unread_count=?,has_attachments=?,
-    version=?,updated_at=? WHERE id=?`)
+    version=?,updated_at=? WHERE id=? AND mailbox_id=?`)
   for (const id of affectedConversations) {
-    const latest = latestMessage.get(id)
+    const latest = latestMessage.get(id, mailbox)
     if (latest === undefined) {
-      db.prepare('DELETE FROM conversations WHERE id=?').run(id)
+      db.prepare('DELETE FROM conversations WHERE id=? AND mailbox_id=?').run(id, mailbox)
       continue
     }
     const latestRow = row(latest)
-    const count = Number(row(messageCount.get(id)).count)
-    const unread = Number(row(unreadCount.get(id)).count)
-    const hasAttachments = Number(row(attachmentCount.get(id)).count) > 0 ? 1 : 0
-    const existing = row(getConversation.get(id))
+    const count = Number(row(messageCount.get(id, mailbox)).count)
+    const unread = Number(row(unreadCount.get(id, mailbox, mailbox)).count)
+    const hasAttachments = Number(row(attachmentCount.get(id, mailbox)).count) > 0 ? 1 : 0
+    const existingValue = getConversation.get(id, mailbox)
+    if (existingValue === undefined)
+      throw new Error(`Conversation ${id} does not belong to mailbox ${mailbox}`)
+    const existing = row(existingValue)
     updateConversation.run(
       String(latestRow.subject),
       String(latestRow.snippet),
@@ -220,7 +228,16 @@ export function applyChanges(
           : Number(existing.version),
       String(latestRow.updated_at),
       id,
+      mailbox,
     )
+  }
+}
+
+function assertBatchMailbox(mailbox: MailboxId, batch: ProviderChangeBatch): void {
+  const entities = [...(batch.labels ?? []), ...(batch.messages ?? []), ...(batch.drafts ?? [])]
+  for (const entity of entities) {
+    if (entity.mailboxId !== mailbox)
+      throw new Error(`Provider change batch mailbox mismatch: expected ${mailbox}`)
   }
 }
 

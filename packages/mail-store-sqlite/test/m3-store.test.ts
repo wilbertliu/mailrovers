@@ -5,6 +5,7 @@ import {
   draftId,
   draftRevisionFingerprint,
   fingerprintDraftRevision,
+  labelId,
   mailboxId,
   messageId,
   operationId,
@@ -136,7 +137,10 @@ describe('SQLite M3 store', () => {
       store.getMessageBody({ ...input, mailboxId: mailboxId('gmail:other') }),
     ).resolves.toBeUndefined()
     await expect(
-      store.getMessageBody({ ...input, conversationId: conversationId('other') }),
+      store.getMessageBody({
+        ...input,
+        conversationId: conversationId('other'),
+      }),
     ).resolves.toBeUndefined()
     await expect(
       store.getMessageBody({ ...input, messageId: messageId('other') }),
@@ -154,8 +158,124 @@ describe('SQLite M3 store', () => {
     })
   })
 
+  it('rejects cross-mailbox batches and excludes foreign messages from conversation reads', async () => {
+    const foreignMailbox: Mailbox = {
+      ...mailbox,
+      id: mailboxId('gmail:m3-foreign'),
+      providerAccountId: 'm3-foreign',
+      emailAddress: 'foreign@example.test',
+      displayName: 'Foreign',
+    }
+    await store.saveConnectedMailbox({
+      mailbox: foreignMailbox,
+      checkpoint: { ...checkpoint, mailboxId: foreignMailbox.id },
+      encryptedRefreshToken: new Uint8Array([2]),
+    })
+    const fence = await acquireTestSyncFence(store, mailbox.id, timestamp)
+    const foreignMessage: NormalizedMessage = {
+      ...message(),
+      id: messageId('gmail:m3-foreign:message:rejected'),
+      mailboxId: foreignMailbox.id,
+      providerMessageId: 'foreign-rejected',
+      attachments: [],
+    }
+    await expect(
+      store.applyHistoryPage({
+        mailboxId: mailbox.id,
+        batch: {
+          labels: [
+            {
+              id: labelId('gmail:m3:label:must-rollback'),
+              mailboxId: mailbox.id,
+              providerLabelId: 'MUST_ROLLBACK',
+              name: 'Must roll back',
+              kind: 'user',
+              updatedAt: timestamp,
+            },
+          ],
+          messages: [foreignMessage],
+        },
+        nextPageToken: 'rejected-page',
+        targetCursor: '101',
+        updatedAt: timestamp,
+        fence,
+      }),
+    ).rejects.toThrow('Provider change batch mailbox mismatch')
+    expect(
+      database.prepare('SELECT 1 FROM labels WHERE provider_label_id=?').get('MUST_ROLLBACK'),
+    ).toBeUndefined()
+    expect(
+      database.prepare('SELECT 1 FROM messages WHERE id=?').get(foreignMessage.id),
+    ).toBeUndefined()
+
+    const foreignStoredId = messageId('gmail:m3-foreign:message:stored')
+    database
+      .prepare(
+        `INSERT INTO messages
+      (id,workspace_id,mailbox_id,conversation_id,provider_message_id,internet_message_id,
+      provider_history_id,sender_json,recipients_json,subject,sent_at,received_at,snippet,
+      text_body,sanitized_html_body,size_bytes,is_draft,created_at,updated_at)
+      SELECT ?,workspace_id,?,conversation_id,?,'<foreign-stored@example.test>',
+      provider_history_id,?,recipients_json,'Foreign subject',sent_at,received_at,'Foreign snippet',
+      text_body,sanitized_html_body,size_bytes,is_draft,created_at,updated_at
+      FROM messages WHERE id=?`,
+      )
+      .run(
+        foreignStoredId,
+        foreignMailbox.id,
+        'foreign-stored',
+        JSON.stringify({ name: 'Mallory', address: 'mallory@example.test' }),
+        message().id,
+      )
+    database
+      .prepare(
+        `INSERT INTO message_labels(message_id,label_id)
+      SELECT ?,id FROM labels WHERE mailbox_id=? AND provider_label_id='UNREAD'`,
+      )
+      .run(foreignStoredId, mailbox.id)
+    database
+      .prepare(
+        `INSERT INTO attachments
+      (id,message_id,provider_attachment_id,filename,media_type,size_bytes,content_id,disposition,
+      local_path,download_state)
+      SELECT 'gmail:m3-foreign:attachment:stored',?,'foreign-attachment','foreign.txt',
+      media_type,size_bytes,content_id,disposition,local_path,download_state
+      FROM attachments WHERE message_id=? LIMIT 1`,
+      )
+      .run(foreignStoredId, message().id)
+
+    await store.applyHistoryPage({
+      mailboxId: mailbox.id,
+      batch: { messages: [{ ...message(), snippet: 'Updated local snippet' }] },
+      nextPageToken: 'accepted-page',
+      targetCursor: '101',
+      updatedAt: timestamp,
+      fence,
+    })
+    await store.releaseSyncLease({ mailboxId: mailbox.id, ...fence })
+
+    const detail = await store.getConversation({
+      requestId: operationId('mailbox-isolated-detail'),
+      mailboxId: mailbox.id,
+      conversationId: message().conversationId,
+    })
+    expect(detail?.messages.map((entry) => entry.id)).toEqual([message().id])
+    const page = await store.listConversations({ mailboxId: mailbox.id })
+    expect(page.items[0]).toEqual(
+      expect.objectContaining({
+        messageCount: 1,
+        unreadCount: 1,
+        senders: [{ name: 'Ada Lovelace', address: 'ada@example.test' }],
+      }),
+    )
+  })
+
   it('searches indexed message text and attachment names', async () => {
-    await store.backfillSearchIndex({ mailboxId: mailbox.id, limit: 100, updatedAt: timestamp })
+    await store.backfillSearchIndex({
+      mailboxId: mailbox.id,
+      limit: 100,
+      updatedAt: timestamp,
+    })
     const body = await store.searchMail({
       requestId: operationId('search-body'),
       mailboxId: mailbox.id,
@@ -618,9 +738,12 @@ describe('SQLite M3 store', () => {
         syncState: 'local',
       }),
     )
-    expect(await store.getDraft({ mailboxId: mailbox.id, draftId: confirmedRemote.id })).toEqual(
-      expect.objectContaining({ textBody: 'Version one', syncState: 'synced' }),
-    )
+    expect(
+      await store.getDraft({
+        mailboxId: mailbox.id,
+        draftId: confirmedRemote.id,
+      }),
+    ).toEqual(expect.objectContaining({ textBody: 'Version one', syncState: 'synced' }))
     expect((await store.listCommandIssues(mailbox.id))[0]).toEqual(
       expect.objectContaining({ id: command.id, state: 'needs_review' }),
     )
@@ -700,7 +823,10 @@ describe('SQLite M3 store', () => {
       completedAt: utcTimestamp('2026-07-13T12:00:02.000Z'),
     })
     expect(await store.getDraft({ mailboxId: mailbox.id, draftId: created.id })).toEqual(
-      expect.objectContaining({ version: newer.version, textBody: 'Version two' }),
+      expect.objectContaining({
+        version: newer.version,
+        textBody: 'Version two',
+      }),
     )
     expect(await store.listCommandIssues(mailbox.id)).toEqual(
       expect.arrayContaining([
@@ -783,7 +909,10 @@ describe('SQLite M3 store', () => {
     await apply(revised)
     expect(await version()).toBe(3)
 
-    await apply({ ...revised, sender: { address: 'changed-sender@example.test' } })
+    await apply({
+      ...revised,
+      sender: { address: 'changed-sender@example.test' },
+    })
     expect(await version()).toBe(4)
 
     const addedMember = {

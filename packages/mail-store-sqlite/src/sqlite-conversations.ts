@@ -65,7 +65,7 @@ export class SqliteConversations {
     const parameters: Array<string | number> = [input.mailboxId]
     if (input.labelId !== undefined) {
       conditions.push(`EXISTS (SELECT 1 FROM messages lm JOIN message_labels lml ON lml.message_id=lm.id
-      WHERE lm.conversation_id=c.id AND lml.label_id=?)`)
+      WHERE lm.conversation_id=c.id AND lm.mailbox_id=c.mailbox_id AND lml.label_id=?)`)
       parameters.push(input.labelId)
     }
     if (input.unreadOnly === true) conditions.push('c.unread_count>0')
@@ -80,7 +80,7 @@ export class SqliteConversations {
         SELECT json_group_array(m.sender_json)
         FROM (
           SELECT sender_json FROM messages
-          WHERE conversation_id=c.id
+          WHERE conversation_id=c.id AND mailbox_id=c.mailbox_id
           ORDER BY received_at ASC, id ASC
         ) m
       ) AS senders_json
@@ -108,14 +108,22 @@ export class SqliteConversations {
     return {
       items,
       ...(hasNext && last
-        ? { nextCursor: encodeCursor({ v: 1, t: last.lastMessageAt, id: last.id, f: filter }) }
+        ? {
+            nextCursor: encodeCursor({
+              v: 1,
+              t: last.lastMessageAt,
+              id: last.id,
+              f: filter,
+            }),
+          }
         : {}),
     }
   }
 
   async listLabels(id: MailboxId): Promise<LabelSummary[]> {
     return this.db
-      .prepare(`SELECT l.*,
+      .prepare(
+        `SELECT l.*,
       count(DISTINCT m.conversation_id) AS conversation_count,
       count(DISTINCT CASE WHEN ul.id IS NOT NULL THEN m.conversation_id END) AS unread_count
       FROM labels l
@@ -126,7 +134,8 @@ export class SqliteConversations {
       WHERE l.mailbox_id=?
       GROUP BY l.id ORDER BY CASE l.provider_label_id
         WHEN 'INBOX' THEN 0 WHEN 'STARRED' THEN 1 WHEN 'SENT' THEN 2 WHEN 'DRAFT' THEN 3 ELSE 4 END,
-        l.name COLLATE NOCASE`)
+        l.name COLLATE NOCASE`,
+      )
       .all(id)
       .map((value): LabelSummary => {
         const result = row(value)
@@ -160,13 +169,17 @@ export class SqliteConversations {
     if (conversationValue === undefined) return undefined
     const conversation = row(conversationValue)
     const messageRows = this.db
-      .prepare(`SELECT m.id,m.conversation_id,m.sender_json,m.recipients_json,m.subject,
+      .prepare(
+        `SELECT m.id,m.conversation_id,m.sender_json,m.recipients_json,m.subject,
       m.sent_at,m.received_at,m.is_draft,
       CASE WHEN m.text_body IS NOT NULL OR m.sanitized_html_body IS NOT NULL THEN 1 ELSE 0 END
         AS body_available
-      FROM messages m WHERE m.conversation_id=?
-      ORDER BY m.received_at,m.id`)
-      .all(input.conversationId)
+      FROM messages m
+      JOIN conversations c ON c.id=m.conversation_id AND c.mailbox_id=m.mailbox_id
+      WHERE m.conversation_id=? AND m.mailbox_id=? AND c.mailbox_id=?
+      ORDER BY m.received_at,m.id`,
+      )
+      .all(input.conversationId, input.mailboxId, input.mailboxId)
     const labels = this.db.prepare(
       `SELECT ml.label_id FROM message_labels ml WHERE ml.message_id=?`,
     )
@@ -223,9 +236,11 @@ export class SqliteConversations {
 
   async getMessageBody(input: GetMessageBodyInput): Promise<MessageBody | undefined> {
     const value = this.db
-      .prepare(`SELECT m.id,m.text_body,m.sanitized_html_body FROM messages m
+      .prepare(
+        `SELECT m.id,m.text_body,m.sanitized_html_body FROM messages m
       JOIN conversations c ON c.id=m.conversation_id
-      WHERE m.id=? AND m.conversation_id=? AND m.mailbox_id=? AND c.mailbox_id=?`)
+      WHERE m.id=? AND m.conversation_id=? AND m.mailbox_id=? AND c.mailbox_id=?`,
+      )
       .get(input.messageId, input.conversationId, input.mailboxId, input.mailboxId)
     if (value === undefined) return undefined
     const result = row(value)
@@ -264,10 +279,12 @@ export class SqliteConversations {
     if (input.messageIds.length === 0) return { bodies: [], truncated: false }
     const placeholders = input.messageIds.map(() => '?').join(',')
     const values = this.db
-      .prepare(`SELECT m.id,m.text_body,m.sanitized_html_body FROM messages m
+      .prepare(
+        `SELECT m.id,m.text_body,m.sanitized_html_body FROM messages m
       JOIN conversations c ON c.id=m.conversation_id
       WHERE m.id IN (${placeholders}) AND m.conversation_id=?
-        AND m.mailbox_id=? AND c.mailbox_id=?`)
+        AND m.mailbox_id=? AND c.mailbox_id=?`,
+      )
       .all(...input.messageIds, input.conversationId, input.mailboxId, input.mailboxId)
     const byId = new Map(values.map((value) => [String(row(value).id), row(value)]))
     let remaining = input.maxBodyBytes
@@ -307,7 +324,12 @@ export class SqliteConversations {
     artifactType: 'conversation_summary' | 'reply_draft'
     maxBodyBytes: number
   }): Promise<
-    { conversation: ConversationDetail; bodies: MessageBody[]; truncated: boolean } | undefined
+    | {
+        conversation: ConversationDetail
+        bodies: MessageBody[]
+        truncated: boolean
+      }
+    | undefined
   > {
     return this.db.transaction(() => {
       const conversation = this.getConversationSync({
@@ -316,7 +338,10 @@ export class SqliteConversations {
       })
       if (conversation === undefined || conversation.version !== input.expectedVersion)
         return undefined
-      const indexed = conversation.messages.map((message, index) => ({ message, index }))
+      const indexed = conversation.messages.map((message, index) => ({
+        message,
+        index,
+      }))
       const candidates =
         input.artifactType === 'conversation_summary' && indexed.length > 1
           ? [indexed[0]!, ...indexed.slice(1).reverse()]
