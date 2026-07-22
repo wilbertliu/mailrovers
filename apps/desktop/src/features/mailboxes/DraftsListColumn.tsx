@@ -13,6 +13,7 @@ export function DraftsListColumn({
   onSearchSubmit,
   showSidebarToggle,
   onShowSidebar,
+  importInProgress,
   onOpenComposer,
 }: {
   mailboxId: MailboxId
@@ -22,6 +23,7 @@ export function DraftsListColumn({
   onSearchSubmit: (value: string) => void
   showSidebarToggle: boolean
   onShowSidebar: () => void
+  importInProgress: boolean
   onOpenComposer: (mode: ComposerMode) => void
 }) {
   return (
@@ -37,6 +39,7 @@ export function DraftsListColumn({
         onSearchSubmit={onSearchSubmit}
         showSidebarToggle={showSidebarToggle}
         onShowSidebar={onShowSidebar}
+        importInProgress={importInProgress}
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
         {drafts?.map((draft) => (

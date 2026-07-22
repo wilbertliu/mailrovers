@@ -1,6 +1,7 @@
 import type { Preview } from '@storybook/react-vite'
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import React, { type ReactNode } from 'react'
+import { ThemeProvider } from '../src/components/theme-provider.js'
 import { subscribeDesktopChangeInvalidation } from '../src/desktop-change-invalidation.js'
 import { createDesktopQueryClient } from '../src/query-client.js'
 import { installStorybookBridge } from '../src/storybook/mock-desktop-bridge.js'
@@ -12,11 +13,17 @@ let activeQueryClient: QueryClient | undefined
 function StoryEnvironment({
   children,
   queryClient,
+  theme,
 }: {
   children: ReactNode
   queryClient: QueryClient
+  theme: 'light' | 'dark'
 }) {
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  return (
+    <ThemeProvider attribute="class" forcedTheme={theme} enableSystem={false} disableTransitionOnChange>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </ThemeProvider>
+  )
 }
 
 const preview: Preview = {
@@ -96,8 +103,9 @@ const preview: Preview = {
       const queryClient = activeQueryClient
       if (queryClient === undefined)
         throw new Error(`Story ${context.id} rendered before its environment was prepared`)
+      const theme = context.globals.theme === 'dark' ? 'dark' : 'light'
       return (
-        <StoryEnvironment queryClient={queryClient}>
+        <StoryEnvironment queryClient={queryClient} theme={theme}>
           <Story />
         </StoryEnvironment>
       )

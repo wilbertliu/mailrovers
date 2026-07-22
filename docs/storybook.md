@@ -99,12 +99,12 @@ The catalog covers every user-visible renderer branch currently implemented by t
 
 - Startup: the local opening screen shown before database and IPC initialization.
 - Mailbox gate: logo splash while opening (and while retrying), failure, first account, additional
-  account, Google connection pending/success/failure, the Gmail-connected handoff, the
-  readiness-driven workspace handoff, and cancellation pending/failure.
+  account, Google connection pending/success/failure, immediate workspace entry after connect with
+  a success toast, and cancellation pending/failure.
 - Workspace: inbox loading/error/empty/populated, label loading/error, draft loading/empty/populated,
   retained offline cache, both command-review messages, command dismissal, mailbox refresh failure
-  with cached data, every manual-refresh outcome, background older-mail import status, and archive
-  undo.
+  with cached data, every manual-refresh outcome, sidebar import-status while older mail is still
+  arriving, and archive undo.
 - Search: pending, results, empty, indexing, failure, and result selection.
 - Conversation: loading/error, text/HTML/missing/loading bodies, attachment unavailable,
   export pending/success/cancel/failure, and conversation selection.

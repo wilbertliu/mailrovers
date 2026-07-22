@@ -171,7 +171,7 @@ export const ImportingOlderMail: Story = {
     const canvas = within(canvasElement)
     await userEvent.click(await canvas.findByRole('button', { name: 'Connect Gmail' }))
     await expect(await canvas.findByRole('textbox', { name: 'Search mail' })).toBeVisible()
-    await expect(await canvas.findByText('Importing older mail')).toBeVisible()
+    await expect(await canvas.findByRole('button', { name: 'Importing email' })).toBeVisible()
   },
 }
 

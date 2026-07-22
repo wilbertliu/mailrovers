@@ -111,25 +111,15 @@ export const GoogleConnectionSucceeded: Story = {
   parameters: { mailrovers: storybookScenarios.connectionSucceeded },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
+    const body = within(canvasElement.ownerDocument.body)
     await userEvent.click(await canvas.findByRole('button', { name: 'Connect Gmail' }))
-    await expect(await canvas.findByRole('heading', { name: 'Gmail connected' })).toBeVisible()
+    await waitFor(async () => expect(await body.findByText('Gmail connected')).toBeVisible())
+    await expect(
+      await body.findByText(
+        "We're importing your email now. You can use your inbox while that finishes.",
+      ),
+    ).toBeVisible()
     await expect(await canvas.findByRole('textbox', { name: 'Search mail' })).toBeVisible()
-    await expect(await canvas.findByText('Importing older mail')).toBeVisible()
-  },
-}
-
-export const GmailConnected: Story = {
-  parameters: { mailrovers: storybookScenarios.gmailConnected },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Connect Gmail' }))
-    await expect(await canvas.findByRole('heading', { name: 'Gmail connected' })).toBeVisible()
-    await expect(
-      await canvas.findByText(/is ready\. Opening your inbox as soon as the first messages arrive\./),
-    ).toBeVisible()
-    await expect(
-      await canvas.findByText('Older mail will continue importing in the background'),
-    ).toBeVisible()
-    await expect(canvas.queryByRole('textbox', { name: 'Search mail' })).toBeNull()
+    await expect(await canvas.findByRole('button', { name: 'Importing email' })).toBeVisible()
   },
 }

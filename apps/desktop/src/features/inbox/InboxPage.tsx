@@ -15,6 +15,7 @@ export function InboxPage({
   onSearchSubmit,
   showSidebarToggle,
   onShowSidebar,
+  importInProgress,
   onSelect,
 }: {
   mailbox: MailboxId
@@ -27,6 +28,7 @@ export function InboxPage({
   onSearchSubmit: (value: string) => void
   showSidebarToggle?: boolean | undefined
   onShowSidebar?: (() => void) | undefined
+  importInProgress?: boolean | undefined
   onSelect: (id: ConversationId) => void
 }) {
   const query = useConversationPages(mailbox, labelId === undefined ? undefined : { labelId })
@@ -58,6 +60,7 @@ export function InboxPage({
         onSearchSubmit={onSearchSubmit}
         showSidebarToggle={showSidebarToggle}
         onShowSidebar={onShowSidebar}
+        importInProgress={importInProgress}
       />
       {query.isPending ? (
         <div className="px-4 py-6 text-sm" aria-live="polite">

@@ -20,6 +20,7 @@ export function WorkspaceRouteColumn({
   onSearchSubmit,
   showSidebarToggle,
   onShowSidebar,
+  importInProgress,
   onSelectConversation,
   searchPages,
   searchHasNextPage,
@@ -42,6 +43,7 @@ export function WorkspaceRouteColumn({
   onSearchSubmit: (value: string) => void
   showSidebarToggle: boolean
   onShowSidebar: () => void
+  importInProgress: boolean
   onSelectConversation: (conversationId: ConversationId) => void
   searchPages: InfiniteData<SearchPage> | undefined
   searchHasNextPage: boolean
@@ -60,6 +62,7 @@ export function WorkspaceRouteColumn({
           mailboxId={mailboxId}
           showSidebarToggle={showSidebarToggle}
           onShowSidebar={onShowSidebar}
+          importInProgress={importInProgress}
           onClose={onCloseAiSettings}
         />
       )
@@ -73,6 +76,7 @@ export function WorkspaceRouteColumn({
           onSearchSubmit={onSearchSubmit}
           showSidebarToggle={showSidebarToggle}
           onShowSidebar={onShowSidebar}
+          importInProgress={importInProgress}
           onOpenComposer={onOpenComposer}
         />
       )
@@ -93,6 +97,7 @@ export function WorkspaceRouteColumn({
             onSearchSubmit={onSearchSubmit}
             showSidebarToggle={showSidebarToggle}
             onShowSidebar={onShowSidebar}
+            importInProgress={importInProgress}
             onClear={onClearSearch}
             onLoadMore={onLoadMoreSearch}
             onSelect={onSelectConversation}
@@ -112,6 +117,7 @@ export function WorkspaceRouteColumn({
           onSearchSubmit={onSearchSubmit}
           showSidebarToggle={showSidebarToggle}
           onShowSidebar={onShowSidebar}
+          importInProgress={importInProgress}
           onSelect={onSelectConversation}
         />
       )

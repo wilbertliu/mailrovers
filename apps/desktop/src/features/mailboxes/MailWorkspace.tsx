@@ -23,14 +23,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.js'
-import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
-import { Spinner } from '@/components/ui/spinner.js'
 import { IconTooltipButton } from '@/components/icon-tooltip-button.js'
 import { cn } from '@/lib/utils.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { Composer, type ComposerMode } from '../composer/Composer.js'
 import { ConversationReader } from '../conversation/ConversationReader.js'
 import { useSearchPages } from '../inbox/useSearchPages.js'
+import { ImportStatusIndicator } from './ImportStatusIndicator.js'
 import { WorkspaceRouteColumn } from './WorkspaceRouteColumn.js'
 
 function MailboxMenu({
@@ -191,6 +190,8 @@ export function MailWorkspace({
   const issue = issues.data?.[0]
   const search = useSearchPages(mailboxId, route.kind === 'search' ? route.query : '')
   const showSidebarToggle = sidebarCollapsed
+  const importInProgress =
+    mailbox.connectionState === 'connected' && mailbox.syncState !== 'ready'
 
   return (
     <main
@@ -204,12 +205,13 @@ export function MailWorkspace({
     >
       {sidebarCollapsed ? null : (
         <aside className="flex min-h-0 flex-col overflow-y-auto border-r bg-sidebar max-[980px]:hidden">
-          <div className="window-titlebar flex h-10 shrink-0 items-center gap-3 pl-21 pt-0.5 pr-2">
+          <div className="window-titlebar flex h-10 shrink-0 items-center gap-0 pl-21 pt-0.5 pr-2">
             <IconTooltipButton
               label="Hide sidebar"
               icon={SidebarLeftIcon}
               onClick={() => setSidebarCollapsed(true)}
             />
+            {importInProgress ? <ImportStatusIndicator /> : null}
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-5 px-2 pt-3 pb-2.5">
             <div className="flex h-9 items-center gap-2 px-0.5">
@@ -289,24 +291,13 @@ export function MailWorkspace({
                   ))}
               </nav>
             </div>
-            <div className="mt-auto space-y-1 pt-1">
-              {mailbox.connectionState === 'disconnected' ? (
+            {mailbox.connectionState === 'disconnected' ? (
+              <div className="mt-auto pt-1">
                 <output className="block px-0.5 text-sm leading-snug text-muted-foreground">
                   Offline cache retained. Reconnect Gmail to refresh, send, or edit Gmail.
                 </output>
-              ) : null}
-              {mailbox.connectionState === 'connected' && mailbox.syncState !== 'ready' ? (
-                <Marker
-                  className="w-auto text-sm text-muted-foreground"
-                  render={<output aria-live="polite" />}
-                >
-                  <MarkerIcon>
-                    <Spinner aria-hidden="true" />
-                  </MarkerIcon>
-                  <MarkerContent>Importing older mail</MarkerContent>
-                </Marker>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </div>
         </aside>
       )}
@@ -323,6 +314,7 @@ export function MailWorkspace({
         onSearchSubmit={submitSearch}
         showSidebarToggle={showSidebarToggle}
         onShowSidebar={() => setSidebarCollapsed(false)}
+        importInProgress={importInProgress}
         onSelectConversation={setSelectedConversation}
         searchPages={search.data}
         searchHasNextPage={search.hasNextPage}

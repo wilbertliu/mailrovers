@@ -78,7 +78,7 @@ Stable handles:
 | Workspace nav        | `[aria-label="Workspace"]`, `[aria-label="Labels"]`                                |
 | AI settings          | `role=button` / heading `AI provider`                                              |
 | Commands             | `Mark read`, `Archive`, `Star`, `Add label`                                        |
-| Connect              | `Connect Gmail`, `Waiting for Google…`, heading `Gmail connected`                  |
+| Connect              | `Connect Gmail`, `Waiting for Google…`, toast `Gmail connected`, button `Importing email` |
 
 Fixture subjects and copy live in `apps/desktop/src/storybook/storybook-fixtures.ts`. Catalog: `docs/storybook.md`.
 

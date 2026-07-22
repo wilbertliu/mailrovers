@@ -212,21 +212,6 @@ export const storybookScenarios = {
       }),
     },
   }),
-  gmailConnected: scenario('Gmail connected handoff', {
-    data: { mailboxes: [] },
-    responses: {
-      listMailboxes: [success([]), success([connectedImportMailbox])],
-      connectGmail: success({
-        mailbox: connectedImportMailbox,
-        sync: storybookFixtures.syncReceipt,
-      }),
-      getSyncStatus: success({
-        ...storybookFixtures.syncStatus,
-        phase: 'importing_labels',
-        importedMessageCount: 0,
-      }),
-    },
-  }),
   workspace: scenario('Populated workspace'),
   emptyInbox: scenario('Empty inbox', {
     data: { conversations: { items: [] }, drafts: [] },

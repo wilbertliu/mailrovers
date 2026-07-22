@@ -32,8 +32,8 @@ function normalizeSonnerTheme(theme: string | undefined): SonnerTheme {
 }
 
 const Toaster = ({ theme: callerTheme, ...props }: ToasterProps) => {
-  const { theme: systemTheme } = useTheme()
-  const theme = normalizeSonnerTheme(callerTheme ?? systemTheme)
+  const { forcedTheme, resolvedTheme } = useTheme()
+  const theme = normalizeSonnerTheme(callerTheme ?? forcedTheme ?? resolvedTheme)
 
   return (
     <Sonner

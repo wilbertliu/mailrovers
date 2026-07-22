@@ -18,6 +18,7 @@ export function SearchResults({
   onSelect,
   showSidebarToggle,
   onShowSidebar,
+  importInProgress,
 }: {
   pages: InfiniteData<SearchPage> | undefined
   selectedConversation?: ConversationId | undefined
@@ -32,6 +33,7 @@ export function SearchResults({
   onSelect: (conversationId: ConversationId) => void
   showSidebarToggle?: boolean | undefined
   onShowSidebar?: (() => void) | undefined
+  importInProgress?: boolean | undefined
 }) {
   const items = pages?.pages.flatMap((page) => page.items) ?? []
   const indexing = pages?.pages.some((page) => page.indexing) ?? false
@@ -45,6 +47,7 @@ export function SearchResults({
         onSearchSubmit={onSearchSubmit}
         showSidebarToggle={showSidebarToggle}
         onShowSidebar={onShowSidebar}
+        importInProgress={importInProgress}
         trailing={
           <Button type="button" variant="ghost" size="sm" onClick={onClear}>
             Clear

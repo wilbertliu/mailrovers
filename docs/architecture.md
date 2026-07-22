@@ -612,11 +612,10 @@ The initial import is resumable:
 
 Closing or crashing the application resumes from the last committed page token and checkpoint. Message and draft imports use separate continuation state so either can resume without restarting the other.
 
-After a new OAuth connection, the renderer shows a connection handoff for at least 800 ms. It opens
-the workspace once the first message batch is available, or when an empty mailbox reaches `ready`.
-The remaining initial import continues in the background and the workspace shows its active import
-status. An import resumed after reopening the application still uses the dedicated import recovery
-screen until it completes.
+After a new OAuth connection, the renderer opens the workspace immediately and shows a short
+toast while the initial import continues in the background. The workspace chrome shows an active
+import status next to the sidebar toggle. An import resumed after reopening the application still
+uses the dedicated import recovery screen until it completes.
 
 ### 12.3 Incremental synchronization
 

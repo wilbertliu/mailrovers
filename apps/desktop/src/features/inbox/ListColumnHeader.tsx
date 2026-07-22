@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { IconTooltipButton } from '@/components/icon-tooltip-button.js'
 import { Input } from '@/components/ui/input.js'
 import { cn } from '@/lib/utils.js'
+import { ImportStatusIndicator } from '../mailboxes/ImportStatusIndicator.js'
 
 export function ListColumnHeader({
   title,
@@ -13,6 +14,7 @@ export function ListColumnHeader({
   onSearchSubmit,
   showSidebarToggle = false,
   onShowSidebar,
+  importInProgress = false,
   trailing,
   className,
 }: {
@@ -23,6 +25,7 @@ export function ListColumnHeader({
   onSearchSubmit: (value: string) => void
   showSidebarToggle?: boolean | undefined
   onShowSidebar?: (() => void) | undefined
+  importInProgress?: boolean | undefined
   trailing?: ReactNode
   className?: string | undefined
 }) {
@@ -36,7 +39,10 @@ export function ListColumnHeader({
         )}
       >
         {showSidebarToggle && onShowSidebar ? (
-          <IconTooltipButton label="Show sidebar" icon={SidebarLeftIcon} onClick={onShowSidebar} />
+          <div className="flex items-center gap-0">
+            <IconTooltipButton label="Show sidebar" icon={SidebarLeftIcon} onClick={onShowSidebar} />
+            {importInProgress ? <ImportStatusIndicator /> : null}
+          </div>
         ) : null}
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-semibold tracking-tight">{title}</h1>

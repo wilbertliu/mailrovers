@@ -37,15 +37,12 @@ import { Spinner } from '@/components/ui/spinner.js'
 import logo from '@/assets/logo.png'
 import { DesktopApplicationError, desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
-import { ConnectionHandoffPage } from './ConnectionHandoffPage.js'
 import { useMailboxOpeningSplash } from './use-startup-splash.js'
-
-const CONNECTION_HANDOFF_MINIMUM_MS = 800
 
 type MailboxGateIntent =
   | { kind: 'mailbox'; mailboxId?: MailboxId | undefined }
   | { kind: 'connect'; mailboxId?: MailboxId | undefined }
-  | { kind: 'handoff'; mailboxId: MailboxId; minimumElapsed: boolean }
+  | { kind: 'post-connect'; mailboxId: MailboxId }
 
 type MailboxGateScreen =
   | { kind: 'loading' }
@@ -55,7 +52,6 @@ type MailboxGateScreen =
       onConnected: (mailboxId: MailboxId) => Promise<void>
       onCancel?: (() => void) | undefined
     }
-  | { kind: 'handoff'; emailAddress: string }
   | { kind: 'import'; mailbox: MailboxSummary; onChanged: () => Promise<void> }
   | {
       kind: 'workspace'
@@ -64,12 +60,6 @@ type MailboxGateScreen =
       onSelectMailbox: (mailboxId: MailboxId) => void
       onAddAccount: () => void
     }
-
-function connectionHandoffMinimum(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, CONNECTION_HANDOFF_MINIMUM_MS)
-  })
-}
 
 function WindowFrame({
   children,
@@ -462,13 +452,13 @@ export function MailboxGate() {
   }, [queryClient])
   const onConnected = useCallback(
     async (mailboxId: MailboxId) => {
-      setIntent({ kind: 'handoff', mailboxId, minimumElapsed: false })
-      await Promise.all([onChanged(), connectionHandoffMinimum()])
-      setIntent((current) =>
-        current.kind === 'handoff' && current.mailboxId === mailboxId
-          ? { ...current, minimumElapsed: true }
-          : current,
-      )
+      setIntent({ kind: 'post-connect', mailboxId })
+      await onChanged()
+      toast.success('Gmail connected', {
+        id: 'gmail-connected',
+        description:
+          "We're importing your email now. You can use your inbox while that finishes.",
+      })
     },
     [onChanged],
   )
@@ -505,16 +495,9 @@ export function MailboxGate() {
           : {}),
       }
     } else if (
-      intent.kind === 'handoff' &&
-      intent.mailboxId === mailbox.id &&
-      (!intent.minimumElapsed ||
-        (mailbox.importedMessageCount === 0 && mailbox.syncState !== 'ready'))
-    ) {
-      screen = { kind: 'handoff', emailAddress: mailbox.emailAddress }
-    } else if (
       mailbox.connectionState === 'connected' &&
       mailbox.syncState !== 'ready' &&
-      intent.kind !== 'handoff'
+      intent.kind !== 'post-connect'
     ) {
       screen = { kind: 'import', mailbox, onChanged }
     } else {
@@ -551,9 +534,6 @@ export function MailboxGate() {
           {...(screen.onCancel === undefined ? {} : { onCancel: screen.onCancel })}
         />
       )
-      break
-    case 'handoff':
-      content = <ConnectionHandoffPage emailAddress={screen.emailAddress} />
       break
     case 'import':
       content = <ImportPage mailbox={screen.mailbox} onChanged={screen.onChanged} />
