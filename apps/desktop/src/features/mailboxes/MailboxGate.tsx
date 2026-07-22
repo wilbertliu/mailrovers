@@ -34,6 +34,7 @@ import {
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
 import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress.js'
 import { Spinner } from '@/components/ui/spinner.js'
+import logo from '@/assets/logo.png'
 import { DesktopApplicationError, desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
 import { ConnectionHandoffPage } from './ConnectionHandoffPage.js'
@@ -220,41 +221,44 @@ function ConnectPage({
 
   return (
     <main className="grid h-full place-items-center p-6">
-      <Card className="w-full max-w-xl">
-        <CardHeader>
-          <CardTitle>
-            <h1 className="text-balance">Before you connect</h1>
-          </CardTitle>
-          <CardDescription className="text-pretty">
-            MailRovers connects directly to Gmail and keeps your imported mail on this Mac.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <ItemGroup>
-            <Item variant="muted" size="sm">
-              <ItemMedia variant="icon">
-                <HugeiconsIcon icon={ComputerProtectionIcon} strokeWidth={2} />
-              </ItemMedia>
-              <ItemContent>
-                <ItemTitle>Stored on this Mac</ItemTitle>
-                <ItemDescription>
-                  Imported messages live in MailRovers' local database.
-                </ItemDescription>
-              </ItemContent>
-            </Item>
-            <Item variant="muted" size="sm">
-              <ItemMedia variant="icon">
-                <HugeiconsIcon icon={BrowserIcon} strokeWidth={2} />
-              </ItemMedia>
-              <ItemContent>
-                <ItemTitle>Google handles sign-in</ItemTitle>
-                <ItemDescription>Authorization opens in your default browser.</ItemDescription>
-              </ItemContent>
-            </Item>
-          </ItemGroup>
-        </CardContent>
-        <CardFooter className="flex-wrap gap-2">{actions}</CardFooter>
-      </Card>
+      <div className="flex w-full max-w-xl flex-col items-center gap-6">
+        <img src={logo} alt="MailRovers" width={64} height={64} className="size-16" />
+        <Card className="w-full">
+          <CardHeader>
+            <CardTitle>
+              <h1 className="text-balance">Before you connect</h1>
+            </CardTitle>
+            <CardDescription className="text-pretty">
+              MailRovers connects directly to Gmail and keeps your imported mail on this Mac.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <ItemGroup>
+              <Item variant="muted" size="sm">
+                <ItemMedia variant="icon">
+                  <HugeiconsIcon icon={ComputerProtectionIcon} strokeWidth={2} />
+                </ItemMedia>
+                <ItemContent>
+                  <ItemTitle>Stored on this Mac</ItemTitle>
+                  <ItemDescription>
+                    Imported messages live in MailRovers' local database.
+                  </ItemDescription>
+                </ItemContent>
+              </Item>
+              <Item variant="muted" size="sm">
+                <ItemMedia variant="icon">
+                  <HugeiconsIcon icon={BrowserIcon} strokeWidth={2} />
+                </ItemMedia>
+                <ItemContent>
+                  <ItemTitle>Google handles sign-in</ItemTitle>
+                  <ItemDescription>Authorization opens in your default browser.</ItemDescription>
+                </ItemContent>
+              </Item>
+            </ItemGroup>
+          </CardContent>
+          <CardFooter className="flex-wrap gap-2">{actions}</CardFooter>
+        </Card>
+      </div>
     </main>
   )
 }
