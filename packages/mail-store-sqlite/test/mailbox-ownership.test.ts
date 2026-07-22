@@ -145,6 +145,55 @@ beforeEach(async () => {
 afterEach(() => database.close())
 
 describe('SQLite mailbox ownership', () => {
+  it('rejects commands targeting another mailbox conversation, message, or label', async () => {
+    const otherMailboxLabel = (await store.listLabels(otherMailbox.id))[0]
+    if (otherMailboxLabel === undefined) throw new Error('Expected the other mailbox label')
+    const outboxCount = countRows('command_outbox')
+
+    await expect(
+      store.enqueueCommand({
+        id: commandId('foreign-command-conversation'),
+        mailboxId: mailbox.id,
+        idempotencyKey: 'foreign-command-conversation',
+        command: {
+          kind: 'set-thread-read',
+          conversationId: otherMailboxConversation,
+          read: true,
+        },
+        createdAt: timestamp,
+      }),
+    ).rejects.toThrow('COMMAND_TARGET_NOT_FOUND')
+    await expect(
+      store.enqueueCommand({
+        id: commandId('foreign-command-message'),
+        mailboxId: mailbox.id,
+        idempotencyKey: 'foreign-command-message',
+        command: {
+          kind: 'set-message-starred',
+          messageId: otherMailboxMessage,
+          starred: true,
+        },
+        createdAt: timestamp,
+      }),
+    ).rejects.toThrow('COMMAND_TARGET_NOT_FOUND')
+    await expect(
+      store.enqueueCommand({
+        id: commandId('foreign-command-label'),
+        mailboxId: mailbox.id,
+        idempotencyKey: 'foreign-command-label',
+        command: {
+          kind: 'set-thread-label',
+          conversationId: mailboxConversation,
+          labelId: otherMailboxLabel.id,
+          applied: true,
+        },
+        createdAt: timestamp,
+      }),
+    ).rejects.toThrow('COMMAND_TARGET_NOT_FOUND')
+
+    expect(countRows('command_outbox')).toBe(outboxCount)
+  })
+
   it('isolates drafts by mailbox even when a foreign draft ID is supplied', async () => {
     const owned = await store.saveDraft({
       request: {
@@ -219,7 +268,7 @@ describe('SQLite mailbox ownership', () => {
       idempotencyKey: 'draft-operation-collision',
       command: {
         kind: 'set-thread-read',
-        conversationId: conversationId('other-thread'),
+        conversationId: otherMailboxConversation,
         read: true,
       },
       createdAt: timestamp,
@@ -370,7 +419,7 @@ describe('SQLite mailbox ownership', () => {
       idempotencyKey: 'same-key-command',
       command: {
         kind: 'set-thread-archived',
-        conversationId: conversationId('first-thread'),
+        conversationId: mailboxConversation,
         archived: true,
       },
     })
@@ -380,7 +429,7 @@ describe('SQLite mailbox ownership', () => {
       idempotencyKey: 'same-key-command',
       command: {
         kind: 'set-thread-read',
-        conversationId: conversationId('other-thread'),
+        conversationId: otherMailboxConversation,
         read: true,
       },
     })
@@ -404,7 +453,7 @@ describe('SQLite mailbox ownership', () => {
         idempotencyKey: `non-issue-${state}`,
         command: {
           kind: 'set-thread-read',
-          conversationId: conversationId(`non-issue-${state}`),
+          conversationId: mailboxConversation,
           read: true,
         },
         createdAt: timestamp,
@@ -423,7 +472,7 @@ describe('SQLite mailbox ownership', () => {
       idempotencyKey: 'issue-failed',
       command: {
         kind: 'set-thread-archived',
-        conversationId: conversationId('issue-failed'),
+        conversationId: mailboxConversation,
         archived: true,
       },
       createdAt: timestamp,
@@ -434,7 +483,7 @@ describe('SQLite mailbox ownership', () => {
       idempotencyKey: 'issue-needs-review',
       command: {
         kind: 'set-thread-read',
-        conversationId: conversationId('issue-needs-review'),
+        conversationId: otherMailboxConversation,
         read: true,
       },
       createdAt: timestamp,

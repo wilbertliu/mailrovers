@@ -14,6 +14,11 @@ import {
 } from './sqlite-row-helpers.js'
 
 const commandStateTransitionError = 'COMMAND_STATE_TRANSITION_NOT_FOUND'
+const commandTargetNotFoundError = 'COMMAND_TARGET_NOT_FOUND'
+
+function targetNotFound(): Error & { code: string } {
+  return Object.assign(new Error(commandTargetNotFoundError), { code: commandTargetNotFoundError })
+}
 
 function inverseCommand(command: MailCommand): MailCommand {
   switch (command.kind) {
@@ -38,12 +43,45 @@ export class SqliteCommandsOutbox {
     private readonly draftMergeOptions: DraftMergeOptions,
     private readonly publishCommitted: (changes: CommittedChangeSet) => void,
   ) {}
+  private assertCommandOwnership(mailboxId: MailboxId, command: MailCommand): void {
+    switch (command.kind) {
+      case 'set-thread-archived':
+      case 'set-thread-read': {
+        const owned = this.db
+          .prepare('SELECT 1 FROM conversations WHERE id=? AND mailbox_id=?')
+          .get(command.conversationId, mailboxId)
+        if (owned === undefined) throw targetNotFound()
+        return
+      }
+      case 'set-message-starred': {
+        const owned = this.db
+          .prepare('SELECT 1 FROM messages WHERE id=? AND mailbox_id=?')
+          .get(command.messageId, mailboxId)
+        if (owned === undefined) throw targetNotFound()
+        return
+      }
+      case 'set-thread-label': {
+        const owned = this.db
+          .prepare(`SELECT 1 FROM conversations c,labels l
+          WHERE c.id=? AND c.mailbox_id=? AND l.id=? AND l.mailbox_id=c.mailbox_id`)
+          .get(command.conversationId, mailboxId, command.labelId)
+        if (owned === undefined) throw targetNotFound()
+        return
+      }
+      default: {
+        const exhaustive: never = command
+        throw new Error(`Unsupported command ownership check: ${String(exhaustive)}`)
+      }
+    }
+  }
+
   async enqueueCommand(input: Parameters<MailStore['enqueueCommand']>[0]): Promise<CommandReceipt> {
     const committed = this.db.transaction(() => {
       const existing = this.db
         .prepare('SELECT * FROM command_outbox WHERE mailbox_id=? AND idempotency_key=?')
         .get(input.mailboxId, input.idempotencyKey)
       if (existing !== undefined) return { receipt: mapCommand(existing), changed: false }
+      this.assertCommandOwnership(input.mailboxId, input.command)
       this.db
         .prepare(`INSERT INTO command_outbox
         (id,mailbox_id,idempotency_key,command_kind,entity_key,payload_json,state,created_at,updated_at)
@@ -113,22 +151,7 @@ export class SqliteCommandsOutbox {
         throw new Error('Draft and send commands cannot be undone')
       const command = inverseCommand(source.command)
       const entityKey = commandEntity(command)
-      const owned =
-        command.kind === 'set-message-starred'
-          ? this.db
-              .prepare('SELECT 1 FROM messages WHERE id=? AND mailbox_id=?')
-              .get(command.messageId, input.mailboxId)
-          : this.db
-              .prepare('SELECT 1 FROM conversations WHERE id=? AND mailbox_id=?')
-              .get(command.conversationId, input.mailboxId)
-      if (owned === undefined) throw new Error('Undo target does not belong to this mailbox')
-      if (
-        command.kind === 'set-thread-label' &&
-        this.db
-          .prepare('SELECT 1 FROM labels WHERE id=? AND mailbox_id=?')
-          .get(command.labelId, input.mailboxId) === undefined
-      )
-        throw new Error('Undo label does not belong to this mailbox')
+      this.assertCommandOwnership(input.mailboxId, command)
       this.db
         .prepare(`INSERT INTO command_outbox
         (id,mailbox_id,idempotency_key,command_kind,entity_key,payload_json,state,
@@ -225,7 +248,7 @@ export class SqliteCommandsOutbox {
         const value = this.db
           .prepare('SELECT provider_thread_id FROM conversations WHERE id=? AND mailbox_id=?')
           .get(stored.command.conversationId, stored.mailboxId)
-        if (value === undefined) throw new Error('Command conversation was not found')
+        if (value === undefined) throw targetNotFound()
         return {
           mailboxId: stored.mailboxId,
           command: stored.command,
@@ -237,7 +260,7 @@ export class SqliteCommandsOutbox {
           .prepare(`SELECT c.provider_thread_id,l.provider_label_id FROM conversations c,labels l
           WHERE c.id=? AND c.mailbox_id=? AND l.id=? AND l.mailbox_id=c.mailbox_id`)
           .get(stored.command.conversationId, stored.mailboxId, stored.command.labelId)
-        if (value === undefined) throw new Error('Command conversation or label was not found')
+        if (value === undefined) throw targetNotFound()
         const result = row(value)
         return {
           mailboxId: stored.mailboxId,
@@ -250,7 +273,7 @@ export class SqliteCommandsOutbox {
         const value = this.db
           .prepare('SELECT provider_message_id FROM messages WHERE id=? AND mailbox_id=?')
           .get(stored.command.messageId, stored.mailboxId)
-        if (value === undefined) throw new Error('Command message was not found')
+        if (value === undefined) throw targetNotFound()
         return {
           mailboxId: stored.mailboxId,
           command: stored.command,
@@ -270,7 +293,7 @@ export class SqliteCommandsOutbox {
           LEFT JOIN messages reply ON reply.id=d.reply_to_message_id AND reply.mailbox_id=d.mailbox_id
           WHERE d.id=? AND d.mailbox_id=?`)
           .get(stored.command.draftId, stored.mailboxId)
-        if (value === undefined) throw new Error('Command draft was not found')
+        if (value === undefined) throw targetNotFound()
         const result = row(value)
         if (
           Number(result.version) !== stored.command.expectedVersion ||
@@ -307,6 +330,10 @@ export class SqliteCommandsOutbox {
             references: replyInternetMessageId === undefined ? [] : [replyInternetMessageId],
           },
         }
+      }
+      default: {
+        const exhaustive: never = stored.command
+        throw new Error(`Unsupported provider command: ${String(exhaustive)}`)
       }
     }
   }

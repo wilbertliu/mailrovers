@@ -82,7 +82,7 @@ describe('committed change sets', () => {
         },
         createdAt: now,
       }),
-    ).rejects.toThrow('FOREIGN KEY constraint failed')
+    ).rejects.toThrow('COMMAND_TARGET_NOT_FOUND')
 
     expect(events).toEqual([])
   })

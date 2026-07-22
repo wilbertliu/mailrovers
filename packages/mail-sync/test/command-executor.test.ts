@@ -489,6 +489,35 @@ describe('command executor', () => {
     })
   })
 
+  it('fails a command whose target disappears before resolution without retrying', async () => {
+    const store = await prepareArchiveCommand()
+    database
+      ?.prepare(
+        `UPDATE command_outbox
+        SET payload_json=json_set(payload_json, '$.conversationId', ?),
+            entity_key=?
+        WHERE id=?`,
+      )
+      .run(
+        conversationId('gmail:commands:conversation:missing'),
+        `conversation:${conversationId('gmail:commands:conversation:missing')}`,
+        'status-command',
+      )
+    const provider = new CommandProvider()
+
+    await runExecutor(store, provider)
+
+    expect(provider.executions).toBe(0)
+    expect(
+      database
+        ?.prepare('SELECT state,last_error_code AS error_code FROM command_outbox WHERE id=?')
+        .get('status-command'),
+    ).toEqual({
+      state: 'failed',
+      error_code: 'COMMAND_TARGET_NOT_FOUND',
+    })
+  })
+
   it('cancels a draft command superseded before provider execution', async () => {
     const store = await prepareSendCommand()
     await runExecutor(store, new ThrowingProvider(new Error('DRAFT_SUPERSEDED')))

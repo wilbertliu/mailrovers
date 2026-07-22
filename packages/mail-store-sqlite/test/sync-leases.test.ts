@@ -177,6 +177,20 @@ describe('durable synchronization leases', () => {
 
   it('prevents stale outbox completion from interleaving after sync takeover', async () => {
     const { first, second } = await setupTwoStores()
+    const seedLease = await first.acquireSyncLease({
+      mailboxId: mailbox.id,
+      ownerId: 'seed-owner',
+      now: t0,
+      expiresAt: t10,
+    })
+    if (seedLease === undefined) throw new Error('Expected seed lease')
+    await first.applyImportBatch({
+      mailboxId: mailbox.id,
+      batch: { messages: [message('command')] },
+      updatedAt: t0,
+      fence: { ownerId: seedLease.ownerId, fencingToken: seedLease.fencingToken, now: t0 },
+    })
+    await first.releaseSyncLease(seedLease)
     await first.enqueueCommand({
       id: commandId('lease-command'),
       mailboxId: mailbox.id,

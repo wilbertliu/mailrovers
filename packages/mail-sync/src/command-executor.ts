@@ -13,6 +13,11 @@ function providerStatus(error: unknown): number | undefined {
   return typeof error.status === 'number' ? error.status : undefined
 }
 
+function errorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return undefined
+  return typeof error.code === 'string' ? error.code : undefined
+}
+
 export class MailCommandExecutor implements CommandDispatcher {
   private running = false
   private stopped = false
@@ -130,12 +135,22 @@ export class MailCommandExecutor implements CommandDispatcher {
           await this.completeApplied(command, result)
         } catch (error) {
           const status = providerStatus(error)
+          const code = errorCode(error)
           if (error instanceof Error && error.message === 'DRAFT_SUPERSEDED') {
             await this.options.store.setCommandState({
               id: command.id,
               mailboxId: command.mailboxId,
               state: 'cancelled',
               errorCode: 'DRAFT_SUPERSEDED',
+              updatedAt: this.now(),
+            })
+          } else if (code === 'COMMAND_TARGET_NOT_FOUND') {
+            await this.options.store.setCommandState({
+              id: command.id,
+              mailboxId: command.mailboxId,
+              state: 'failed',
+              errorCode: code,
+              errorMessage: 'The command target no longer exists in this mailbox.',
               updatedAt: this.now(),
             })
           } else if (
