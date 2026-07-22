@@ -31,6 +31,9 @@ export type ImportState =
   | 'complete'
   | 'failed'
 
+/** Import phase to resume after pause/failure; never terminal paused/failed itself. */
+export type ResumeImportState = Exclude<ImportState, 'paused' | 'failed'>
+
 export type Mailbox = {
   id: MailboxId
   workspaceId: WorkspaceId
@@ -162,7 +165,7 @@ export type SyncCheckpoint = {
   importMessagePageToken?: string | undefined
   importDraftPageToken?: string | undefined
   importState: ImportState
-  resumeImportState?: Exclude<ImportState, 'paused'> | undefined
+  resumeImportState?: ResumeImportState | undefined
   importedMessageCount: number
   importedDraftCount: number
   importTotalEstimate?: number | undefined

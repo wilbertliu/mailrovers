@@ -1,4 +1,5 @@
 export * from './command-executor.js'
 export * from './command-policy.js'
 export * from './sync-engine.js'
+export * from './sync-lease.js'
 export * from './sync-scheduler.js'

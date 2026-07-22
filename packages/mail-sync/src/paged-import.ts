@@ -31,7 +31,7 @@ export type PagedImportRunScope = {
   signal: AbortSignal
   store: Pick<MailStore, 'applyImportBatch'>
   now(): UtcTimestamp
-  renewLease(): Promise<SyncLeaseFence>
+  withFence<T>(write: (fence: SyncLeaseFence) => Promise<T>): Promise<T>
   requireCheckpoint(): Promise<SyncCheckpoint>
   publishProgress(): Promise<void>
 }
@@ -69,7 +69,6 @@ export async function runPagedImportPhase(
     const checkpoint = await scope.requireCheckpoint()
     const pageToken = spec.pageToken(checkpoint)
     let pageCount = 0
-    await scope.renewLease()
     for await (const batch of scope.provider.importMailbox({
       mailboxId: scope.mailboxId,
       phase: spec.phase,
@@ -85,13 +84,15 @@ export async function runPagedImportPhase(
           })
         : undefined
       if (page?.nextState !== undefined) nextState = page.nextState
-      await scope.store.applyImportBatch({
-        mailboxId: scope.mailboxId,
-        batch: batch.changes,
-        ...(page === undefined ? {} : { page }),
-        updatedAt: scope.now(),
-        fence: await scope.renewLease(),
-      })
+      await scope.withFence((fence) =>
+        scope.store.applyImportBatch({
+          mailboxId: scope.mailboxId,
+          batch: batch.changes,
+          ...(page === undefined ? {} : { page }),
+          updatedAt: scope.now(),
+          fence,
+        }),
+      )
       await scope.publishProgress()
       if (batch.pageComplete && batch.nextPageToken === undefined) importing = false
     }

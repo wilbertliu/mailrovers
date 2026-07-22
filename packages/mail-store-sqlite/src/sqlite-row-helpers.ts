@@ -14,6 +14,7 @@ import {
   type MailAddress,
   type Mailbox,
   type MailboxId,
+  type ResumeImportState,
   type SyncCheckpoint,
 } from '@mailrovers/mail-domain'
 
@@ -301,7 +302,7 @@ export function mapCheckpoint(value: unknown): SyncCheckpoint {
     ...(optionalString(result.resume_import_state) === undefined
       ? {}
       : {
-          resumeImportState: String(result.resume_import_state) as Exclude<ImportState, 'paused'>,
+          resumeImportState: String(result.resume_import_state) as ResumeImportState,
         }),
     importedMessageCount: Number(result.imported_message_count),
     importedDraftCount: Number(result.imported_draft_count),
