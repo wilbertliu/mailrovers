@@ -12,3 +12,4 @@ artifacts/
 *.sqlite-*
 *.tsbuildinfo
 .cursor/worktrees/
+.audit/
