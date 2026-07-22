@@ -35,7 +35,7 @@ fictional fixtures in `src/storybook/storybook-fixtures.ts`.
   and subscription events.
 - `src/storybook/mock-desktop-bridge.ts` implements the complete preload bridge contract.
 - `startup-splash-shared.css` owns logo shine + surface colors for both Electron and React splashes.
-- `src/startup-screen-document.ts` inlines that CSS (via `mailrovers:startup-splash-shared-css`) into the
+- `src/startup-screen-document.ts` inlines that CSS (via `startup-splash-shared.css?raw`) into the
   script-free startup document used by Electron's BrowserView overlay and its Storybook story.
 - `electron/startup-splash-overlay.ts` keeps that splash above the renderer until the mailbox gate
   sets `data-mailrovers-ui-ready`.

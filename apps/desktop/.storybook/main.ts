@@ -2,7 +2,6 @@ import type { StorybookConfig } from '@storybook/react-vite'
 import tailwindcss from '@tailwindcss/vite'
 import { mergeConfig } from 'vite'
 import { rendererAliases } from '../vite.shared.config.js'
-import { startupSplashSharedCssPlugin } from '../vite.startup-splash-shared-css.js'
 
 const config: StorybookConfig = {
   stories: ['../src/**/*.stories.@(ts|tsx)'],
@@ -13,7 +12,7 @@ const config: StorybookConfig = {
   },
   async viteFinal(config) {
     return mergeConfig(config, {
-      plugins: [tailwindcss(), startupSplashSharedCssPlugin()],
+      plugins: [tailwindcss()],
       resolve: { alias: rendererAliases },
     })
   },

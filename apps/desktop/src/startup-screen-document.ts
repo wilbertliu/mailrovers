@@ -1,4 +1,4 @@
-import sharedSplashCss from 'mailrovers:startup-splash-shared-css'
+import sharedSplashCss from '../startup-splash-shared.css?raw'
 
 /** Script-free Electron startup HTML. Visuals come from `startup-splash-shared.css`. */
 export function createStartupScreenDocument(logoSrc: string): string {
