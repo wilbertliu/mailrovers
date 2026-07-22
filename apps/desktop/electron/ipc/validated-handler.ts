@@ -122,6 +122,14 @@ export function safeApplicationError(error: unknown, id: string): ApplicationErr
       id,
       'reviewSettings',
     )
+  if (error instanceof Error && error.message === 'Google OAuth client secret is required')
+    return applicationError(
+      'GMAIL_CONFIGURATION_REQUIRED',
+      'Google OAuth client secret is required. Set MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET from the Desktop app client in Google Cloud Console.',
+      false,
+      id,
+      'reviewSettings',
+    )
   if (code === 'SECRET_STORAGE_UNAVAILABLE')
     return applicationError(
       'SECRET_STORAGE_UNAVAILABLE',

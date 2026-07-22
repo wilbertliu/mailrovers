@@ -14,14 +14,16 @@ and verification — not the client type.
 | Item | Value |
 | --- | --- |
 | Client type | Desktop app |
-| Environment variable | `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID` |
-| Client secret | Not used. Do not configure one for MailRovers. |
+| Environment variables | `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID` (required), `MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET` (required when Google’s token endpoint rejects the exchange with `client_secret is missing`) |
+| Client secret | Google still issues one for Desktop clients. It is **not** confidential in a distributed desktop app, but many Google OAuth clients still require it on the token endpoint even with PKCE. Set the env var from Cloud Console when Connect Gmail fails that way. |
 | Scopes | `openid`, `email`, `https://www.googleapis.com/auth/gmail.modify` |
 | Callback | `http://127.0.0.1:<ephemeral-port>/oauth/callback` |
 | Token storage | Refresh token encrypted with Electron `safeStorage`, then SQLite |
 
 The main process reads `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID` at startup. Without it,
 local mail still opens, but **Connect Gmail** fails with a configuration error.
+If Google’s token exchange returns `client_secret is missing`, also set
+`MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET` to the Desktop client secret from Cloud Console.
 
 MailRovers binds a random localhost port and uses PKCE. You do not manually
 register that redirect URI when creating a Desktop app client.
@@ -67,17 +69,20 @@ Do not ship the development client ID in a public release build.
 2. Application type: **Desktop app**.
 3. Name it (for example `MailRovers Desktop (dev)`).
 4. Copy the **Client ID** (`….apps.googleusercontent.com`).
-5. Ignore the client secret for MailRovers. Do not put it in env or source.
+5. Copy the **Client secret** as well. Google still shows one for Desktop apps; MailRovers may need it for the token exchange even though it is not treated as confidential.
 
 ### 4. Run the desktop app
 
 ```sh
 MAILROVERS_GOOGLE_OAUTH_CLIENT_ID="YOUR-DEV-CLIENT-ID.apps.googleusercontent.com" \
+MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET="YOUR-DEV-CLIENT-SECRET" \
   pnpm --filter @mailrovers/desktop dev
 ```
 
 Then use **Connect Gmail**. Consent opens in the system browser. After success,
-the loopback page tells the user they can return to MailRovers.
+the loopback page tells the user they can return to MailRovers. If Connect Gmail
+fails with a message about a missing client secret, confirm the secret env var
+matches the Desktop client in Cloud Console.
 
 ### Development limits
 
@@ -175,16 +180,18 @@ Development and custom runs still use the environment variable:
 
 ```sh
 MAILROVERS_GOOGLE_OAUTH_CLIENT_ID="YOUR-PROD-CLIENT-ID.apps.googleusercontent.com"
+MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET="YOUR-PROD-CLIENT-SECRET"
 ```
 
-The client ID is **public** (it ships inside the desktop app), but:
+The client ID is **public** (it ships inside the desktop app). The Desktop client
+secret is also not confidential in a distributed binary — Google documents that —
+but token exchange often still requires sending it:
 
-- Do not commit production credentials workflows that mix in the **dev** client ID.
-- Prefer injecting the production client ID at package/release time (CI secret →
+- Do not commit production credentials workflows that mix in the **dev** client ID or secret.
+- Prefer injecting the production client ID and secret at package/release time (CI secret →
   build-time define into the main process) rather than asking end users to set
-  an env var.
-- Never treat a Desktop client “secret” as confidential storage for a distributed
-  binary.
+  env vars.
+- Never treat a Desktop client secret as a server-side confidential credential.
 
 ---
 
@@ -204,7 +211,7 @@ Full packaged OAuth checklist: [`m2-verification.md`](m2-verification.md).
 | Mistake | Correct approach |
 | --- | --- |
 | Creating a Web application client | Use **Desktop app** |
-| Expecting a client secret env var | MailRovers only uses the public client ID |
+| Setting only the client ID when Google requires the Desktop client secret | Also set `MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET` |
 | Using the prod client for local experiments (or vice versa) | Separate projects and client IDs |
 | Skipping test users while consent is Testing | Add every account under Test users |
 | Requesting `https://mail.google.com/` | Keep `gmail.modify` unless permanent delete is required |

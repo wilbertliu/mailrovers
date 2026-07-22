@@ -22,10 +22,26 @@ export const defaultGmailOAuthEndpoints: GmailOAuthEndpoints = {
 
 export type GmailOAuthConnectorOptions = {
   clientId: string
+  /** Google may require this even for Desktop clients; treat as non-confidential. */
+  clientSecret?: string | undefined
   openExternal(url: string): Promise<void>
   fetch?: typeof fetch | undefined
   endpoints?: GmailOAuthEndpoints | undefined
   timeoutMs?: number | undefined
+}
+
+export function oauthTokenBody(input: {
+  clientId: string
+  clientSecret?: string | undefined
+  entries: Record<string, string>
+}): URLSearchParams {
+  const body = new URLSearchParams({
+    client_id: input.clientId,
+    ...input.entries,
+  })
+  if (input.clientSecret !== undefined && input.clientSecret.length > 0)
+    body.set('client_secret', input.clientSecret)
+  return body
 }
 
 export function createPkce(): { verifier: string; challenge: string } {
@@ -55,13 +71,30 @@ function close(server: Server): Promise<void> {
   return new Promise((resolve) => server.close(() => resolve()))
 }
 
+function isMissingClientSecret(body: unknown): boolean {
+  if (typeof body !== 'object' || body === null) return false
+  const description =
+    'error_description' in body &&
+    typeof (body as { error_description: unknown }).error_description === 'string'
+      ? (body as { error_description: string }).error_description
+      : undefined
+  return description !== undefined && /client_secret is missing/i.test(description)
+}
+
 async function parseResponse(response: Response, label: string): Promise<unknown> {
-  if (!response.ok) throw new Error(`${label} failed with HTTP ${response.status}`)
+  const text = await response.text()
+  let body: unknown
   try {
-    return await response.json()
+    body = text.length === 0 ? undefined : JSON.parse(text)
   } catch {
+    if (!response.ok) throw new Error(`${label} failed with HTTP ${response.status}`)
     throw new Error(`${label} returned invalid JSON`)
   }
+  if (!response.ok) {
+    if (isMissingClientSecret(body)) throw new Error('Google OAuth client secret is required')
+    throw new Error(`${label} failed with HTTP ${response.status}`)
+  }
+  return body
 }
 
 export class GmailOAuthConnector implements GmailConnector {
@@ -180,12 +213,15 @@ export class GmailOAuthConnector implements GmailConnector {
       const result = await callback
       input.signal.throwIfAborted()
 
-      const tokenBody = new URLSearchParams({
-        client_id: this.options.clientId,
-        code: result.code,
-        code_verifier: verifier,
-        grant_type: 'authorization_code',
-        redirect_uri: result.redirectUri,
+      const tokenBody = oauthTokenBody({
+        clientId: this.options.clientId,
+        clientSecret: this.options.clientSecret,
+        entries: {
+          code: result.code,
+          code_verifier: verifier,
+          grant_type: 'authorization_code',
+          redirect_uri: result.redirectUri,
+        },
       })
       const tokenResponse = await this.fetchImplementation(this.endpoints.token, {
         method: 'POST',

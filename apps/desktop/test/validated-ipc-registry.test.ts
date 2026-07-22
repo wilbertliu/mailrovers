@@ -100,6 +100,26 @@ describe('validated IPC handler', () => {
         userAction: 'reviewSettings',
       },
     })
+
+    const missingSecret = harness(async () => {
+      throw new Error('Google OAuth client secret is required')
+    })
+    await expect(
+      missingSecret.listener(missingSecret.authorizedEvent, {
+        requestId: 'missing-secret',
+        value: 2,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'GMAIL_CONFIGURATION_REQUIRED',
+        message:
+          'Google OAuth client secret is required. Set MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET from the Desktop app client in Google Cloud Console.',
+        retryable: false,
+        requestId: 'missing-secret',
+        userAction: 'reviewSettings',
+      },
+    })
   })
 
   it('unregisters predictably and rejects a result schema without a failure envelope', () => {

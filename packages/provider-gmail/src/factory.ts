@@ -9,6 +9,7 @@ export class GmailProviderFactory implements MailProviderFactory {
   constructor(
     private readonly input: {
       clientId: string
+      clientSecret?: string | undefined
       getRefreshToken(mailboxId: MailboxId): Promise<string>
       fetch?: typeof fetch | undefined
       endpoints?: GmailOAuthEndpoints | undefined
@@ -20,6 +21,7 @@ export class GmailProviderFactory implements MailProviderFactory {
   async create(mailboxId: MailboxId): Promise<MailProvider> {
     const accessTokens = new RefreshTokenAccessTokenSource({
       clientId: this.input.clientId,
+      ...(this.input.clientSecret === undefined ? {} : { clientSecret: this.input.clientSecret }),
       getRefreshToken: () => this.input.getRefreshToken(mailboxId),
       ...(this.input.fetch === undefined ? {} : { fetch: this.input.fetch }),
       ...(this.input.endpoints === undefined ? {} : { endpoints: this.input.endpoints }),

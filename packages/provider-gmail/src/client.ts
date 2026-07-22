@@ -1,6 +1,10 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { tokenResponseSchema } from './schemas.js'
-import { defaultGmailOAuthEndpoints, type GmailOAuthEndpoints } from './oauth.js'
+import {
+  defaultGmailOAuthEndpoints,
+  oauthTokenBody,
+  type GmailOAuthEndpoints,
+} from './oauth.js'
 
 export class GmailApiError extends Error {
   constructor(
@@ -26,6 +30,7 @@ export class RefreshTokenAccessTokenSource implements AccessTokenSource {
   constructor(
     private readonly input: {
       clientId: string
+      clientSecret?: string | undefined
       getRefreshToken(): Promise<string>
       fetch?: typeof fetch | undefined
       endpoints?: GmailOAuthEndpoints | undefined
@@ -43,10 +48,13 @@ export class RefreshTokenAccessTokenSource implements AccessTokenSource {
     const response = await this.fetchImplementation(this.endpoints.token, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: this.input.clientId,
-        refresh_token: refreshToken,
-        grant_type: 'refresh_token',
+      body: oauthTokenBody({
+        clientId: this.input.clientId,
+        clientSecret: this.input.clientSecret,
+        entries: {
+          refresh_token: refreshToken,
+          grant_type: 'refresh_token',
+        },
       }),
       signal,
     })

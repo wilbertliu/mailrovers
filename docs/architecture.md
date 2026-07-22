@@ -589,7 +589,7 @@ MailRovers uses Google's OAuth installed-application flow:
 5. The refresh token is encrypted using Electron `safeStorage` before persistence.
 6. The decrypted token exists only for the duration required to refresh or call Gmail.
 
-No OAuth client secret is treated as confidential inside the distributed desktop application. Development and custom builds provide the public Desktop app client ID through `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID`; there is no client-secret setting.
+No OAuth client secret is treated as confidential inside the distributed desktop application. Development and custom builds provide the public Desktop app client ID through `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID`. When Google’s token endpoint requires it (common even for Desktop clients with PKCE), also set `MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET` from the same Cloud Console client.
 
 The Gmail scope is `https://www.googleapis.com/auth/gmail.modify`. Google's scope definition covers reading, composing, sending, labels, archive, and drafts while excluding immediate permanent deletion. MailRovers does not request the broader `https://mail.google.com/` scope. The authorization request also uses the OpenID Connect `openid` and `email` identity scopes. MailRovers stores the stable Google `sub` claim as `provider_account_id` and verifies that the identity email matches `users.getProfile`.
 

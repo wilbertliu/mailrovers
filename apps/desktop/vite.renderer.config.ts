@@ -15,6 +15,15 @@ function developmentCspPlugin(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), developmentCspPlugin()],
   base: './',
+  // Electron loads MAIN_WINDOW_VITE_DEV_SERVER_URL as http://localhost:<port>.
+  // Bind IPv4 explicitly so Chromium does not miss an IPv6-only Vite listener.
+  server: {
+    host: '127.0.0.1',
+    strictPort: true,
+  },
+  optimizeDeps: {
+    entries: ['index.html'],
+  },
   resolve: {
     alias: rendererAliases,
   },

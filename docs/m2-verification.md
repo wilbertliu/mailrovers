@@ -38,6 +38,7 @@ Run MailRovers with the public client ID:
 
 ```sh
 MAILROVERS_GOOGLE_OAUTH_CLIENT_ID="your-client-id.apps.googleusercontent.com" \
+MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET="your-client-secret" \
   pnpm --filter @mailrovers/desktop dev
 ```
 

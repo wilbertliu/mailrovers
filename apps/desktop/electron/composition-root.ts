@@ -99,6 +99,11 @@ function unavailableProviderFactory(): MailProviderFactory {
   }
 }
 
+function configuredClientSecret(): string | undefined {
+  const value = process.env.MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET
+  return value === undefined || value.length === 0 ? undefined : value
+}
+
 export function composeDesktopApplication(input: {
   store: MailStore
   subscribeCommittedChanges(listener: CommittedChangeListener): () => void
@@ -112,6 +117,7 @@ export function composeDesktopApplication(input: {
   shutdownNormalization(): Promise<void>
 } {
   const clientId = process.env.MAILROVERS_GOOGLE_OAUTH_CLIENT_ID
+  const clientSecret = configuredClientSecret()
   const gmailNormalizer =
     clientId === undefined || clientId.length === 0 ? undefined : new WorkerGmailNormalizer()
   const secretSealer = new ElectronSafeStorageSecretSealer()
@@ -123,6 +129,7 @@ export function composeDesktopApplication(input: {
             const { GmailOAuthConnector } = await import('@mailrovers/provider-gmail')
             return new GmailOAuthConnector({
               clientId,
+              ...(clientSecret === undefined ? {} : { clientSecret }),
               async openExternal(value) {
                 const url = new URL(value)
                 if (url.protocol !== 'https:') throw new Error('OAuth URL must use HTTPS')
@@ -142,6 +149,7 @@ export function composeDesktopApplication(input: {
             const { GmailProviderFactory } = await import('@mailrovers/provider-gmail')
             return new GmailProviderFactory({
               clientId,
+              ...(clientSecret === undefined ? {} : { clientSecret }),
               normalizer: gmailNormalizer,
               async getRefreshToken(id) {
                 const encrypted = await input.store.getEncryptedRefreshToken(id)

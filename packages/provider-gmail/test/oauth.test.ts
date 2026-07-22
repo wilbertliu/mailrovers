@@ -83,7 +83,84 @@ describe('Gmail installed-app OAuth', () => {
     })
     expect(tokenBody?.get('code')).toBe('authorization-code')
     expect(tokenBody?.get('code_verifier')).toHaveLength(86)
+    expect(tokenBody?.get('client_secret')).toBeNull()
     expect(tokenBody?.get('redirect_uri')).toBe(authorization?.searchParams.get('redirect_uri'))
+  })
+
+  it('includes an optional client secret in the token exchange', async () => {
+    let tokenBody: URLSearchParams | undefined
+    const connector = new GmailOAuthConnector({
+      clientId: 'desktop-client-id',
+      clientSecret: 'desktop-client-secret',
+      endpoints,
+      fetch: async (input, init) => {
+        const url =
+          typeof input === 'string'
+            ? new URL(input)
+            : input instanceof URL
+              ? input
+              : new URL(input.url)
+        if (url.href === endpoints.token) {
+          if (!(init?.body instanceof URLSearchParams)) throw new Error('Unexpected token body')
+          tokenBody = init.body
+          return json({
+            access_token: 'access-token',
+            expires_in: 3600,
+            refresh_token: 'refresh-token',
+            id_token: 'identity-token',
+            scope: 'openid email https://www.googleapis.com/auth/gmail.modify',
+          })
+        }
+        if (url.origin + url.pathname === endpoints.tokenInfo)
+          return json({
+            sub: 'google-account-1',
+            email: 'person@example.test',
+            aud: 'desktop-client-id',
+          })
+        return json({ emailAddress: 'person@example.test', historyId: '123' })
+      },
+      async openExternal(value) {
+        const authorization = new URL(value)
+        const redirect = authorization.searchParams.get('redirect_uri')
+        const state = authorization.searchParams.get('state')
+        if (!redirect || !state) throw new Error('Missing OAuth redirect values')
+        await fetch(`${redirect}?code=authorization-code&state=${encodeURIComponent(state)}`)
+      },
+    })
+
+    await expect(connector.authorize({ signal: new AbortController().signal })).resolves.toEqual(
+      expect.objectContaining({ providerAccountId: 'google-account-1' }),
+    )
+    expect(tokenBody?.get('client_secret')).toBe('desktop-client-secret')
+  })
+
+  it('maps a missing client secret to a MailRovers-owned error', async () => {
+    const connector = new GmailOAuthConnector({
+      clientId: 'desktop-client-id',
+      endpoints,
+      fetch: async (input) => {
+        const url =
+          typeof input === 'string'
+            ? new URL(input)
+            : input instanceof URL
+              ? input
+              : new URL(input.url)
+        if (url.href === endpoints.token)
+          return json({ error: 'invalid_request', error_description: 'client_secret is missing.' }, 400)
+        throw new Error(`Unexpected request to ${url.href}`)
+      },
+      async openExternal(value) {
+        const authorization = new URL(value)
+        const redirect = authorization.searchParams.get('redirect_uri')
+        const state = authorization.searchParams.get('state')
+        if (!redirect || !state) throw new Error('Missing OAuth redirect values')
+        await fetch(`${redirect}?code=authorization-code&state=${encodeURIComponent(state)}`)
+      },
+    })
+
+    await expect(connector.authorize({ signal: new AbortController().signal })).rejects.toThrow(
+      'Google OAuth client secret is required',
+    )
   })
 
   it('ignores an unrelated callback without consuming the authorization attempt', async () => {

@@ -55,11 +55,12 @@ There is no MailRovers application server in the initial release. See [`docs/arc
 
 ### Run locally
 
-Create a Google Cloud Desktop app OAuth client with the Gmail API enabled, then provide its public client ID. Desktop OAuth clients cannot keep a client secret, and MailRovers does not use one. Full development and production setup (consent screen, scopes, branding, and Google verification) is in [`docs/gmail-oauth-setup.md`](docs/gmail-oauth-setup.md).
+Create a Google Cloud Desktop app OAuth client with the Gmail API enabled, then provide its public client ID and (when Google requires it for token exchange) the Desktop client secret. Google still issues a secret for Desktop clients; it is not confidential in a distributed app, but the token endpoint often still expects it alongside PKCE. Full development and production setup (consent screen, scopes, branding, and Google verification) is in [`docs/gmail-oauth-setup.md`](docs/gmail-oauth-setup.md).
 
 ```sh
 pnpm install
 MAILROVERS_GOOGLE_OAUTH_CLIENT_ID="your-client-id.apps.googleusercontent.com" \
+MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET="your-client-secret" \
   pnpm --filter @mailrovers/desktop dev
 ```
 
