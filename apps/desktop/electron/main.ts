@@ -13,7 +13,8 @@ import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { pathToFileURL } from 'node:url'
 import { performance } from 'node:perf_hooks'
-import { startupScreenDocument } from '../src/startup-screen-document.js'
+import logoSrc from '../src/assets/logo.png?inline'
+import { createStartupScreenDocument } from '../src/startup-screen-document.js'
 import { composeDesktopApplication } from './composition-root.js'
 import type { DatabaseHost } from './database/database-host.js'
 import { createMainDatabaseHost } from './database/main-database-host.js'
@@ -139,7 +140,9 @@ async function createWindow(): Promise<void> {
   })
   mainWindow = window
   checkpoint('windowCreated')
-  await window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(startupScreenDocument)}`)
+  await window.loadURL(
+    `data:text/html;charset=utf-8,${encodeURIComponent(createStartupScreenDocument(logoSrc))}`,
+  )
   await presentWindow(app, window)
   checkpoint('windowVisible')
 

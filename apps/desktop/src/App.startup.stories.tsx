@@ -1,8 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, waitFor, within } from 'storybook/test'
-import { startupScreenDocument } from './startup-screen-document.js'
+import logoSrc from './assets/logo.png?inline'
+import { createStartupScreenDocument } from './startup-screen-document.js'
 import { storybookScenarios } from './storybook/storybook-scenarios.js'
 import './storybook/startup-screen.css'
+
+const startupScreenDocument = createStartupScreenDocument(logoSrc)
 
 function StartupScreen() {
   return (
@@ -36,7 +39,6 @@ export const OpeningMailbox: Story = {
       if (body === undefined || body === null) throw new Error('Startup document is not loaded')
       return body
     })
-    await expect(within(documentBody).getByRole('heading', { name: 'MailRovers' })).toBeVisible()
-    await expect(within(documentBody).getByText('Opening your mailbox…')).toBeVisible()
+    await expect(within(documentBody).getByRole('img', { name: 'MailRovers' })).toBeVisible()
   },
 }

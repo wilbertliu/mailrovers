@@ -35,7 +35,7 @@ fictional fixtures in `src/storybook/storybook-fixtures.ts`.
   and subscription events.
 - `src/storybook/mock-desktop-bridge.ts` implements the complete preload bridge contract.
 - `src/startup-screen-document.ts` owns the script-free startup document shared by Electron and its
-  Storybook story.
+  Storybook story (centered `logo.png` with a CSS shine sweep).
 - `src/App.*.stories.tsx` groups states by user flow and uses `play` functions for states that only
   appear after an interaction.
 
