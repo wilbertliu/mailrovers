@@ -122,6 +122,16 @@ export function safeApplicationError(error: unknown, id: string): ApplicationErr
       id,
       'reviewSettings',
     )
+  if (code === 'SECRET_STORAGE_UNAVAILABLE')
+    return applicationError(
+      'SECRET_STORAGE_UNAVAILABLE',
+      error instanceof Error
+        ? error.message
+        : 'Operating-system credential encryption is unavailable.',
+      false,
+      id,
+      'reviewSettings',
+    )
   return applicationError(
     'APPLICATION_ERROR',
     'MailRovers could not complete the request.',

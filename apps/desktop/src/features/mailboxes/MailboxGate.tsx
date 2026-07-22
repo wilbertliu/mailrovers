@@ -178,10 +178,15 @@ function ConnectPage({
     } catch (caught) {
       const cancelled =
         caught instanceof DesktopApplicationError && caught.detail.code === 'OPERATION_CANCELLED'
-      if (!cancelled)
+      if (!cancelled) {
+        const secretStorageUnavailable =
+          caught instanceof DesktopApplicationError &&
+          caught.detail.code === 'SECRET_STORAGE_UNAVAILABLE'
         toast.error('Gmail connection failed', {
           id: 'gmail-connect-error',
+          ...(secretStorageUnavailable ? { description: caught.message } : {}),
         })
+      }
     } finally {
       setPendingAction(undefined)
       setOperation(undefined)

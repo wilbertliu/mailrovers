@@ -75,6 +75,31 @@ describe('validated IPC handler', () => {
         value: 2,
       }),
     ).resolves.toMatchObject({ ok: false, error: { code: 'INVALID_RESPONSE' } })
+
+    const secretStorage = harness(async () => {
+      throw Object.assign(
+        new Error(
+          'Operating-system credential encryption is unavailable because Electron selected the basic_text backend.',
+        ),
+        { code: 'SECRET_STORAGE_UNAVAILABLE' },
+      )
+    })
+    await expect(
+      secretStorage.listener(secretStorage.authorizedEvent, {
+        requestId: 'secret-storage',
+        value: 2,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: 'SECRET_STORAGE_UNAVAILABLE',
+        message:
+          'Operating-system credential encryption is unavailable because Electron selected the basic_text backend.',
+        retryable: false,
+        requestId: 'secret-storage',
+        userAction: 'reviewSettings',
+      },
+    })
   })
 
   it('unregisters predictably and rejects a result schema without a failure envelope', () => {

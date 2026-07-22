@@ -822,7 +822,7 @@ Electron `safeStorage` encrypts:
 
 Encrypted values may live in SQLite, but plaintext values must not. The desktop adapter uses Electron's asynchronous `safeStorage` interface so Keychain access does not block the main event loop.
 
-On macOS, release validation must confirm that secrets use Keychain-backed encryption. Windows validation must confirm the expected DPAPI behavior. Linux support must explicitly detect whether a secure secret store is available and must not silently claim strong encryption when Electron reports a weaker backend.
+On macOS, release validation must confirm that secrets use Keychain-backed encryption. Windows validation must confirm the expected DPAPI behavior. On Linux, the desktop adapter inspects `safeStorage.getSelectedStorageBackend()` and only seals or unseals when Electron selected an OS keyring backend (`gnome_libsecret`, `kwallet`, `kwallet5`, or `kwallet6`). It rejects `basic_text`, `unknown`, and any other non-allowlisted backend with `SECRET_STORAGE_UNAVAILABLE` so connect and AI settings flows can explain why credentials cannot be stored, instead of silently claiming strong encryption.
 
 Disconnecting a mailbox deletes its stored refresh token after the user confirms whether local mail data should also be removed.
 
