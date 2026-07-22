@@ -142,59 +142,6 @@ function scenario(
   }
 }
 
-function importScenario(
-  name: string,
-  phase: SyncStatus['phase'],
-  values: {
-    imported: number
-    total?: number | undefined
-    mailboxState?: MailboxSummary['syncState'] | undefined
-  },
-): StorybookScenario {
-  const mailbox = {
-    ...storybookFixtures.primaryMailbox,
-    syncState:
-      values.mailboxState ??
-      (phase === 'paused' || phase === 'failed' || phase === 'auth_required' ? phase : 'importing'),
-    importedMessageCount: values.imported,
-    ...(values.total === undefined ? {} : { importTotalEstimate: values.total }),
-  } satisfies MailboxSummary
-  const syncStatus = {
-    mailboxId: storybookIds.mailbox,
-    phase,
-    importedMessageCount: values.imported,
-    importedDraftCount: 6,
-    ...(values.total === undefined ? {} : { totalEstimate: values.total }),
-  } satisfies SyncStatus
-  return scenario(name, {
-    data: { mailboxes: [mailbox], syncStatus },
-    responses: {
-      startSync: success(storybookFixtures.syncReceipt),
-      getSyncStatus: success(syncStatus),
-    },
-  })
-}
-
-function derivedScenario(
-  name: string,
-  base: StorybookScenario,
-  input?: {
-    data?: Partial<StorybookScenario['data']> | undefined
-    responses?: StorybookScenario['responses'] | undefined
-    syncEvents?: StorybookScenario['syncEvents'] | undefined
-    aiEvents?: StorybookScenario['aiEvents'] | undefined
-    dialogs?: StorybookScenario['dialogs'] | undefined
-  },
-): StorybookScenario {
-  return scenario(name, {
-    data: { ...base.data, ...input?.data },
-    responses: { ...base.responses, ...input?.responses },
-    ...(input?.syncEvents === undefined ? {} : { syncEvents: input.syncEvents }),
-    ...(input?.aiEvents === undefined ? {} : { aiEvents: input.aiEvents }),
-    ...(input?.dialogs === undefined ? {} : { dialogs: input.dialogs }),
-  })
-}
-
 const connectedImportMailbox = {
   ...storybookFixtures.primaryMailbox,
   syncState: 'importing',
@@ -265,75 +212,21 @@ export const storybookScenarios = {
       }),
     },
   }),
-  importEstimating: importScenario('Estimating import', 'idle', { imported: 0 }),
-  importLabels: importScenario('Importing labels', 'importing_labels', {
-    imported: 0,
-    total: 12_482,
-  }),
-  importMessages: importScenario('Importing messages', 'importing_messages', {
-    imported: 4_826,
-    total: 12_482,
-  }),
-  importDrafts: importScenario('Importing drafts', 'importing_drafts', {
-    imported: 12_312,
-    total: 12_482,
-  }),
-  importReconciling: importScenario('Reconciling Gmail history', 'reconciling_history', {
-    imported: 12_482,
-    total: 12_482,
-    mailboxState: 'reconciling',
-  }),
-  importPaused: importScenario('Paused import', 'paused', {
-    imported: 4_826,
-    total: 12_482,
-  }),
-  importFailed: importScenario('Failed import', 'failed', {
-    imported: 4_826,
-    total: 12_482,
-  }),
-  importAuthRequired: importScenario('Authorization required', 'auth_required', {
-    imported: 4_826,
-    total: 12_482,
-  }),
-  importStatusError: derivedScenario(
-    'Import status unavailable',
-    importScenario('Import status base', 'paused', { imported: 4_826, total: 12_482 }),
-    { responses: { getSyncStatus: failure('The current import status could not be loaded.') } },
-  ),
-  importStartFailed: derivedScenario(
-    'Import could not start',
-    importScenario('Import start base', 'importing_messages', {
-      imported: 4_826,
-      total: 12_482,
-    }),
-    { responses: { startSync: failure('The Gmail import could not be resumed.') } },
-  ),
-  importPausing: derivedScenario(
-    'Pausing import',
-    importScenario('Import pause base', 'importing_messages', {
-      imported: 4_826,
-      total: 12_482,
-    }),
-    { responses: { cancelOperation: pending() } },
-  ),
-  importResuming: derivedScenario(
-    'Resuming import',
-    importScenario('Import resume base', 'paused', { imported: 4_826, total: 12_482 }),
-    { responses: { startSync: pending() } },
-  ),
-  importRetrying: derivedScenario(
-    'Retrying failed import',
-    importScenario('Import retry base', 'failed', { imported: 4_826, total: 12_482 }),
-    { responses: { startSync: pending() } },
-  ),
-  importDisconnecting: derivedScenario(
-    'Disconnecting during import',
-    importScenario('Import disconnect base', 'paused', { imported: 4_826, total: 12_482 }),
-    {
-      responses: { disconnectMailbox: pending() },
-      dialogs: { confirm: true },
+  gmailConnected: scenario('Gmail connected handoff', {
+    data: { mailboxes: [] },
+    responses: {
+      listMailboxes: [success([]), success([connectedImportMailbox])],
+      connectGmail: success({
+        mailbox: connectedImportMailbox,
+        sync: storybookFixtures.syncReceipt,
+      }),
+      getSyncStatus: success({
+        ...storybookFixtures.syncStatus,
+        phase: 'importing_labels',
+        importedMessageCount: 0,
+      }),
     },
-  ),
+  }),
   workspace: scenario('Populated workspace'),
   emptyInbox: scenario('Empty inbox', {
     data: { conversations: { items: [] }, drafts: [] },

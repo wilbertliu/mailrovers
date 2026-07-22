@@ -117,3 +117,19 @@ export const GoogleConnectionSucceeded: Story = {
     await expect(await canvas.findByText('Importing older mail')).toBeVisible()
   },
 }
+
+export const GmailConnected: Story = {
+  parameters: { mailrovers: storybookScenarios.gmailConnected },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await userEvent.click(await canvas.findByRole('button', { name: 'Connect Gmail' }))
+    await expect(await canvas.findByRole('heading', { name: 'Gmail connected' })).toBeVisible()
+    await expect(
+      await canvas.findByText(/is ready\. Opening your inbox as soon as the first messages arrive\./),
+    ).toBeVisible()
+    await expect(
+      await canvas.findByText('Older mail will continue importing in the background'),
+    ).toBeVisible()
+    await expect(canvas.queryByRole('textbox', { name: 'Search mail' })).toBeNull()
+  },
+}
