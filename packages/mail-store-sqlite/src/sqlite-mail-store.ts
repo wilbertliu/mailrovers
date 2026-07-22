@@ -24,6 +24,7 @@ export class SqliteMailStore implements MailStore {
   readonly getMessageBody: MailStore['getMessageBody']
   readonly getAttachmentForExport: MailStore['getAttachmentForExport']
   readonly markAttachmentCached: MailStore['markAttachmentCached']
+  readonly listAttachmentCachePaths: MailStore['listAttachmentCachePaths']
   readonly getMessageBodies: MailStore['getMessageBodies']
   readonly loadAiSourceSnapshot: MailStore['loadAiSourceSnapshot']
   readonly searchMail: MailStore['searchMail']
@@ -106,6 +107,7 @@ export class SqliteMailStore implements MailStore {
     this.getMessageBody = conversations.getMessageBody.bind(conversations)
     this.getAttachmentForExport = attachments.getAttachmentForExport.bind(attachments)
     this.markAttachmentCached = attachments.markAttachmentCached.bind(attachments)
+    this.listAttachmentCachePaths = attachments.listAttachmentCachePaths.bind(attachments)
     this.getMessageBodies = conversations.getMessageBodies.bind(conversations)
     this.loadAiSourceSnapshot = conversations.loadAiSourceSnapshot.bind(conversations)
     this.searchMail = search.searchMail.bind(search)

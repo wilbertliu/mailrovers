@@ -54,4 +54,17 @@ export class SqliteAttachments {
     if (result.changes !== 1) throw new Error('Attachment was not found for this mailbox')
     this.publishCommitted({ mailboxId: input.mailboxId, conversations: true })
   }
+
+  async listAttachmentCachePaths(
+    mailbox: Parameters<MailStore['listAttachmentCachePaths']>[0],
+  ): Promise<Awaited<ReturnType<MailStore['listAttachmentCachePaths']>>> {
+    return this.db
+      .prepare(
+        `SELECT DISTINCT a.local_path
+        FROM attachments a JOIN messages m ON m.id=a.message_id
+        WHERE m.mailbox_id=? AND a.local_path IS NOT NULL`,
+      )
+      .all(mailbox)
+      .map((value) => String(row(value).local_path))
+  }
 }

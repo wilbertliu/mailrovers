@@ -221,6 +221,33 @@ describe('SQLite mail store', () => {
     )
   })
 
+  it('lists cached attachment paths for the owning mailbox', async () => {
+    const store = setup()
+    await store.saveConnectedMailbox({
+      mailbox,
+      checkpoint,
+      encryptedRefreshToken: new Uint8Array([7]),
+    })
+    const fence = await acquireTestSyncFence(store, mailbox.id, now)
+    const message = normalizedMessage()
+    await store.applyImportBatch({
+      mailboxId: mailbox.id,
+      batch: { labels: [], messages: [message] },
+      updatedAt: now,
+      fence,
+    })
+    await store.markAttachmentCached({
+      mailboxId: mailbox.id,
+      messageId: message.id,
+      attachmentId: message.attachments[0]!.id,
+      relativePath: 'attachments/cached-file',
+    })
+
+    await expect(store.listAttachmentCachePaths(mailbox.id)).resolves.toEqual([
+      'attachments/cached-file',
+    ])
+  })
+
   it('keeps cached drafts intact until staged reconciliation commits', async () => {
     const store = setup()
     await store.saveConnectedMailbox({

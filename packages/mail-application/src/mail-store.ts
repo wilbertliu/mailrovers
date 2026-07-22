@@ -139,6 +139,7 @@ export interface MailStore {
     attachmentId: AttachmentId
     relativePath: string
   }): Promise<void>
+  listAttachmentCachePaths(mailboxId: MailboxId): Promise<string[]>
   /** Internal bounded body load for AI; authorization is scoped to mailbox and conversation. */
   getMessageBodies(input: {
     mailboxId: MailboxId

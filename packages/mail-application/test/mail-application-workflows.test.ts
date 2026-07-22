@@ -255,6 +255,7 @@ describe('MailApplication workflow boundaries', () => {
     }
     const storage: AttachmentStorage = {
       exists: vi.fn(async () => false),
+      remove: vi.fn(async () => undefined),
       cache: vi.fn(async () => ({ relativePath: 'attachments/cached-1', sizeBytes: 3 })),
       export: vi.fn(async (): Promise<'exported'> => 'exported'),
     }

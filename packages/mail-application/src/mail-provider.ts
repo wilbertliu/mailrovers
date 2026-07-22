@@ -111,6 +111,7 @@ export type AttachmentCacheReceipt = {
 
 export interface AttachmentStorage {
   exists(relativePath: string): Promise<boolean>
+  remove(relativePaths: readonly string[]): Promise<void>
   cache(input: {
     stream: ReadableStream<Uint8Array>
     expectedSizeBytes: number

@@ -49,6 +49,12 @@ export class ElectronAttachmentStorage implements AttachmentStorage {
     }
   }
 
+  async remove(relativePaths: readonly string[]): Promise<void> {
+    await Promise.all(
+      relativePaths.map(async (relativePath) => rm(this.resolve(relativePath), { force: true })),
+    )
+  }
+
   async cache(input: {
     stream: ReadableStream<Uint8Array>
     expectedSizeBytes: number

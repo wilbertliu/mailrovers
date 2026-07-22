@@ -620,6 +620,13 @@ export function createMailApplication(
         mailboxId: request.mailboxId,
         updatedAt: utcTimestamp(now().toISOString()),
       })
+      if (request.removeLocalData) {
+        const attachmentPaths = await dependencies.store.listAttachmentCachePaths(request.mailboxId)
+        if (attachmentPaths.length > 0)
+          await required(dependencies.attachmentStorage, 'Attachment storage').remove(
+            attachmentPaths,
+          )
+      }
       await dependencies.store.removeMailbox({
         mailboxId: request.mailboxId,
         removeLocalData: request.removeLocalData,
