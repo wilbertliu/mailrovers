@@ -1,7 +1,7 @@
 import type {
   CommandDispatcher,
+  MailCommandStore,
   MailProviderFactory,
-  MailStore,
   ProviderCommandResult,
   StoredCommand,
 } from '@mailrovers/mail-application'
@@ -27,7 +27,7 @@ export class MailCommandExecutor implements CommandDispatcher {
 
   constructor(
     private readonly options: {
-      store: MailStore
+      store: MailCommandStore
       providers: MailProviderFactory
       now?: (() => Date) | undefined
       onChanged?: ((mailboxId: MailboxId) => void) | undefined

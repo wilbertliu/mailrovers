@@ -1,3 +1,4 @@
+import type { MailboxSummary } from '@mailrovers/mail-contracts'
 import type { MailboxId } from '@mailrovers/mail-domain'
 import { SidebarLeftIcon } from '@hugeicons/core-free-icons'
 import { IconTooltipButton } from '@/components/icon-tooltip-button.js'
@@ -8,13 +9,13 @@ export function AiSettingsColumn({
   mailboxId,
   showSidebarToggle,
   onShowSidebar,
-  importInProgress,
+  importMailbox,
   onClose,
 }: {
   mailboxId: MailboxId
   showSidebarToggle: boolean
   onShowSidebar: () => void
-  importInProgress: boolean
+  importMailbox: MailboxSummary | undefined
   onClose: () => void
 }) {
   return (
@@ -25,7 +26,7 @@ export function AiSettingsColumn({
       {showSidebarToggle ? (
         <div className="window-titlebar flex h-10 shrink-0 items-center gap-0 border-b pl-21 pt-0.5 pr-2">
           <IconTooltipButton label="Show sidebar" icon={SidebarLeftIcon} onClick={onShowSidebar} />
-          {importInProgress ? <ImportStatusIndicator /> : null}
+          {importMailbox ? <ImportStatusIndicator mailbox={importMailbox} /> : null}
         </div>
       ) : null}
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">

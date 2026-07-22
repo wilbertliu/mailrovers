@@ -1,7 +1,7 @@
 import type {
   MailProvider,
   MailProviderFactory,
-  MailStore,
+  MailSyncEngineStore,
   SyncEngine,
   SyncLease,
   SyncLeaseFence,
@@ -20,7 +20,6 @@ import {
   type SyncPhaseOutcome,
 } from './paged-import.js'
 import { providerHttpStatus } from './provider-http-status.js'
-import { withFence } from './sync-lease.js'
 import {
   operationId,
   utcTimestamp,
@@ -31,7 +30,7 @@ import {
 } from '@mailrovers/mail-domain'
 
 export type MailSyncEngineOptions = {
-  store: MailStore
+  store: MailSyncEngineStore
   providers: MailProviderFactory
   publish(event: DesktopEvent): void
   now?: (() => Date) | undefined
@@ -193,13 +192,6 @@ export class MailSyncEngine implements SyncEngine {
     }
     operation.lease = { ...lease, expiresAt }
     return fence
-  }
-
-  private withFence<T>(
-    operation: RunningOperation,
-    write: (fence: SyncLeaseFence) => Promise<T>,
-  ): Promise<T> {
-    return withFence(() => this.renewLease(operation), write)
   }
 
   private isLeaseLoss(error: unknown, operation: RunningOperation): boolean {
@@ -366,14 +358,13 @@ export class MailSyncEngine implements SyncEngine {
       if (this.isLeaseLoss(error, operation)) return
       if (operation.controller.signal.aborted) {
         if (operation.userCancelled) {
-          await this.withFence(operation, (fence) =>
-            this.options.store.setImportState({
-              mailboxId: operation.mailboxId,
-              state: 'paused',
-              updatedAt: this.now(),
-              fence,
-            }),
-          )
+          const fence = await this.renewLease(operation)
+          await this.options.store.setImportState({
+            mailboxId: operation.mailboxId,
+            state: 'paused',
+            updatedAt: this.now(),
+            fence,
+          })
           const checkpoint = await this.requireCheckpoint(operation)
           this.options.publish({
             kind: 'sync-cancelled',
@@ -388,13 +379,12 @@ export class MailSyncEngine implements SyncEngine {
       const status = providerHttpStatus(error)
       const checkpoint = await this.options.store.getSyncCheckpoint(operation.mailboxId)
       if (status === 401) {
-        await this.withFence(operation, (fence) =>
-          this.options.store.setMailboxAuthRequired({
-            mailboxId: operation.mailboxId,
-            updatedAt: timestamp,
-            fence,
-          }),
-        )
+        const fence = await this.renewLease(operation)
+        await this.options.store.setMailboxAuthRequired({
+          mailboxId: operation.mailboxId,
+          updatedAt: timestamp,
+          fence,
+        })
       } else if (
         checkpoint?.importState === 'complete' ||
         checkpoint?.importState === 'reconciling_history' ||
@@ -402,28 +392,26 @@ export class MailSyncEngine implements SyncEngine {
       ) {
         const failures = checkpoint.syncFailureCount ?? 0
         const delayMilliseconds = Math.min(30_000 * 2 ** failures, 30 * 60_000)
-        await this.withFence(operation, (fence) =>
-          this.options.store.setSyncRetry({
-            mailboxId: operation.mailboxId,
-            retryAt: utcTimestamp(
-              new Date(
-                (this.options.now?.() ?? new Date()).getTime() + delayMilliseconds,
-              ).toISOString(),
-            ),
-            errorCode: applicationError(error, operation.requestId).code,
-            updatedAt: timestamp,
-            fence,
-          }),
-        )
+        const fence = await this.renewLease(operation)
+        await this.options.store.setSyncRetry({
+          mailboxId: operation.mailboxId,
+          retryAt: utcTimestamp(
+            new Date(
+              (this.options.now?.() ?? new Date()).getTime() + delayMilliseconds,
+            ).toISOString(),
+          ),
+          errorCode: applicationError(error, operation.requestId).code,
+          updatedAt: timestamp,
+          fence,
+        })
       } else {
-        await this.withFence(operation, (fence) =>
-          this.options.store.setImportState({
-            mailboxId: operation.mailboxId,
-            state: 'failed',
-            updatedAt: timestamp,
-            fence,
-          }),
-        )
+        const fence = await this.renewLease(operation)
+        await this.options.store.setImportState({
+          mailboxId: operation.mailboxId,
+          state: 'failed',
+          updatedAt: timestamp,
+          fence,
+        })
       }
       if (!operation.leaseLost)
         this.options.publish({
@@ -452,14 +440,13 @@ export class MailSyncEngine implements SyncEngine {
     let state: ResumeImportState
     if (checkpoint.importState === 'paused' || checkpoint.importState === 'failed') {
       state = checkpoint.resumeImportState ?? 'pending'
-      await this.withFence(operation, (fence) =>
-        this.options.store.setImportState({
-          mailboxId: operation.mailboxId,
-          state,
-          updatedAt: this.now(),
-          fence,
-        }),
-      )
+      const fence = await this.renewLease(operation)
+      await this.options.store.setImportState({
+        mailboxId: operation.mailboxId,
+        state,
+        updatedAt: this.now(),
+        fence,
+      })
       checkpoint = await this.requireCheckpoint(operation)
     } else {
       state = checkpoint.importState
@@ -471,8 +458,7 @@ export class MailSyncEngine implements SyncEngine {
       signal: operation.controller.signal,
       store: this.options.store,
       now: () => this.now(),
-      withFence: <T>(write: (fence: SyncLeaseFence) => Promise<T>) =>
-        this.withFence(operation, write),
+      renewFence: () => this.renewLease(operation),
       requireCheckpoint: () => this.requireCheckpoint(operation),
       publishProgress: () => this.publishProgress(operation),
     }
@@ -535,14 +521,13 @@ export class MailSyncEngine implements SyncEngine {
     const startCursor = checkpoint.historyStartCursor ?? checkpoint.providerCursor
     if (!startCursor) {
       const current = await provider.getCurrentCursor(operation.controller.signal)
-      await this.withFence(operation, (fence) =>
-        this.options.store.setImportStart({
-          mailboxId: operation.mailboxId,
-          historyStartCursor: current,
-          updatedAt: this.now(),
-          fence,
-        }),
-      )
+      const fence = await this.renewLease(operation)
+      await this.options.store.setImportStart({
+        mailboxId: operation.mailboxId,
+        historyStartCursor: current,
+        updatedAt: this.now(),
+        fence,
+      })
       checkpoint = await this.requireCheckpoint(operation)
     }
     const fixedCursor = checkpoint.historyStartCursor ?? checkpoint.providerCursor
@@ -559,43 +544,42 @@ export class MailSyncEngine implements SyncEngine {
           signal: operation.controller.signal,
         })
         if (result.nextPageToken !== undefined) {
-          await this.withFence(operation, (fence) =>
-            this.options.store.applyHistoryPage({
-              mailboxId: operation.mailboxId,
-              batch: result.changes,
-              nextPageToken: result.nextPageToken,
-              targetCursor: result.historyId,
-              updatedAt: this.now(),
-              fence,
-            }),
-          )
+          const fence = await this.renewLease(operation)
+          await this.options.store.applyHistoryPage({
+            mailboxId: operation.mailboxId,
+            batch: result.changes,
+            nextPageToken: result.nextPageToken,
+            targetCursor: result.historyId,
+            updatedAt: this.now(),
+            fence,
+          })
           checkpoint = await this.requireCheckpoint(operation)
           await this.publishProgress(operation)
           continue
         }
         await this.refreshFinalMetadata(operation, provider)
-        await this.withFence(operation, (fence) =>
-          this.options.store.completeHistory({
+        {
+          const fence = await this.renewLease(operation)
+          await this.options.store.completeHistory({
             mailboxId: operation.mailboxId,
             batch: result.changes,
             providerCursor: result.historyId,
             completedAt: this.now(),
             fence,
-          }),
-        )
+          })
+        }
         this.schedulePostImportMaintenance(operation.mailboxId)
         return { kind: 'complete' }
       }
     } catch (error) {
       const status = providerHttpStatus(error)
       if (status === 400 && checkpoint.historyPageToken !== undefined && pageTokenRestarts < 1) {
-        await this.withFence(operation, (fence) =>
-          this.options.store.resetHistoryPagination({
-            mailboxId: operation.mailboxId,
-            updatedAt: this.now(),
-            fence,
-          }),
-        )
+        const fence = await this.renewLease(operation)
+        await this.options.store.resetHistoryPagination({
+          mailboxId: operation.mailboxId,
+          updatedAt: this.now(),
+          fence,
+        })
         return {
           kind: 'history-restart',
           checkpoint: await this.requireCheckpoint(operation),
@@ -605,15 +589,16 @@ export class MailSyncEngine implements SyncEngine {
       if (status !== 404) throw error
       const current = await provider.getCurrentCursor(operation.controller.signal)
       const generation = `reconcile:${operation.requestId}`
-      await this.withFence(operation, (fence) =>
-        this.options.store.beginFullReconciliation({
+      {
+        const fence = await this.renewLease(operation)
+        await this.options.store.beginFullReconciliation({
           mailboxId: operation.mailboxId,
           generation,
           historyStartCursor: current,
           updatedAt: this.now(),
           fence,
-        }),
-      )
+        })
+      }
       return this.fullReconcile(operation, provider, await this.requireCheckpoint(operation))
     }
   }
@@ -634,31 +619,31 @@ export class MailSyncEngine implements SyncEngine {
         ...(pageToken === undefined ? {} : { pageToken }),
         signal: operation.controller.signal,
       })) {
-        await this.withFence(operation, (fence) =>
-          this.options.store.stageFullReconciliation({
-            mailboxId: operation.mailboxId,
-            generation,
-            batch: batch.changes,
-            pageComplete: batch.pageComplete,
-            ...(batch.nextPageToken === undefined ? {} : { nextPageToken: batch.nextPageToken }),
-            updatedAt: this.now(),
-            fence,
-          }),
-        )
+        const fence = await this.renewLease(operation)
+        await this.options.store.stageFullReconciliation({
+          mailboxId: operation.mailboxId,
+          generation,
+          batch: batch.changes,
+          pageComplete: batch.pageComplete,
+          ...(batch.nextPageToken === undefined ? {} : { nextPageToken: batch.nextPageToken }),
+          updatedAt: this.now(),
+          fence,
+        })
         if (batch.pageComplete) nextPageToken = batch.nextPageToken
       }
       pageToken = nextPageToken
       await this.publishProgress(operation)
     } while (pageToken !== undefined)
     await this.refreshFinalMetadata(operation, provider)
-    await this.withFence(operation, (fence) =>
-      this.options.store.completeFullReconciliation({
+    {
+      const fence = await this.renewLease(operation)
+      await this.options.store.completeFullReconciliation({
         mailboxId: operation.mailboxId,
         generation,
         updatedAt: this.now(),
         fence,
-      }),
-    )
+      })
+    }
     return {
       kind: 'history-restart',
       checkpoint: await this.requireCheckpoint(operation),
@@ -674,25 +659,26 @@ export class MailSyncEngine implements SyncEngine {
       mailboxId: operation.mailboxId,
       phase: 'labels',
       signal: operation.controller.signal,
-    }))
-      await this.withFence(operation, (fence) =>
-        this.options.store.applyImportBatch({
-          mailboxId: operation.mailboxId,
-          batch: batch.changes,
-          updatedAt: this.now(),
-          fence,
-        }),
-      )
+    })) {
+      const fence = await this.renewLease(operation)
+      await this.options.store.applyImportBatch({
+        mailboxId: operation.mailboxId,
+        batch: batch.changes,
+        updatedAt: this.now(),
+        fence,
+      })
+    }
 
     operation.reconciliationCounter += 1
     const generation = `${operation.requestId}:drafts:${operation.reconciliationCounter}`
-    await this.withFence(operation, (fence) =>
-      this.options.store.beginDraftReconciliation({
+    {
+      const fence = await this.renewLease(operation)
+      await this.options.store.beginDraftReconciliation({
         mailboxId: operation.mailboxId,
         generation,
         fence,
-      }),
-    )
+      })
+    }
     let pageToken: string | undefined
     do {
       let nextPageToken: string | undefined
@@ -702,26 +688,26 @@ export class MailSyncEngine implements SyncEngine {
         ...(pageToken === undefined ? {} : { pageToken }),
         signal: operation.controller.signal,
       })) {
-        await this.withFence(operation, (fence) =>
-          this.options.store.stageDraftReconciliation({
-            mailboxId: operation.mailboxId,
-            generation,
-            drafts: batch.changes.drafts ?? [],
-            fence,
-          }),
-        )
+        const fence = await this.renewLease(operation)
+        await this.options.store.stageDraftReconciliation({
+          mailboxId: operation.mailboxId,
+          generation,
+          drafts: batch.changes.drafts ?? [],
+          fence,
+        })
         if (batch.pageComplete) nextPageToken = batch.nextPageToken
       }
       pageToken = nextPageToken
     } while (pageToken !== undefined)
-    await this.withFence(operation, (fence) =>
-      this.options.store.completeDraftReconciliation({
+    {
+      const fence = await this.renewLease(operation)
+      await this.options.store.completeDraftReconciliation({
         mailboxId: operation.mailboxId,
         generation,
         completedAt: this.now(),
         fence,
-      }),
-    )
+      })
+    }
   }
 
   private async requireCheckpoint(operation: RunningOperation): Promise<SyncCheckpoint> {

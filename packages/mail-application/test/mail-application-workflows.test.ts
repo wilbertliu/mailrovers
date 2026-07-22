@@ -3,9 +3,11 @@ import {
   createMailApplication,
   type AttachmentStorage,
   type CommandDispatcher,
+  type DraftStore,
   type GmailConnector,
+  type MailApplicationStore,
   type MailProviderFactory,
-  type MailStore,
+  type OutboxStore,
   type SecretSealer,
   type SyncEngine,
 } from '@mailrovers/mail-application'
@@ -52,11 +54,11 @@ const draft: Draft = {
   updatedAt: now,
 }
 
-function storeFake(overrides: Record<string, unknown> = {}): MailStore {
+function storeFake(overrides: Record<string, unknown> = {}): MailApplicationStore {
   return {
     getMailbox: vi.fn(async () => baseMailbox),
     ...overrides,
-  } as unknown as MailStore
+  } as unknown as MailApplicationStore
 }
 
 const sealer: SecretSealer = {
@@ -91,7 +93,7 @@ describe('MailApplication workflow boundaries', () => {
 
   it('allocates opaque global IDs while keeping idempotency keys mailbox-local', async () => {
     const otherMailbox = mailboxId('gmail:application-other')
-    const enqueueCommand = vi.fn<MailStore['enqueueCommand']>(async () => ({
+    const enqueueCommand = vi.fn<OutboxStore['enqueueCommand']>(async () => ({
       id: commandId('receipt'),
       mailboxId: id,
       state: 'pending' as const,
@@ -102,7 +104,7 @@ describe('MailApplication workflow boundaries', () => {
       },
       createdAt: now,
     }))
-    const saveDraft = vi.fn(async (input: Parameters<MailStore['saveDraft']>[0]) => ({
+    const saveDraft = vi.fn(async (input: Parameters<DraftStore['saveDraft']>[0]) => ({
       ...draft,
       id: input.id,
       mailboxId: input.request.mailboxId,

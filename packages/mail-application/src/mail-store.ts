@@ -423,3 +423,37 @@ export type MailStore = ConversationQueryStore &
   OutboxStore &
   DraftStore &
   AiArtifactStore
+
+/** Outbox drain plus auth escalation used by the command executor. */
+export type MailCommandStore = OutboxStore & Pick<MailboxSyncStore, 'setMailboxAuthRequired'>
+
+/** Mailbox sync plus draft reconciliation used by the sync engine. */
+export type MailSyncEngineStore = MailboxSyncStore &
+  Pick<
+    DraftStore,
+    'beginDraftReconciliation' | 'stageDraftReconciliation' | 'completeDraftReconciliation'
+  >
+
+/** Application facade: query + connection lifecycle + outbox enqueue + drafts + AI. */
+export type MailApplicationStore = ConversationQueryStore &
+  Pick<MailboxSyncStore, 'listMailboxes' | 'getMailbox' | 'saveConnectedMailbox' | 'removeMailbox'> &
+  Pick<
+    OutboxStore,
+    | 'enqueueCommand'
+    | 'enqueueInverseCommand'
+    | 'listCommandIssues'
+    | 'setCommandState'
+    | 'cancelMailboxCommands'
+  > &
+  Pick<DraftStore, 'saveDraft' | 'getDraft' | 'listDrafts' | 'enqueueSendDraft'> &
+  Pick<
+    AiArtifactStore,
+    | 'getAiConfiguration'
+    | 'saveAiConfiguration'
+    | 'clearAiConfiguration'
+    | 'setAiConfigurationValidated'
+    | 'findAiArtifact'
+    | 'saveAiArtifactIfCurrent'
+    | 'acceptAiReply'
+    | 'reviewAiArtifact'
+  >

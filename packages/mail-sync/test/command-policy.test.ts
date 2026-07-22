@@ -148,7 +148,7 @@ describe('resolveFailure dispositions', () => {
   it('cancels superseded drafts', () => {
     expect(
       resolveFailure({
-        error: new Error('DRAFT_SUPERSEDED'),
+        error: Object.assign(new Error('DRAFT_SUPERSEDED'), { code: 'DRAFT_SUPERSEDED' }),
         policy: reconcileBeforeRetry,
         status: undefined,
         attemptCount: 1,

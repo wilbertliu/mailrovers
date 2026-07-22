@@ -169,9 +169,11 @@ export const ImportingOlderMail: Story = {
   parameters: { mailrovers: storybookScenarios.connectionSucceeded },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
+    const body = within(canvasElement.ownerDocument.body)
     await userEvent.click(await canvas.findByRole('button', { name: 'Connect Gmail' }))
     await expect(await canvas.findByRole('textbox', { name: 'Search mail' })).toBeVisible()
-    await expect(await canvas.findByRole('button', { name: 'Importing email' })).toBeVisible()
+    await userEvent.click(await canvas.findByRole('button', { name: 'Importing email' }))
+    await expect(await body.findByRole('button', { name: 'Pause import' })).toBeVisible()
   },
 }
 

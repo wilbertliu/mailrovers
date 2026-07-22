@@ -1,4 +1,8 @@
-import type { CommittedChangeSet, MailStore } from '@mailrovers/mail-application'
+import type {
+  AiArtifactStore,
+  CommittedChangeSet,
+  StoredAiConfiguration,
+} from '@mailrovers/mail-application'
 import type { AiArtifact, Draft, DraftCommand } from '@mailrovers/mail-contracts'
 import {
   fingerprintDraftRevision,
@@ -14,9 +18,7 @@ export class SqliteAiArtifacts {
     private readonly db: SqliteDatabase,
     private readonly publishCommitted: (changes: CommittedChangeSet) => void,
   ) {}
-  async getAiConfiguration(
-    id: MailboxId,
-  ): Promise<Awaited<ReturnType<MailStore['getAiConfiguration']>>> {
+  async getAiConfiguration(id: MailboxId): Promise<StoredAiConfiguration | undefined> {
     const setting = this.db
       .prepare('SELECT value_json FROM app_settings WHERE key=?')
       .get(aiConfigurationKey(id))
@@ -50,7 +52,9 @@ export class SqliteAiArtifacts {
     }
   }
 
-  async saveAiConfiguration(input: Parameters<MailStore['saveAiConfiguration']>[0]): Promise<void> {
+  async saveAiConfiguration(
+    input: Parameters<AiArtifactStore['saveAiConfiguration']>[0],
+  ): Promise<void> {
     this.db.transaction(() => {
       const mailboxExists = this.db
         .prepare('SELECT 1 FROM mailboxes WHERE id=?')
@@ -90,7 +94,7 @@ export class SqliteAiArtifacts {
   }
 
   async setAiConfigurationValidated(
-    input: Parameters<MailStore['setAiConfigurationValidated']>[0],
+    input: Parameters<AiArtifactStore['setAiConfigurationValidated']>[0],
   ): Promise<void> {
     const result = this.db
       .prepare(`UPDATE app_settings SET
@@ -100,7 +104,7 @@ export class SqliteAiArtifacts {
   }
 
   async findAiArtifact(
-    input: Parameters<MailStore['findAiArtifact']>[0],
+    input: Parameters<AiArtifactStore['findAiArtifact']>[0],
   ): Promise<AiArtifact | undefined> {
     const value = this.db
       .prepare(`SELECT * FROM ai_artifacts WHERE mailbox_id=? AND conversation_id=?
@@ -118,7 +122,7 @@ export class SqliteAiArtifacts {
   }
 
   async getAiArtifact(
-    input: Parameters<MailStore['getAiArtifact']>[0],
+    input: Parameters<AiArtifactStore['getAiArtifact']>[0],
   ): Promise<AiArtifact | undefined> {
     const value = this.db
       .prepare('SELECT * FROM ai_artifacts WHERE id=? AND mailbox_id=?')
@@ -171,7 +175,7 @@ export class SqliteAiArtifacts {
   }
 
   async acceptAiReply(
-    input: Parameters<MailStore['acceptAiReply']>[0],
+    input: Parameters<AiArtifactStore['acceptAiReply']>[0],
   ): Promise<Draft | undefined> {
     const accepted = this.db.transaction(() => {
       const duplicate = this.db
@@ -297,7 +301,7 @@ export class SqliteAiArtifacts {
     return accepted
   }
 
-  async reviewAiArtifact(input: Parameters<MailStore['reviewAiArtifact']>[0]): Promise<void> {
+  async reviewAiArtifact(input: Parameters<AiArtifactStore['reviewAiArtifact']>[0]): Promise<void> {
     this.db.transaction(() => {
       const artifactValue = this.db
         .prepare('SELECT draft_id,draft_version FROM ai_artifacts WHERE id=? AND mailbox_id=?')

@@ -1,6 +1,6 @@
 import type { ConversationId } from '@mailrovers/mail-domain'
 import type { InfiniteData } from '@tanstack/react-query'
-import type { SearchPage } from '@mailrovers/mail-contracts'
+import type { MailboxSummary, SearchPage } from '@mailrovers/mail-contracts'
 import { Button } from '@/components/ui/button.js'
 import { ListColumnHeader } from './ListColumnHeader.js'
 
@@ -18,7 +18,7 @@ export function SearchResults({
   onSelect,
   showSidebarToggle,
   onShowSidebar,
-  importInProgress,
+  importMailbox,
 }: {
   pages: InfiniteData<SearchPage> | undefined
   selectedConversation?: ConversationId | undefined
@@ -33,7 +33,7 @@ export function SearchResults({
   onSelect: (conversationId: ConversationId) => void
   showSidebarToggle?: boolean | undefined
   onShowSidebar?: (() => void) | undefined
-  importInProgress?: boolean | undefined
+  importMailbox?: MailboxSummary | undefined
 }) {
   const items = pages?.pages.flatMap((page) => page.items) ?? []
   const indexing = pages?.pages.some((page) => page.indexing) ?? false
@@ -47,7 +47,7 @@ export function SearchResults({
         onSearchSubmit={onSearchSubmit}
         showSidebarToggle={showSidebarToggle}
         onShowSidebar={onShowSidebar}
-        importInProgress={importInProgress}
+        importMailbox={importMailbox}
         trailing={
           <Button type="button" variant="ghost" size="sm" onClick={onClear}>
             Clear

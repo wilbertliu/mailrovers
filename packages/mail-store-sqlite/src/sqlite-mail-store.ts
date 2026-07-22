@@ -14,27 +14,9 @@ import { SqliteDrafts } from './sqlite-drafts.js'
 import { SqliteMailboxesSync } from './sqlite-mailboxes-sync.js'
 import { SqliteSearch } from './sqlite-search.js'
 
-/** Bind selected instance methods so they keep `this` when composed onto the facade. */
-function bindMethods<T extends object, const Keys extends readonly (keyof T & string)[]>(
-  source: T,
-  keys: Keys,
-): { [K in Keys[number]]: T[K] } {
-  const bound = {} as { [K in Keys[number]]: T[K] }
-  for (const key of keys) {
-    const value = source[key]
-    if (typeof value === 'function') {
-      ;(bound as Record<string, unknown>)[key] = (value as (...args: never[]) => unknown).bind(
-        source,
-      )
-    }
-  }
-  return bound
-}
-
 /**
  * Public MailStore facade composed from capability-aligned SQLite modules.
- * The constructor assigns bound module methods (no per-method `.bind` wall).
- * Typed as `MailStore` via the exported constructor alias below.
+ * Methods are bound explicitly so the composed surface stays visible to TypeScript.
  */
 class SqliteMailStoreImpl {
   private readonly committedChangeListeners = new Set<CommittedChangeListener>()
@@ -62,80 +44,73 @@ class SqliteMailStoreImpl {
       this.publishCommitted.bind(this),
     )
 
-    const store: MailStore = {
+    const store = {
       // ConversationQueryStore — conversations + attachments + search
-      ...bindMethods(conversations, [
-        'listConversations',
-        'listLabels',
-        'getConversation',
-        'getMessageBody',
-        'getMessageBodies',
-        'loadAiSourceSnapshot',
-      ] as const),
-      ...bindMethods(attachments, [
-        'getAttachmentForExport',
-        'markAttachmentCached',
-        'listAttachmentCachePaths',
-      ] as const),
-      ...bindMethods(search, ['searchMail', 'backfillSearchIndex'] as const),
+      listConversations: conversations.listConversations.bind(conversations),
+      listLabels: conversations.listLabels.bind(conversations),
+      getConversation: conversations.getConversation.bind(conversations),
+      getMessageBody: conversations.getMessageBody.bind(conversations),
+      getMessageBodies: conversations.getMessageBodies.bind(conversations),
+      loadAiSourceSnapshot: conversations.loadAiSourceSnapshot.bind(conversations),
+      getAttachmentForExport: attachments.getAttachmentForExport.bind(attachments),
+      markAttachmentCached: attachments.markAttachmentCached.bind(attachments),
+      listAttachmentCachePaths: attachments.listAttachmentCachePaths.bind(attachments),
+      searchMail: search.searchMail.bind(search),
+      backfillSearchIndex: search.backfillSearchIndex.bind(search),
       // MailboxSyncStore
-      ...bindMethods(mailboxes, [
-        'listMailboxes',
-        'getMailbox',
-        'saveConnectedMailbox',
-        'removeMailbox',
-        'getEncryptedRefreshToken',
-        'getSyncCheckpoint',
-        'acquireSyncLease',
-        'renewSyncLease',
-        'releaseSyncLease',
-        'setImportState',
-        'setSyncRetry',
-        'setMailboxAuthRequired',
-        'resetHistoryPagination',
-        'beginFullReconciliation',
-        'stageFullReconciliation',
-        'completeFullReconciliation',
-        'setImportStart',
-        'applyImportBatch',
-        'applyHistoryPage',
-        'completeHistory',
-        'resetInitialImport',
-        'runPostImportMaintenance',
-      ] as const),
+      listMailboxes: mailboxes.listMailboxes.bind(mailboxes),
+      getMailbox: mailboxes.getMailbox.bind(mailboxes),
+      saveConnectedMailbox: mailboxes.saveConnectedMailbox.bind(mailboxes),
+      removeMailbox: mailboxes.removeMailbox.bind(mailboxes),
+      getEncryptedRefreshToken: mailboxes.getEncryptedRefreshToken.bind(mailboxes),
+      getSyncCheckpoint: mailboxes.getSyncCheckpoint.bind(mailboxes),
+      acquireSyncLease: mailboxes.acquireSyncLease.bind(mailboxes),
+      renewSyncLease: mailboxes.renewSyncLease.bind(mailboxes),
+      releaseSyncLease: mailboxes.releaseSyncLease.bind(mailboxes),
+      setImportState: mailboxes.setImportState.bind(mailboxes),
+      setSyncRetry: mailboxes.setSyncRetry.bind(mailboxes),
+      setMailboxAuthRequired: mailboxes.setMailboxAuthRequired.bind(mailboxes),
+      resetHistoryPagination: mailboxes.resetHistoryPagination.bind(mailboxes),
+      beginFullReconciliation: mailboxes.beginFullReconciliation.bind(mailboxes),
+      stageFullReconciliation: mailboxes.stageFullReconciliation.bind(mailboxes),
+      completeFullReconciliation: mailboxes.completeFullReconciliation.bind(mailboxes),
+      setImportStart: mailboxes.setImportStart.bind(mailboxes),
+      applyImportBatch: mailboxes.applyImportBatch.bind(mailboxes),
+      applyHistoryPage: mailboxes.applyHistoryPage.bind(mailboxes),
+      completeHistory: mailboxes.completeHistory.bind(mailboxes),
+      resetInitialImport: mailboxes.resetInitialImport.bind(mailboxes),
+      runPostImportMaintenance: mailboxes.runPostImportMaintenance.bind(mailboxes),
       // AiArtifactStore
-      ...bindMethods(aiArtifacts, [
-        'getAiConfiguration',
-        'saveAiConfiguration',
-        'clearAiConfiguration',
-        'setAiConfigurationValidated',
-        'findAiArtifact',
-        'getAiArtifact',
-        'saveAiArtifactIfCurrent',
-        'saveAiArtifact',
-        'acceptAiReply',
-        'reviewAiArtifact',
-      ] as const),
+      getAiConfiguration: aiArtifacts.getAiConfiguration.bind(aiArtifacts),
+      saveAiConfiguration: aiArtifacts.saveAiConfiguration.bind(aiArtifacts),
+      clearAiConfiguration: aiArtifacts.clearAiConfiguration.bind(aiArtifacts),
+      setAiConfigurationValidated: aiArtifacts.setAiConfigurationValidated.bind(aiArtifacts),
+      findAiArtifact: aiArtifacts.findAiArtifact.bind(aiArtifacts),
+      getAiArtifact: aiArtifacts.getAiArtifact.bind(aiArtifacts),
+      saveAiArtifactIfCurrent: aiArtifacts.saveAiArtifactIfCurrent.bind(aiArtifacts),
+      saveAiArtifact: aiArtifacts.saveAiArtifact.bind(aiArtifacts),
+      acceptAiReply: aiArtifacts.acceptAiReply.bind(aiArtifacts),
+      reviewAiArtifact: aiArtifacts.reviewAiArtifact.bind(aiArtifacts),
       // OutboxStore
-      ...bindMethods(commands, [
-        'enqueueCommand',
-        'enqueueInverseCommand',
-        'enqueueDraftCommand',
-        'claimNextCommand',
-        'resolveProviderCommand',
-        'completeCommand',
-        'setCommandState',
-        'cancelMailboxCommands',
-        'listCommandIssues',
-      ] as const),
+      enqueueCommand: commands.enqueueCommand.bind(commands),
+      enqueueInverseCommand: commands.enqueueInverseCommand.bind(commands),
+      enqueueDraftCommand: commands.enqueueDraftCommand.bind(commands),
+      claimNextCommand: commands.claimNextCommand.bind(commands),
+      resolveProviderCommand: commands.resolveProviderCommand.bind(commands),
+      completeCommand: commands.completeCommand.bind(commands),
+      setCommandState: commands.setCommandState.bind(commands),
+      cancelMailboxCommands: commands.cancelMailboxCommands.bind(commands),
+      listCommandIssues: commands.listCommandIssues.bind(commands),
       // DraftStore — drafts + draft reconciliation
-      ...bindMethods(drafts, ['saveDraft', 'getDraft', 'listDrafts', 'enqueueSendDraft'] as const),
-      ...bindMethods(draftReconciliation, [
-        'beginDraftReconciliation',
-        'stageDraftReconciliation',
-        'completeDraftReconciliation',
-      ] as const),
-    }
+      saveDraft: drafts.saveDraft.bind(drafts),
+      getDraft: drafts.getDraft.bind(drafts),
+      listDrafts: drafts.listDrafts.bind(drafts),
+      enqueueSendDraft: drafts.enqueueSendDraft.bind(drafts),
+      beginDraftReconciliation: draftReconciliation.beginDraftReconciliation.bind(draftReconciliation),
+      stageDraftReconciliation: draftReconciliation.stageDraftReconciliation.bind(draftReconciliation),
+      completeDraftReconciliation:
+        draftReconciliation.completeDraftReconciliation.bind(draftReconciliation),
+    } satisfies MailStore
 
     Object.assign(this, store)
   }

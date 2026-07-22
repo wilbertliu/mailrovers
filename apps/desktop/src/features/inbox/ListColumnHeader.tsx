@@ -1,3 +1,4 @@
+import type { MailboxSummary } from '@mailrovers/mail-contracts'
 import { Search01Icon, SidebarLeftIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import type { ReactNode } from 'react'
@@ -14,7 +15,7 @@ export function ListColumnHeader({
   onSearchSubmit,
   showSidebarToggle = false,
   onShowSidebar,
-  importInProgress = false,
+  importMailbox,
   trailing,
   className,
 }: {
@@ -25,7 +26,7 @@ export function ListColumnHeader({
   onSearchSubmit: (value: string) => void
   showSidebarToggle?: boolean | undefined
   onShowSidebar?: (() => void) | undefined
-  importInProgress?: boolean | undefined
+  importMailbox?: MailboxSummary | undefined
   trailing?: ReactNode
   className?: string | undefined
 }) {
@@ -41,7 +42,7 @@ export function ListColumnHeader({
         {showSidebarToggle && onShowSidebar ? (
           <div className="flex items-center gap-0">
             <IconTooltipButton label="Show sidebar" icon={SidebarLeftIcon} onClick={onShowSidebar} />
-            {importInProgress ? <ImportStatusIndicator /> : null}
+            {importMailbox ? <ImportStatusIndicator mailbox={importMailbox} /> : null}
           </div>
         ) : null}
         <div className="min-w-0 flex-1">

@@ -1,6 +1,18 @@
-import type { CommittedChangeSet, MailStore } from '@mailrovers/mail-application'
+import type {
+  CommittedChangeSet,
+  OutboxStore,
+  ResolvedProviderCommand,
+  StoredCommand,
+} from '@mailrovers/mail-application'
 import type { CommandReceipt, DurableCommand, MailCommand } from '@mailrovers/mail-contracts'
-import { type MailboxId } from '@mailrovers/mail-domain'
+import {
+  type CommandId,
+  type ConversationId,
+  type LabelId,
+  type MailboxId,
+  type MessageId,
+  type UtcTimestamp,
+} from '@mailrovers/mail-domain'
 import type { DraftMergeOptions } from './draft-reconciliation.js'
 import type { SqliteDatabase } from './open-database.js'
 import { applyChanges } from './sqlite-provider-changes.js'
@@ -15,9 +27,14 @@ import {
 
 const commandStateTransitionError = 'COMMAND_STATE_TRANSITION_NOT_FOUND'
 const commandTargetNotFoundError = 'COMMAND_TARGET_NOT_FOUND'
+const draftSupersededCode = 'DRAFT_SUPERSEDED' as const
 
 function targetNotFound(): Error & { code: string } {
   return Object.assign(new Error(commandTargetNotFoundError), { code: commandTargetNotFoundError })
+}
+
+function draftSuperseded(): Error & { code: typeof draftSupersededCode } {
+  return Object.assign(new Error(draftSupersededCode), { code: draftSupersededCode })
 }
 
 function inverseCommand(command: MailCommand): MailCommand {
@@ -43,29 +60,59 @@ export class SqliteCommandsOutbox {
     private readonly draftMergeOptions: DraftMergeOptions,
     private readonly publishCommitted: (changes: CommittedChangeSet) => void,
   ) {}
+
+  private requireOwnedConversation(
+    mailboxId: MailboxId,
+    conversationId: ConversationId,
+  ): { providerThreadId: string } {
+    const value = this.db
+      .prepare('SELECT provider_thread_id FROM conversations WHERE id=? AND mailbox_id=?')
+      .get(conversationId, mailboxId)
+    if (value === undefined) throw targetNotFound()
+    return { providerThreadId: String(row(value).provider_thread_id) }
+  }
+
+  private requireOwnedMessage(
+    mailboxId: MailboxId,
+    messageId: MessageId,
+  ): { providerMessageId: string } {
+    const value = this.db
+      .prepare('SELECT provider_message_id FROM messages WHERE id=? AND mailbox_id=?')
+      .get(messageId, mailboxId)
+    if (value === undefined) throw targetNotFound()
+    return { providerMessageId: String(row(value).provider_message_id) }
+  }
+
+  private requireOwnedLabelTarget(
+    mailboxId: MailboxId,
+    conversationId: ConversationId,
+    labelId: LabelId,
+  ): { providerThreadId: string; providerLabelId: string } {
+    const value = this.db
+      .prepare(`SELECT c.provider_thread_id,l.provider_label_id FROM conversations c,labels l
+      WHERE c.id=? AND c.mailbox_id=? AND l.id=? AND l.mailbox_id=c.mailbox_id`)
+      .get(conversationId, mailboxId, labelId)
+    if (value === undefined) throw targetNotFound()
+    const result = row(value)
+    return {
+      providerThreadId: String(result.provider_thread_id),
+      providerLabelId: String(result.provider_label_id),
+    }
+  }
+
   private assertCommandOwnership(mailboxId: MailboxId, command: MailCommand): void {
     switch (command.kind) {
       case 'set-thread-archived':
       case 'set-thread-read': {
-        const owned = this.db
-          .prepare('SELECT 1 FROM conversations WHERE id=? AND mailbox_id=?')
-          .get(command.conversationId, mailboxId)
-        if (owned === undefined) throw targetNotFound()
+        this.requireOwnedConversation(mailboxId, command.conversationId)
         return
       }
       case 'set-message-starred': {
-        const owned = this.db
-          .prepare('SELECT 1 FROM messages WHERE id=? AND mailbox_id=?')
-          .get(command.messageId, mailboxId)
-        if (owned === undefined) throw targetNotFound()
+        this.requireOwnedMessage(mailboxId, command.messageId)
         return
       }
       case 'set-thread-label': {
-        const owned = this.db
-          .prepare(`SELECT 1 FROM conversations c,labels l
-          WHERE c.id=? AND c.mailbox_id=? AND l.id=? AND l.mailbox_id=c.mailbox_id`)
-          .get(command.conversationId, mailboxId, command.labelId)
-        if (owned === undefined) throw targetNotFound()
+        this.requireOwnedLabelTarget(mailboxId, command.conversationId, command.labelId)
         return
       }
       default: {
@@ -77,11 +124,11 @@ export class SqliteCommandsOutbox {
 
   private async enqueueDurableCommand(
     input: {
-      id: Parameters<MailStore['enqueueCommand']>[0]['id']
+      id: CommandId
       mailboxId: MailboxId
       idempotencyKey: string
       command: DurableCommand
-      createdAt: Parameters<MailStore['enqueueCommand']>[0]['createdAt']
+      createdAt: UtcTimestamp
     },
     options: {
       beforeInsert?: (() => void) | undefined
@@ -116,7 +163,7 @@ export class SqliteCommandsOutbox {
     return committed.receipt
   }
 
-  async enqueueCommand(input: Parameters<MailStore['enqueueCommand']>[0]): Promise<CommandReceipt> {
+  async enqueueCommand(input: Parameters<OutboxStore['enqueueCommand']>[0]): Promise<CommandReceipt> {
     return this.enqueueDurableCommand(input, {
       beforeInsert: () => this.assertCommandOwnership(input.mailboxId, input.command),
       persistError: 'Failed to persist command',
@@ -124,7 +171,7 @@ export class SqliteCommandsOutbox {
   }
 
   async enqueueDraftCommand(
-    input: Parameters<MailStore['enqueueDraftCommand']>[0],
+    input: Parameters<OutboxStore['enqueueDraftCommand']>[0],
   ): Promise<CommandReceipt> {
     return this.enqueueDurableCommand(input, {
       persistError: 'Failed to persist draft command',
@@ -132,7 +179,7 @@ export class SqliteCommandsOutbox {
   }
 
   async enqueueInverseCommand(
-    input: Parameters<MailStore['enqueueInverseCommand']>[0],
+    input: Parameters<OutboxStore['enqueueInverseCommand']>[0],
   ): Promise<CommandReceipt> {
     const committed = this.db.transaction(() => {
       const existing = this.db
@@ -174,8 +221,8 @@ export class SqliteCommandsOutbox {
   }
 
   async claimNextCommand(
-    input: Parameters<MailStore['claimNextCommand']>[0],
-  ): Promise<Awaited<ReturnType<MailStore['claimNextCommand']>>> {
+    input: Parameters<OutboxStore['claimNextCommand']>[0],
+  ): Promise<StoredCommand | undefined> {
     const claimed = this.db.transaction(() => {
       this.db
         .prepare(`UPDATE command_outbox SET state='retry_wait',claimed_at=NULL,lease_expires_at=NULL,
@@ -236,45 +283,36 @@ export class SqliteCommandsOutbox {
     return claimed
   }
 
-  async resolveProviderCommand(
-    stored: Parameters<MailStore['resolveProviderCommand']>[0],
-  ): Promise<Awaited<ReturnType<MailStore['resolveProviderCommand']>>> {
+  async resolveProviderCommand(stored: StoredCommand): Promise<ResolvedProviderCommand> {
     switch (stored.command.kind) {
       case 'set-thread-archived':
       case 'set-thread-read': {
-        const value = this.db
-          .prepare('SELECT provider_thread_id FROM conversations WHERE id=? AND mailbox_id=?')
-          .get(stored.command.conversationId, stored.mailboxId)
-        if (value === undefined) throw targetNotFound()
+        const owned = this.requireOwnedConversation(stored.mailboxId, stored.command.conversationId)
         return {
           mailboxId: stored.mailboxId,
           command: stored.command,
-          providerThreadId: String(row(value).provider_thread_id),
+          providerThreadId: owned.providerThreadId,
         }
       }
       case 'set-thread-label': {
-        const value = this.db
-          .prepare(`SELECT c.provider_thread_id,l.provider_label_id FROM conversations c,labels l
-          WHERE c.id=? AND c.mailbox_id=? AND l.id=? AND l.mailbox_id=c.mailbox_id`)
-          .get(stored.command.conversationId, stored.mailboxId, stored.command.labelId)
-        if (value === undefined) throw targetNotFound()
-        const result = row(value)
+        const owned = this.requireOwnedLabelTarget(
+          stored.mailboxId,
+          stored.command.conversationId,
+          stored.command.labelId,
+        )
         return {
           mailboxId: stored.mailboxId,
           command: stored.command,
-          providerThreadId: String(result.provider_thread_id),
-          providerLabelId: String(result.provider_label_id),
+          providerThreadId: owned.providerThreadId,
+          providerLabelId: owned.providerLabelId,
         }
       }
       case 'set-message-starred': {
-        const value = this.db
-          .prepare('SELECT provider_message_id FROM messages WHERE id=? AND mailbox_id=?')
-          .get(stored.command.messageId, stored.mailboxId)
-        if (value === undefined) throw targetNotFound()
+        const owned = this.requireOwnedMessage(stored.mailboxId, stored.command.messageId)
         return {
           mailboxId: stored.mailboxId,
           command: stored.command,
-          providerMessageId: String(row(value).provider_message_id),
+          providerMessageId: owned.providerMessageId,
         }
       }
       case 'sync-draft':
@@ -296,7 +334,7 @@ export class SqliteCommandsOutbox {
           Number(result.version) !== stored.command.expectedVersion ||
           String(result.revision_fingerprint) !== stored.command.outboundRevisionFingerprint
         )
-          throw new Error('DRAFT_SUPERSEDED')
+          throw draftSuperseded()
         const providerThreadId = optionalString(result.provider_thread_id)
         const internetMessageId = String(result.internet_message_id)
         const replyInternetMessageId = optionalString(result.reply_internet_message_id)
@@ -335,7 +373,7 @@ export class SqliteCommandsOutbox {
     }
   }
 
-  async completeCommand(input: Parameters<MailStore['completeCommand']>[0]): Promise<void> {
+  async completeCommand(input: Parameters<OutboxStore['completeCommand']>[0]): Promise<void> {
     this.db.transaction(() => {
       const activeSync = this.db
         .prepare(`SELECT 1 FROM sync_leases WHERE mailbox_id=? AND owner_id IS NOT NULL
@@ -441,7 +479,7 @@ export class SqliteCommandsOutbox {
     })
   }
 
-  async setCommandState(input: Parameters<MailStore['setCommandState']>[0]): Promise<void> {
+  async setCommandState(input: Parameters<OutboxStore['setCommandState']>[0]): Promise<void> {
     this.db.transaction(() => {
       if (input.allowedSourceStates?.length === 0) throw new Error(commandStateTransitionError)
       const allowedStates = input.allowedSourceStates ?? []
@@ -469,7 +507,7 @@ export class SqliteCommandsOutbox {
   }
 
   async cancelMailboxCommands(
-    input: Parameters<MailStore['cancelMailboxCommands']>[0],
+    input: Parameters<OutboxStore['cancelMailboxCommands']>[0],
   ): Promise<void> {
     const result = this.db.transaction(() => {
       // A running send/draft update can have reached Gmail before its abort was observed.

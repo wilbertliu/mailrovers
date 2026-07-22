@@ -1,4 +1,4 @@
-import type { CommittedChangeSet, MailStore } from '@mailrovers/mail-application'
+import type { CommittedChangeSet, DraftStore } from '@mailrovers/mail-application'
 import type { CommandReceipt, Draft, DraftCommand } from '@mailrovers/mail-contracts'
 import {
   draftId,
@@ -15,7 +15,7 @@ export class SqliteDrafts {
     private readonly db: SqliteDatabase,
     private readonly publishCommitted: (changes: CommittedChangeSet) => void,
   ) {}
-  async saveDraft(input: Parameters<MailStore['saveDraft']>[0]): Promise<Draft> {
+  async saveDraft(input: Parameters<DraftStore['saveDraft']>[0]): Promise<Draft> {
     const committed = this.db.transaction(() => {
       const existing = this.db.prepare('SELECT * FROM drafts WHERE id=?').get(input.id)
       if (
@@ -200,7 +200,7 @@ export class SqliteDrafts {
   }
 
   async enqueueSendDraft(
-    input: Parameters<MailStore['enqueueSendDraft']>[0],
+    input: Parameters<DraftStore['enqueueSendDraft']>[0],
   ): Promise<CommandReceipt> {
     const committed = this.db.transaction(() => {
       const existing = this.db

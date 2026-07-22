@@ -520,7 +520,12 @@ describe('command executor', () => {
 
   it('cancels a draft command superseded before provider execution', async () => {
     const store = await prepareSendCommand()
-    await runExecutor(store, new ThrowingProvider(new Error('DRAFT_SUPERSEDED')))
+    await runExecutor(
+      store,
+      new ThrowingProvider(
+        Object.assign(new Error('DRAFT_SUPERSEDED'), { code: 'DRAFT_SUPERSEDED' }),
+      ),
+    )
 
     expect(
       database

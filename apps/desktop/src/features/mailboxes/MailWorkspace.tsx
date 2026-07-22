@@ -190,8 +190,8 @@ export function MailWorkspace({
   const issue = issues.data?.[0]
   const search = useSearchPages(mailboxId, route.kind === 'search' ? route.query : '')
   const showSidebarToggle = sidebarCollapsed
-  const importInProgress =
-    mailbox.connectionState === 'connected' && mailbox.syncState !== 'ready'
+  const importMailbox =
+    mailbox.connectionState === 'connected' && mailbox.syncState !== 'ready' ? mailbox : undefined
 
   return (
     <main
@@ -211,7 +211,7 @@ export function MailWorkspace({
               icon={SidebarLeftIcon}
               onClick={() => setSidebarCollapsed(true)}
             />
-            {importInProgress ? <ImportStatusIndicator /> : null}
+            {importMailbox ? <ImportStatusIndicator mailbox={importMailbox} /> : null}
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-5 px-2 pt-3 pb-2.5">
             <div className="flex h-9 items-center gap-2 px-0.5">
@@ -314,7 +314,7 @@ export function MailWorkspace({
         onSearchSubmit={submitSearch}
         showSidebarToggle={showSidebarToggle}
         onShowSidebar={() => setSidebarCollapsed(false)}
-        importInProgress={importInProgress}
+        importMailbox={importMailbox}
         onSelectConversation={setSelectedConversation}
         searchPages={search.data}
         searchHasNextPage={search.hasNextPage}

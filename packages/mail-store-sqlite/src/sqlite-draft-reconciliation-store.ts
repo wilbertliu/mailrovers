@@ -1,4 +1,4 @@
-import type { CommittedChangeSet, MailStore, SyncLeaseFence } from '@mailrovers/mail-application'
+import type { CommittedChangeSet, DraftStore, SyncLeaseFence } from '@mailrovers/mail-application'
 import {
   conversationId,
   draftId,
@@ -23,7 +23,7 @@ export class SqliteDraftReconciliation {
     private readonly publishCommitted: (changes: CommittedChangeSet) => void,
   ) {}
   async beginDraftReconciliation(
-    input: Parameters<MailStore['beginDraftReconciliation']>[0],
+    input: Parameters<DraftStore['beginDraftReconciliation']>[0],
   ): Promise<void> {
     this.db.transaction(() => {
       this.assertSyncFence(input.mailboxId, input.fence)
@@ -35,7 +35,7 @@ export class SqliteDraftReconciliation {
   }
 
   async stageDraftReconciliation(
-    input: Parameters<MailStore['stageDraftReconciliation']>[0],
+    input: Parameters<DraftStore['stageDraftReconciliation']>[0],
   ): Promise<void> {
     const insert = this.db.prepare(`INSERT INTO draft_reconciliation
     (mailbox_id,generation,id,workspace_id,conversation_id,provider_draft_id,
@@ -76,7 +76,7 @@ export class SqliteDraftReconciliation {
   }
 
   async completeDraftReconciliation(
-    input: Parameters<MailStore['completeDraftReconciliation']>[0],
+    input: Parameters<DraftStore['completeDraftReconciliation']>[0],
   ): Promise<void> {
     this.db.transaction(() => {
       this.assertSyncFence(input.mailboxId, input.fence)

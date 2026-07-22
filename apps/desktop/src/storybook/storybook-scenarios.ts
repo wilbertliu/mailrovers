@@ -164,6 +164,16 @@ const cancelledSyncStatus = {
   phase: 'paused',
 } satisfies SyncStatus
 
+const pausedImportMailbox = {
+  ...usableImportMailbox,
+  syncState: 'paused',
+} satisfies MailboxSummary
+
+const failedImportMailbox = {
+  ...usableImportMailbox,
+  syncState: 'failed',
+} satisfies MailboxSummary
+
 export const storybookScenarios = {
   mailboxOpening: scenario('Opening local mailbox', {
     responses: { listMailboxes: pending() },
@@ -210,6 +220,28 @@ export const storybookScenarios = {
         phase: 'importing_labels',
         importedMessageCount: 0,
       }),
+    },
+  }),
+  importPaused: scenario('Import paused in workspace', {
+    data: {
+      mailboxes: [pausedImportMailbox],
+      syncStatus: {
+        ...storybookFixtures.syncStatus,
+        phase: 'paused',
+        importedMessageCount: 24,
+        totalEstimate: 12_482,
+      },
+    },
+  }),
+  importFailed: scenario('Import failed in workspace', {
+    data: {
+      mailboxes: [failedImportMailbox],
+      syncStatus: {
+        ...storybookFixtures.syncStatus,
+        phase: 'failed',
+        importedMessageCount: 24,
+        totalEstimate: 12_482,
+      },
     },
   }),
   workspace: scenario('Populated workspace'),

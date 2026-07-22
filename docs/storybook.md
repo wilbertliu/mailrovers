@@ -34,11 +34,13 @@ fictional fixtures in `src/storybook/storybook-fixtures.ts`.
 - `src/storybook/storybook-scenarios.ts` describes responses, delays, pending operations, failures,
   and subscription events.
 - `src/storybook/mock-desktop-bridge.ts` implements the complete preload bridge contract.
-- `src/startup-screen-document.ts` owns the script-free startup document shared by Electron's
-  BrowserView overlay and its Storybook story (centered `logo.png` with a CSS shine sweep).
+- `startup-splash-shared.css` owns logo shine + surface colors for both Electron and React splashes.
+- `src/startup-screen-document.ts` inlines that CSS (via `mailrovers:startup-splash-shared-css`) into the
+  script-free startup document used by Electron's BrowserView overlay and its Storybook story.
 - `electron/startup-splash-overlay.ts` keeps that splash above the renderer until the mailbox gate
   sets `data-mailrovers-ui-ready`.
-- `src/components/startup-splash.tsx` plus `useMailboxOpeningSplash` cover Storybook / retry opening.
+- `boot-splash.css` + `src/components/startup-splash.tsx` plus `useMailboxOpeningSplash` cover
+  Storybook / retry opening (same shared visuals; React-only fixed overlay host).
 - `src/App.*.stories.tsx` groups states by user flow and uses `play` functions for states that only
   appear after an interaction.
 

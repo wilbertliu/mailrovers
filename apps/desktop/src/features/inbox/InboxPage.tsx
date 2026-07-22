@@ -1,3 +1,4 @@
+import type { MailboxSummary } from '@mailrovers/mail-contracts'
 import type { ConversationId, LabelId, MailboxId } from '@mailrovers/mail-domain'
 import type { ReactNode } from 'react'
 import { ConversationVirtualList } from './ConversationVirtualList.js'
@@ -15,7 +16,7 @@ export function InboxPage({
   onSearchSubmit,
   showSidebarToggle,
   onShowSidebar,
-  importInProgress,
+  importMailbox,
   onSelect,
 }: {
   mailbox: MailboxId
@@ -28,7 +29,7 @@ export function InboxPage({
   onSearchSubmit: (value: string) => void
   showSidebarToggle?: boolean | undefined
   onShowSidebar?: (() => void) | undefined
-  importInProgress?: boolean | undefined
+  importMailbox?: MailboxSummary | undefined
   onSelect: (id: ConversationId) => void
 }) {
   const query = useConversationPages(mailbox, labelId === undefined ? undefined : { labelId })
@@ -60,7 +61,7 @@ export function InboxPage({
         onSearchSubmit={onSearchSubmit}
         showSidebarToggle={showSidebarToggle}
         onShowSidebar={onShowSidebar}
-        importInProgress={importInProgress}
+        importMailbox={importMailbox}
       />
       {query.isPending ? (
         <div className="px-4 py-6 text-sm" aria-live="polite">

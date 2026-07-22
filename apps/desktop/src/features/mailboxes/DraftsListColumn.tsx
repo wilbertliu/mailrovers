@@ -1,4 +1,4 @@
-import type { Draft } from '@mailrovers/mail-contracts'
+import type { Draft, MailboxSummary } from '@mailrovers/mail-contracts'
 import type { MailboxId } from '@mailrovers/mail-domain'
 import { Button } from '@/components/ui/button.js'
 import { desktopBridge } from '../../desktop-bridge.js'
@@ -13,7 +13,7 @@ export function DraftsListColumn({
   onSearchSubmit,
   showSidebarToggle,
   onShowSidebar,
-  importInProgress,
+  importMailbox,
   onOpenComposer,
 }: {
   mailboxId: MailboxId
@@ -23,7 +23,7 @@ export function DraftsListColumn({
   onSearchSubmit: (value: string) => void
   showSidebarToggle: boolean
   onShowSidebar: () => void
-  importInProgress: boolean
+  importMailbox: MailboxSummary | undefined
   onOpenComposer: (mode: ComposerMode) => void
 }) {
   return (
@@ -39,7 +39,7 @@ export function DraftsListColumn({
         onSearchSubmit={onSearchSubmit}
         showSidebarToggle={showSidebarToggle}
         onShowSidebar={onShowSidebar}
-        importInProgress={importInProgress}
+        importMailbox={importMailbox}
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
         {drafts?.map((draft) => (

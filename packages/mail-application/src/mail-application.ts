@@ -67,7 +67,11 @@ import {
   type AiRuntimeFactory,
 } from './ai-runtime.js'
 import type { AttachmentStorage, GmailConnector, MailProviderFactory } from './mail-provider.js'
-import { ISSUE_STATES, type MailStore, type StoredAiConfiguration } from './mail-store.js'
+import {
+  ISSUE_STATES,
+  type MailApplicationStore,
+  type StoredAiConfiguration,
+} from './mail-store.js'
 import type { CommandDispatcher, SecretSealer, SyncEngine } from './sync-engine.js'
 
 export interface MailApplication {
@@ -106,7 +110,7 @@ export interface MailApplicationOperations {
 }
 
 export type MailApplicationDependencies = {
-  store: MailStore
+  store: MailApplicationStore
   gmailConnector?: GmailConnector | undefined
   secretSealer?: SecretSealer | undefined
   syncEngine?: SyncEngine | undefined
@@ -147,7 +151,7 @@ function configurationStatus(
 }
 
 export function createMailApplication(
-  input: MailStore | MailApplicationDependencies,
+  input: MailApplicationStore | MailApplicationDependencies,
 ): MailApplication & MailApplicationOperations {
   const dependencies: MailApplicationDependencies = 'store' in input ? input : { store: input }
   const now = dependencies.now ?? (() => new Date())

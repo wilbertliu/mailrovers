@@ -1,7 +1,8 @@
 /** Full-viewport startup splash for the React `StartupSplash` (Storybook / retries).
- * Shine rules stay aligned with `createStartupScreenDocument`.
- * `light-dark()` follows the document `color-scheme` (Storybook theme / next-themes),
- * not only the OS `prefers-color-scheme` media query. */
+ * Logo shine + surface colors come from `startup-splash-shared.css`.
+ * Host layout (`fixed` overlay) is React-only; Electron uses a full-document body grid. */
+@import './startup-splash-shared.css';
+
 .mailrovers-startup-splash {
   position: fixed;
   inset: 0;
@@ -9,46 +10,4 @@
   display: grid;
   place-items: center;
   pointer-events: none;
-  color: light-dark(#171717, #fafafa);
-  background: light-dark(#fff, #242424);
-}
-
-/* Keep in sync with createStartupScreenDocument shine styles. */
-.mailrovers-startup-splash .startup-splash-logo {
-  position: relative;
-  display: inline-block;
-  line-height: 0;
-  overflow: hidden;
-  border-radius: 18px;
-}
-
-.mailrovers-startup-splash .startup-splash-logo img {
-  display: block;
-  width: 72px;
-  height: 72px;
-}
-
-.mailrovers-startup-splash .startup-splash-logo::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: linear-gradient(
-    120deg,
-    rgba(255, 255, 255, 0) 35%,
-    rgba(255, 255, 255, 0.85) 50%,
-    rgba(255, 255, 255, 0) 65%
-  );
-  background-size: 200% auto;
-  animation: startup-splash-shine 2s linear infinite;
-  pointer-events: none;
-  mix-blend-mode: soft-light;
-}
-
-@keyframes startup-splash-shine {
-  0% {
-    background-position: 150% center;
-  }
-  100% {
-    background-position: -50% center;
-  }
 }

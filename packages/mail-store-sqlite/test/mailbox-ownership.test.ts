@@ -4,6 +4,8 @@ import {
   commandId,
   conversationId,
   draftId,
+  fingerprintDraftRevision,
+  labelId,
   mailboxId,
   messageId,
   operationId,
@@ -11,6 +13,7 @@ import {
   workspaceId,
   type CommandId,
   type Mailbox,
+  type NormalizedDraft,
   type NormalizedMessage,
   type SyncCheckpoint,
 } from '@mailrovers/mail-domain'
@@ -552,5 +555,220 @@ describe('SQLite mailbox ownership', () => {
     ])
     expect(await store.listCommandIssues(mailbox.id)).toEqual([])
     expect(await store.listCommandIssues(otherMailbox.id)).toEqual([])
+  })
+
+  it('rejects cross-mailbox batches and excludes foreign messages from conversation reads', async () => {
+    const fence = await acquireTestSyncFence(store, mailbox.id, timestamp)
+    const foreignMessage: NormalizedMessage = {
+      ...normalizedMessage({
+        mailbox: otherMailbox,
+        conversation: otherMailboxConversation,
+        id: messageId('gmail:ownership-other:message:rejected'),
+      }),
+      providerMessageId: 'foreign-rejected',
+    }
+    await expect(
+      store.applyHistoryPage({
+        mailboxId: mailbox.id,
+        batch: {
+          labels: [
+            {
+              id: labelId('gmail:ownership:label:must-rollback'),
+              mailboxId: mailbox.id,
+              providerLabelId: 'MUST_ROLLBACK',
+              name: 'Must roll back',
+              kind: 'user',
+              updatedAt: timestamp,
+            },
+          ],
+          messages: [foreignMessage],
+        },
+        nextPageToken: 'rejected-page',
+        targetCursor: '101',
+        updatedAt: timestamp,
+        fence,
+      }),
+    ).rejects.toThrow('Provider change batch mailbox mismatch')
+    expect(
+      database.prepare('SELECT 1 FROM labels WHERE provider_label_id=?').get('MUST_ROLLBACK'),
+    ).toBeUndefined()
+    expect(
+      database.prepare('SELECT 1 FROM messages WHERE id=?').get(foreignMessage.id),
+    ).toBeUndefined()
+
+    const foreignStoredId = messageId('gmail:ownership-other:message:stored')
+    database
+      .prepare(
+        `INSERT INTO messages
+      (id,workspace_id,mailbox_id,conversation_id,provider_message_id,internet_message_id,
+      provider_history_id,sender_json,recipients_json,subject,sent_at,received_at,snippet,
+      text_body,sanitized_html_body,size_bytes,is_draft,created_at,updated_at)
+      SELECT ?,workspace_id,?,conversation_id,?,'<foreign-stored@example.test>',
+      provider_history_id,?,recipients_json,'Foreign subject',sent_at,received_at,'Foreign snippet',
+      text_body,sanitized_html_body,size_bytes,is_draft,created_at,updated_at
+      FROM messages WHERE id=?`,
+      )
+      .run(
+        foreignStoredId,
+        otherMailbox.id,
+        'foreign-stored',
+        JSON.stringify({ name: 'Mallory', address: 'mallory@example.test' }),
+        mailboxMessage,
+      )
+    database
+      .prepare(
+        `INSERT INTO message_labels(message_id,label_id)
+      SELECT ?,id FROM labels WHERE mailbox_id=? AND provider_label_id='INBOX'`,
+      )
+      .run(foreignStoredId, mailbox.id)
+    database
+      .prepare(
+        `INSERT INTO attachments
+      (id,message_id,provider_attachment_id,filename,media_type,size_bytes,content_id,disposition,
+      local_path,download_state)
+      VALUES ('gmail:ownership-other:attachment:stored',?,'foreign-attachment','foreign.txt',
+      'text/plain',12,NULL,'attachment',NULL,'remote')`,
+      )
+      .run(foreignStoredId)
+
+    const localMessage = normalizedMessage({
+      mailbox,
+      conversation: mailboxConversation,
+      id: mailboxMessage,
+    })
+    await store.applyHistoryPage({
+      mailboxId: mailbox.id,
+      batch: { messages: [{ ...localMessage, snippet: 'Updated local snippet' }] },
+      nextPageToken: 'accepted-page',
+      targetCursor: '101',
+      updatedAt: timestamp,
+      fence,
+    })
+    await store.releaseSyncLease({ mailboxId: mailbox.id, ...fence })
+
+    const detail = await store.getConversation({
+      requestId: operationId('mailbox-isolated-detail'),
+      mailboxId: mailbox.id,
+      conversationId: mailboxConversation,
+    })
+    expect(detail?.messages.map((entry) => entry.id)).toEqual([mailboxMessage])
+    const page = await store.listConversations({ mailboxId: mailbox.id })
+    expect(page.items[0]).toEqual(
+      expect.objectContaining({
+        messageCount: 1,
+        unreadCount: 0,
+        senders: [{ address: 'sender@example.test' }],
+      }),
+    )
+  })
+
+  it('mailbox-scopes historical draft references when fingerprinting a conflict', async () => {
+    const local = await store.saveDraft({
+      request: {
+        requestId: operationId('save-conflict-local'),
+        mailboxId: mailbox.id,
+        idempotencyKey: 'save-conflict-local',
+        to: [{ address: 'ada@example.test' }],
+        cc: [],
+        bcc: [],
+        subject: 'Local subject',
+        textBody: 'Local body',
+      },
+      id: draftId('local-conflict'),
+      internetMessageId: '<local-conflict@mailrovers.local>',
+      updatedAt: timestamp,
+    })
+    database
+      .prepare(
+        `UPDATE drafts SET provider_draft_id='remote-draft',provider_message_id='remote-message',
+        conversation_id=?,reply_to_message_id=? WHERE id=?`,
+      )
+      .run(otherMailboxConversation, otherMailboxMessage, local.id)
+    const remote: NormalizedDraft = {
+      id: draftId('remote-normalized'),
+      workspaceId: mailbox.workspaceId,
+      mailboxId: mailbox.id,
+      providerDraftId: 'remote-draft',
+      providerMessageId: 'remote-message-new',
+      providerThreadId: 'remote-thread',
+      internetMessageId: '<remote@mailrovers.local>',
+      sender: { address: mailbox.emailAddress, name: mailbox.displayName },
+      references: [],
+      providerFingerprint: fingerprintDraftRevision({
+        internetMessageId: '<remote@mailrovers.local>',
+        sender: { address: mailbox.emailAddress, name: mailbox.displayName },
+        to: [{ address: 'ada@example.test' }],
+        cc: [],
+        bcc: [],
+        subject: 'Remote subject',
+        textBody: 'Remote body',
+        providerThreadId: 'remote-thread',
+        references: [],
+      }),
+      to: [{ address: 'ada@example.test' }],
+      cc: [],
+      bcc: [],
+      subject: 'Remote subject',
+      textBody: 'Remote body',
+      updatedAt: timestamp,
+    }
+    const fence = await acquireTestSyncFence(store, mailbox.id, timestamp)
+    await store.beginDraftReconciliation({
+      mailboxId: mailbox.id,
+      generation: 'draft-conflict',
+      fence,
+    })
+    await store.stageDraftReconciliation({
+      mailboxId: mailbox.id,
+      generation: 'draft-conflict',
+      drafts: [remote],
+      fence,
+    })
+    await store.completeDraftReconciliation({
+      mailboxId: mailbox.id,
+      generation: 'draft-conflict',
+      completedAt: timestamp,
+      fence,
+    })
+    const drafts = await store.listDrafts(mailbox.id)
+    expect(drafts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          syncState: 'conflict',
+          textBody: 'Local body',
+        }),
+        expect.objectContaining({
+          id: local.id,
+          syncState: 'synced',
+          textBody: 'Remote body',
+        }),
+      ]),
+    )
+    const conflict = database
+      .prepare(
+        `SELECT internet_message_id,revision_fingerprint,conversation_id,reply_to_message_id
+        FROM drafts
+        WHERE conflict_of_draft_id=?`,
+      )
+      .get(local.id) as {
+      internet_message_id: string
+      revision_fingerprint: string
+      conversation_id: string
+      reply_to_message_id: string
+    }
+    expect(conflict.conversation_id).toBe(otherMailboxConversation)
+    expect(conflict.reply_to_message_id).toBe(otherMailboxMessage)
+    expect(conflict.revision_fingerprint).toBe(
+      fingerprintDraftRevision({
+        internetMessageId: conflict.internet_message_id,
+        sender: { address: mailbox.emailAddress, name: mailbox.displayName },
+        to: [{ address: 'ada@example.test' }],
+        cc: [],
+        bcc: [],
+        subject: 'Local subject',
+        textBody: 'Local body',
+        references: [],
+      }),
+    )
   })
 })

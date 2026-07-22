@@ -10,6 +10,7 @@
   "include": [
     "electron/**/*.ts",
     "vite.*.config.ts",
+    "vite.startup-splash-shared-css.ts",
     "src/development-csp.ts",
     "src/startup-screen-document.ts",
     "src/vite-env.d.ts"

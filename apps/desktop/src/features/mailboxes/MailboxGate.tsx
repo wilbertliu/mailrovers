@@ -1,4 +1,4 @@
-import type { MailboxSummary, SyncStatus } from '@mailrovers/mail-contracts'
+import type { MailboxSummary } from '@mailrovers/mail-contracts'
 import type { MailboxId, OperationId } from '@mailrovers/mail-domain'
 import { Alert02Icon, BrowserIcon, ComputerProtectionIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -23,7 +23,6 @@ import {
   EmptyHeader,
   EmptyMedia,
 } from '@/components/ui/empty.js'
-import { FieldError } from '@/components/ui/field.js'
 import {
   Item,
   ItemContent,
@@ -32,7 +31,6 @@ import {
   ItemMedia,
   ItemTitle,
 } from '@/components/ui/item.js'
-import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress.js'
 import { Spinner } from '@/components/ui/spinner.js'
 import logo from '@/assets/logo.png'
 import { DesktopApplicationError, desktopBridge } from '../../desktop-bridge.js'
@@ -42,7 +40,6 @@ import { useMailboxOpeningSplash } from './use-startup-splash.js'
 type MailboxGateIntent =
   | { kind: 'mailbox'; mailboxId?: MailboxId | undefined }
   | { kind: 'connect'; mailboxId?: MailboxId | undefined }
-  | { kind: 'post-connect'; mailboxId: MailboxId }
 
 type MailboxGateScreen =
   | { kind: 'loading' }
@@ -52,7 +49,6 @@ type MailboxGateScreen =
       onConnected: (mailboxId: MailboxId) => Promise<void>
       onCancel?: (() => void) | undefined
     }
-  | { kind: 'import'; mailbox: MailboxSummary; onChanged: () => Promise<void> }
   | {
       kind: 'workspace'
       mailbox: MailboxSummary
@@ -240,205 +236,6 @@ function ConnectPage({
   )
 }
 
-function progressLabel(status: SyncStatus | undefined, mailbox: MailboxSummary): string {
-  const phase = status?.phase ?? mailbox.syncState
-  switch (phase) {
-    case 'importing_labels':
-      return 'Importing labels'
-    case 'importing_messages':
-    case 'importing':
-      return 'Importing messages'
-    case 'importing_drafts':
-      return 'Importing drafts'
-    case 'reconciling_history':
-    case 'full_reconciliation':
-    case 'reconciling':
-      return 'Checking for changes during import'
-    case 'paused':
-      return 'Import paused'
-    case 'failed':
-      return 'Import needs attention'
-    case 'auth_required':
-      return 'Gmail needs to be connected again'
-    case 'complete':
-    case 'ready':
-      return 'Import complete'
-    case 'authenticating':
-      return 'Connecting Gmail'
-    case 'idle':
-      return 'Preparing import'
-  }
-}
-
-function ImportPage({
-  mailbox,
-  onChanged,
-}: {
-  mailbox: MailboxSummary
-  onChanged: () => Promise<void>
-}) {
-  const queryClient = useQueryClient()
-  const [operation, setOperation] = useState<OperationId>()
-  const [error, setError] = useState<string>()
-  const [pendingAction, setPendingAction] = useState<'pause' | 'resume' | 'disconnect'>()
-  const statusQueryKey = ['sync-status', mailbox.id]
-  const statusQuery = useQuery({
-    queryKey: statusQueryKey,
-    queryFn: () =>
-      desktopBridge.getSyncStatus({
-        requestId: desktopBridge.createRequestId(),
-        mailboxId: mailbox.id,
-      }),
-  })
-  const status = statusQuery.data
-
-  const refreshStatus = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['sync-status', mailbox.id] })
-  }, [mailbox.id, queryClient])
-
-  const start = useCallback(async () => {
-    const requestId = desktopBridge.createRequestId()
-    const receipt = await desktopBridge.startSync({ requestId, mailboxId: mailbox.id })
-    setOperation(receipt.requestId)
-    return receipt.requestId
-  }, [mailbox.id])
-
-  const pause = async () => {
-    setPendingAction('pause')
-    setError(undefined)
-    try {
-      const activeOperation = operation ?? (await start())
-      await desktopBridge.cancelOperation({
-        requestId: desktopBridge.createRequestId(),
-        operationId: activeOperation,
-      })
-      await refreshStatus()
-      await onChanged()
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to pause the import.')
-    } finally {
-      setPendingAction(undefined)
-    }
-  }
-
-  const resume = async () => {
-    setPendingAction('resume')
-    setError(undefined)
-    try {
-      await start()
-      await onChanged()
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to resume the import.')
-    } finally {
-      setPendingAction(undefined)
-    }
-  }
-
-  const disconnect = async () => {
-    if (!window.confirm('Disconnect Gmail and remove its local MailRovers data?')) return
-    setPendingAction('disconnect')
-    setError(undefined)
-    try {
-      if (operation)
-        await desktopBridge.cancelOperation({
-          requestId: desktopBridge.createRequestId(),
-          operationId: operation,
-        })
-      await desktopBridge.disconnectMailbox({
-        requestId: desktopBridge.createRequestId(),
-        mailboxId: mailbox.id,
-        removeLocalData: true,
-      })
-      await onChanged()
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Unable to disconnect Gmail.')
-    } finally {
-      setPendingAction(undefined)
-    }
-  }
-
-  const imported = status?.importedMessageCount ?? mailbox.importedMessageCount
-  const total = status?.totalEstimate ?? mailbox.importTotalEstimate
-  const progress = total && total > 0 ? Math.min(100, (imported / total) * 100) : undefined
-  const paused = status?.phase === 'paused' || mailbox.syncState === 'paused'
-  const failed = status?.phase === 'failed' || mailbox.syncState === 'failed'
-
-  return (
-    <main className="grid h-full place-items-center p-6">
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <p className="truncate">{mailbox.emailAddress}</p>
-          <CardTitle>
-            <h1 className="text-balance">{progressLabel(status, mailbox)}</h1>
-          </CardTitle>
-          <CardDescription className="text-pretty">
-            {imported.toLocaleString()} messages imported
-            {total === undefined ? '' : ` of about ${total.toLocaleString()}`}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <Progress value={progress ?? null} aria-label="Gmail import progress">
-            <ProgressLabel>Import progress</ProgressLabel>
-            <ProgressValue>
-              {(_formattedValue, value) =>
-                value === null ? 'Estimating…' : `${Math.round(value)}%`
-              }
-            </ProgressValue>
-          </Progress>
-          {error || statusQuery.error ? (
-            <FieldError>
-              {error ??
-                (statusQuery.error instanceof Error
-                  ? statusQuery.error.message
-                  : 'Unable to load import status.')}
-            </FieldError>
-          ) : null}
-        </CardContent>
-        <CardFooter className="flex-wrap gap-2">
-          {paused || failed ? (
-            <Button
-              type="button"
-              onClick={() => void resume()}
-              disabled={pendingAction !== undefined}
-            >
-              {pendingAction === 'resume' ? <Spinner data-icon="inline-start" /> : null}
-              {pendingAction === 'resume'
-                ? failed
-                  ? 'Retrying…'
-                  : 'Resuming…'
-                : failed
-                  ? 'Retry import'
-                  : 'Resume import'}
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => void pause()}
-              disabled={pendingAction !== undefined}
-            >
-              {pendingAction === 'pause' ? <Spinner data-icon="inline-start" /> : null}
-              {pendingAction === 'pause' ? 'Pausing…' : 'Pause import'}
-            </Button>
-          )}
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={() => void disconnect()}
-            disabled={pendingAction !== undefined}
-          >
-            {pendingAction === 'disconnect' ? <Spinner data-icon="inline-start" /> : null}
-            {pendingAction === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
-          </Button>
-          <p className="basis-full pt-3">
-            You can close MailRovers. The import resumes when you reopen it.
-          </p>
-        </CardFooter>
-      </Card>
-    </main>
-  )
-}
-
 export function MailboxGate() {
   const queryClient = useQueryClient()
   const [intent, setIntent] = useState<MailboxGateIntent>({ kind: 'mailbox' })
@@ -452,7 +249,7 @@ export function MailboxGate() {
   }, [queryClient])
   const onConnected = useCallback(
     async (mailboxId: MailboxId) => {
-      setIntent({ kind: 'post-connect', mailboxId })
+      setIntent({ kind: 'mailbox', mailboxId })
       await onChanged()
       toast.success('Gmail connected', {
         id: 'gmail-connected',
@@ -494,12 +291,6 @@ export function MailboxGate() {
             }
           : {}),
       }
-    } else if (
-      mailbox.connectionState === 'connected' &&
-      mailbox.syncState !== 'ready' &&
-      intent.kind !== 'post-connect'
-    ) {
-      screen = { kind: 'import', mailbox, onChanged }
     } else {
       screen = {
         kind: 'workspace',
@@ -534,9 +325,6 @@ export function MailboxGate() {
           {...(screen.onCancel === undefined ? {} : { onCancel: screen.onCancel })}
         />
       )
-      break
-    case 'import':
-      content = <ImportPage mailbox={screen.mailbox} onChanged={screen.onChanged} />
       break
     case 'workspace':
       dragRegion = false

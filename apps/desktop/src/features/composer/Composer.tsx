@@ -155,7 +155,7 @@ export function Composer({
         ai.cleanupOperation()
       }
     },
-    [autosave, ai],
+    [autosave, ai.cleanupOperation],
   )
 
   const send = async () => {

@@ -120,6 +120,32 @@ export const GoogleConnectionSucceeded: Story = {
       ),
     ).toBeVisible()
     await expect(await canvas.findByRole('textbox', { name: 'Search mail' })).toBeVisible()
-    await expect(await canvas.findByRole('button', { name: 'Importing email' })).toBeVisible()
+    await userEvent.click(await canvas.findByRole('button', { name: 'Importing email' }))
+    await expect(await body.findByRole('button', { name: 'Pause import' })).toBeVisible()
+    await expect(await body.findByRole('button', { name: 'Disconnect' })).toBeVisible()
+  },
+}
+
+export const ImportPausedRecovery: Story = {
+  parameters: { mailrovers: storybookScenarios.importPaused },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const body = within(canvasElement.ownerDocument.body)
+    await expect(await canvas.findByRole('textbox', { name: 'Search mail' })).toBeVisible()
+    await userEvent.click(await canvas.findByRole('button', { name: 'Import paused' }))
+    await expect(await body.findByRole('button', { name: 'Resume import' })).toBeVisible()
+    await expect(await body.findByRole('button', { name: 'Disconnect' })).toBeVisible()
+  },
+}
+
+export const ImportFailedRecovery: Story = {
+  parameters: { mailrovers: storybookScenarios.importFailed },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const body = within(canvasElement.ownerDocument.body)
+    await expect(await canvas.findByRole('textbox', { name: 'Search mail' })).toBeVisible()
+    await userEvent.click(await canvas.findByRole('button', { name: 'Import needs attention' }))
+    await expect(await body.findByRole('button', { name: 'Retry import' })).toBeVisible()
+    await expect(await body.findByRole('button', { name: 'Disconnect' })).toBeVisible()
   },
 }

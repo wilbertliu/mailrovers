@@ -1,6 +1,6 @@
 import type {
   CommandStateTransition,
-  MailStore,
+  OutboxStore,
   ProviderCommandResult,
 } from '@mailrovers/mail-application'
 import type { DurableCommand } from '@mailrovers/mail-contracts'
@@ -26,7 +26,7 @@ export type CommandFailureDisposition =
       markAuthRequired: boolean
     }
 
-type CompleteCommandInput = Parameters<MailStore['completeCommand']>[0]
+type CompleteCommandInput = Parameters<OutboxStore['completeCommand']>[0]
 type SettledFailureDisposition = Exclude<
   CommandFailureDisposition,
   { kind: 'reconcile-after-failure' }
@@ -57,7 +57,7 @@ export function resolveFailure(input: {
   requestMayHaveBeenSent: boolean
 }): CommandFailureDisposition {
   const code = providerErrorCode(input.error)
-  if (input.error instanceof Error && input.error.message === 'DRAFT_SUPERSEDED') {
+  if (code === 'DRAFT_SUPERSEDED') {
     return { kind: 'cancelled', errorCode: 'DRAFT_SUPERSEDED' }
   }
   if (code === 'COMMAND_TARGET_NOT_FOUND') {

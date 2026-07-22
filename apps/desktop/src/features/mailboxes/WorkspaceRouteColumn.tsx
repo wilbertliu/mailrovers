@@ -1,4 +1,4 @@
-import type { Draft, SearchPage } from '@mailrovers/mail-contracts'
+import type { Draft, MailboxSummary, SearchPage } from '@mailrovers/mail-contracts'
 import type { ConversationId, LabelId, MailboxId } from '@mailrovers/mail-domain'
 import type { InfiniteData } from '@tanstack/react-query'
 import type { ComposerMode } from '../composer/Composer.js'
@@ -20,7 +20,7 @@ export function WorkspaceRouteColumn({
   onSearchSubmit,
   showSidebarToggle,
   onShowSidebar,
-  importInProgress,
+  importMailbox,
   onSelectConversation,
   searchPages,
   searchHasNextPage,
@@ -43,7 +43,7 @@ export function WorkspaceRouteColumn({
   onSearchSubmit: (value: string) => void
   showSidebarToggle: boolean
   onShowSidebar: () => void
-  importInProgress: boolean
+  importMailbox: MailboxSummary | undefined
   onSelectConversation: (conversationId: ConversationId) => void
   searchPages: InfiniteData<SearchPage> | undefined
   searchHasNextPage: boolean
@@ -62,7 +62,7 @@ export function WorkspaceRouteColumn({
           mailboxId={mailboxId}
           showSidebarToggle={showSidebarToggle}
           onShowSidebar={onShowSidebar}
-          importInProgress={importInProgress}
+          importMailbox={importMailbox}
           onClose={onCloseAiSettings}
         />
       )
@@ -76,7 +76,7 @@ export function WorkspaceRouteColumn({
           onSearchSubmit={onSearchSubmit}
           showSidebarToggle={showSidebarToggle}
           onShowSidebar={onShowSidebar}
-          importInProgress={importInProgress}
+          importMailbox={importMailbox}
           onOpenComposer={onOpenComposer}
         />
       )
@@ -97,7 +97,7 @@ export function WorkspaceRouteColumn({
             onSearchSubmit={onSearchSubmit}
             showSidebarToggle={showSidebarToggle}
             onShowSidebar={onShowSidebar}
-            importInProgress={importInProgress}
+            importMailbox={importMailbox}
             onClear={onClearSearch}
             onLoadMore={onLoadMoreSearch}
             onSelect={onSelectConversation}
@@ -117,7 +117,7 @@ export function WorkspaceRouteColumn({
           onSearchSubmit={onSearchSubmit}
           showSidebarToggle={showSidebarToggle}
           onShowSidebar={onShowSidebar}
-          importInProgress={importInProgress}
+          importMailbox={importMailbox}
           onSelect={onSelectConversation}
         />
       )
