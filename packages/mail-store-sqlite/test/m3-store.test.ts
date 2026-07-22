@@ -249,7 +249,41 @@ describe('SQLite M3 store', () => {
     expect(edited.revisionFingerprint).toBe(claimed.command.outboundRevisionFingerprint)
   })
 
-  it('preserves dirty local content as a conflict when Gmail changes the draft', async () => {
+  it('mailbox-scopes historical draft references when fingerprinting a conflict', async () => {
+    const foreignMailbox: Mailbox = {
+      ...mailbox,
+      id: mailboxId('gmail:foreign'),
+      providerAccountId: 'foreign',
+      emailAddress: 'foreign@example.test',
+      displayName: 'Foreign',
+    }
+    await store.saveConnectedMailbox({
+      mailbox: foreignMailbox,
+      checkpoint: { ...checkpoint, mailboxId: foreignMailbox.id },
+      encryptedRefreshToken: new Uint8Array([2]),
+    })
+    const foreignMessage: NormalizedMessage = {
+      ...message(),
+      id: messageId('gmail:foreign:message'),
+      mailboxId: foreignMailbox.id,
+      conversationId: conversationId('gmail:foreign:conversation'),
+      providerThreadId: 'foreign-thread',
+      providerMessageId: 'foreign-message',
+      internetMessageId: '<foreign-reply@example.test>',
+      attachments: [],
+    }
+    const foreignFence = await acquireTestSyncFence(store, foreignMailbox.id, timestamp)
+    await store.applyImportBatch({
+      mailboxId: foreignMailbox.id,
+      batch: { messages: [foreignMessage] },
+      updatedAt: timestamp,
+      fence: foreignFence,
+    })
+    await store.releaseSyncLease({
+      mailboxId: foreignMailbox.id,
+      ...foreignFence,
+    })
+
     const local = await store.saveDraft({
       request: {
         requestId: operationId('save-conflict-local'),
@@ -267,9 +301,10 @@ describe('SQLite M3 store', () => {
     })
     database
       .prepare(
-        "UPDATE drafts SET provider_draft_id='remote-draft',provider_message_id='remote-message' WHERE id=?",
+        `UPDATE drafts SET provider_draft_id='remote-draft',provider_message_id='remote-message',
+        conversation_id=?,reply_to_message_id=? WHERE id=?`,
       )
-      .run(local.id)
+      .run(foreignMessage.conversationId, foreignMessage.id, local.id)
     const remote: NormalizedDraft = {
       id: draftId('remote-normalized'),
       workspaceId: mailbox.workspaceId,
@@ -319,14 +354,31 @@ describe('SQLite M3 store', () => {
     const drafts = await store.listDrafts(mailbox.id)
     expect(drafts).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ syncState: 'conflict', textBody: 'Local body' }),
-        expect.objectContaining({ id: local.id, syncState: 'synced', textBody: 'Remote body' }),
+        expect.objectContaining({
+          syncState: 'conflict',
+          textBody: 'Local body',
+        }),
+        expect.objectContaining({
+          id: local.id,
+          syncState: 'synced',
+          textBody: 'Remote body',
+        }),
       ]),
     )
     const conflict = database
-      .prepare(`SELECT internet_message_id,revision_fingerprint FROM drafts
-        WHERE conflict_of_draft_id=?`)
-      .get(local.id) as { internet_message_id: string; revision_fingerprint: string }
+      .prepare(
+        `SELECT internet_message_id,revision_fingerprint,conversation_id,reply_to_message_id
+        FROM drafts
+        WHERE conflict_of_draft_id=?`,
+      )
+      .get(local.id) as {
+      internet_message_id: string
+      revision_fingerprint: string
+      conversation_id: string
+      reply_to_message_id: string
+    }
+    expect(conflict.conversation_id).toBe(foreignMessage.conversationId)
+    expect(conflict.reply_to_message_id).toBe(foreignMessage.id)
     expect(conflict.revision_fingerprint).toBe(
       fingerprintDraftRevision({
         internetMessageId: conflict.internet_message_id,

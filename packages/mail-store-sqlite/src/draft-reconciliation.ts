@@ -47,11 +47,14 @@ function conflictRevisionFingerprint(
   internetMessageId: string,
 ): DraftRevisionFingerprint {
   const value = db
-    .prepare(`SELECT d.*,c.provider_thread_id,reply.internet_message_id AS reply_internet_message_id,
+    .prepare(
+      `SELECT d.*,c.provider_thread_id,reply.internet_message_id AS reply_internet_message_id,
       mailbox.email_address AS mailbox_email_address,mailbox.display_name AS mailbox_display_name
       FROM drafts d JOIN mailboxes mailbox ON mailbox.id=d.mailbox_id
-      LEFT JOIN conversations c ON c.id=d.conversation_id
-      LEFT JOIN messages reply ON reply.id=d.reply_to_message_id WHERE d.id=?`)
+      LEFT JOIN conversations c ON c.id=d.conversation_id AND c.mailbox_id=d.mailbox_id
+      LEFT JOIN messages reply ON reply.id=d.reply_to_message_id AND reply.mailbox_id=d.mailbox_id
+      WHERE d.id=?`,
+    )
     .get(draftId)
   if (value === undefined) throw new Error('Draft conflict source was not found')
   const draft = value as Row
