@@ -208,6 +208,10 @@ export const databaseRpcFixtures = {
     },
     result: undefined,
   },
+  listAttachmentCachePaths: {
+    input: mailbox,
+    result: ['attachments/file.txt'],
+  },
   getMessageBodies: {
     input: {
       mailboxId: mailbox,

@@ -534,6 +534,9 @@ const cancelMailboxCommandsInputSchema = z.object({ mailboxId: mailbox, updatedA
 
 export const listLabelsInputCodec: DatabaseCodec<Parameters<MailStore['listLabels']>[0]> =
   codec(mailbox)
+export const listAttachmentCachePathsInputCodec: DatabaseCodec<
+  Parameters<MailStore['listAttachmentCachePaths']>[0]
+> = codec(mailbox)
 export const getMailboxInputCodec: DatabaseCodec<Parameters<MailStore['getMailbox']>[0]> =
   codec(mailbox)
 export const getEncryptedRefreshTokenInputCodec: DatabaseCodec<

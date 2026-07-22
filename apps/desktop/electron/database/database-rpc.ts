@@ -24,6 +24,7 @@ import {
   searchPageCodec,
   storedAiConfigurationCodec,
   storedCommandCodec,
+  stringCodec,
   syncCheckpointCodec,
   syncLeaseCodec,
   uint8ArrayCodec,
@@ -58,6 +59,7 @@ import {
   getMailboxInputCodec,
   getMessageBodiesInputCodec,
   getSyncCheckpointInputCodec,
+  listAttachmentCachePathsInputCodec,
   listCommandIssuesInputCodec,
   listDraftsInputCodec,
   listLabelsInputCodec,
@@ -194,6 +196,11 @@ export const databaseOperations: DatabaseOperationRegistry = {
     'markAttachmentCached',
     markAttachmentCachedInputCodec,
     voidCodec,
+  ),
+  listAttachmentCachePaths: operation(
+    'listAttachmentCachePaths',
+    listAttachmentCachePathsInputCodec,
+    arrayCodec(stringCodec),
   ),
   getMessageBodies: operation(
     'getMessageBodies',
