@@ -11,8 +11,8 @@ const fence: SyncLeaseFence = {
 
 describe('withFence', () => {
   it('renews once and passes the fence into the write', async () => {
-    const renew = vi.fn(async () => fence)
-    const write = vi.fn(async (received: SyncLeaseFence) => {
+    const renew = vi.fn<() => Promise<SyncLeaseFence>>(async () => fence)
+    const write = vi.fn<(received: SyncLeaseFence) => Promise<'ok'>>(async (received) => {
       expect(received).toBe(fence)
       return 'ok'
     })
@@ -23,10 +23,10 @@ describe('withFence', () => {
   })
 
   it('does not invoke the write when renewal fails', async () => {
-    const renew = vi.fn(async () => {
+    const renew = vi.fn<() => Promise<SyncLeaseFence>>(async () => {
       throw new Error('SYNC_LEASE_LOST')
     })
-    const write = vi.fn(async () => 'ok')
+    const write = vi.fn<() => Promise<'ok'>>(async () => 'ok')
 
     await expect(withFence(renew, write)).rejects.toThrow('SYNC_LEASE_LOST')
     expect(write).not.toHaveBeenCalled()

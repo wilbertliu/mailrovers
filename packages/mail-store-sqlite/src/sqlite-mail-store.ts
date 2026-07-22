@@ -33,12 +33,10 @@ function bindMethods<T extends object, const Keys extends readonly (keyof T & st
 
 /**
  * Public MailStore facade composed from capability-aligned SQLite modules.
- * Interface merge supplies the MailStore method types; the constructor assigns
- * bound module methods (no per-method `.bind` wall).
+ * The constructor assigns bound module methods (no per-method `.bind` wall).
+ * Typed as `MailStore` via the exported constructor alias below.
  */
-export interface SqliteMailStore extends MailStore {}
-
-export class SqliteMailStore {
+class SqliteMailStoreImpl {
   private readonly committedChangeListeners = new Set<CommittedChangeListener>()
 
   constructor(db: SqliteDatabase, draftMergeOptions: DraftMergeOptions = {}) {
@@ -155,4 +153,12 @@ export class SqliteMailStore {
         // A notification consumer cannot roll back or fail an already committed transaction.
       }
   }
+}
+
+export type SqliteMailStore = SqliteMailStoreImpl & MailStore
+
+export const SqliteMailStore: {
+  new (db: SqliteDatabase, draftMergeOptions?: DraftMergeOptions): SqliteMailStore
+} = SqliteMailStoreImpl as unknown as {
+  new (db: SqliteDatabase, draftMergeOptions?: DraftMergeOptions): SqliteMailStore
 }

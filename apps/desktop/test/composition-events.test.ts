@@ -77,7 +77,7 @@ describe('desktop database composition committed events', () => {
         },
         createdAt: now,
       }),
-    ).rejects.toThrow('FOREIGN KEY constraint failed')
+    ).rejects.toThrow('COMMAND_TARGET_NOT_FOUND')
     expect(events).toEqual([])
   })
 })

@@ -28,19 +28,21 @@ describe('ElectronAttachmentStorage', () => {
       const cachedFile = join(applicationDataRoot, cached.relativePath)
       expect(existsSync(cachedFile)).toBe(true)
 
-      const removeMailbox = vi.fn(async () => undefined)
+      const removeMailbox = vi.fn<() => Promise<void>>(async () => undefined)
       const application = createMailApplication({
         store: {
-          cancelMailboxCommands: vi.fn(async () => undefined),
-          listAttachmentCachePaths: vi.fn(async () => [cached.relativePath]),
+          cancelMailboxCommands: vi.fn<() => Promise<void>>(async () => undefined),
+          listAttachmentCachePaths: vi.fn<() => Promise<string[]>>(async () => [
+            cached.relativePath,
+          ]),
           removeMailbox,
         } as unknown as MailStore,
         attachmentStorage: storage,
         syncEngine: {
-          cancelMailbox: vi.fn(async () => true),
+          cancelMailbox: vi.fn<() => Promise<boolean>>(async () => true),
         } as unknown as SyncEngine,
         commandDispatcher: {
-          cancelMailbox: vi.fn(async () => true),
+          cancelMailbox: vi.fn<() => Promise<boolean>>(async () => true),
         } as unknown as CommandDispatcher,
       })
 

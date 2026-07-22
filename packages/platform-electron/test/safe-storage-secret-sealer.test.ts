@@ -47,19 +47,18 @@ describe('assertOsProtectedSafeStorage', () => {
   })
 
   it('rejects Linux basic_text even when encryption reports available', () => {
-    try {
+    expect(() =>
       assertOsProtectedSafeStorage({
         encryptionAvailable: true,
         platform: 'linux',
         selectedBackend: 'basic_text',
-      })
-      expect.unreachable('expected basic_text to be rejected')
-    } catch (error) {
-      expect(error).toMatchObject({
+      }),
+    ).toThrow(
+      expect.objectContaining({
         code: SECRET_STORAGE_UNAVAILABLE_CODE,
         message: expect.stringContaining('basic_text'),
-      })
-    }
+      }),
+    )
   })
 
   it('rejects Linux unknown, missing, and non-allowlisted backends', () => {
