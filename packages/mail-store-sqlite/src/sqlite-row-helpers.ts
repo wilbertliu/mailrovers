@@ -1,4 +1,15 @@
-import type { AiArtifact, CommandReceipt, Draft, DurableCommand } from '@mailrovers/mail-contracts'
+import {
+  decodeCommandState,
+  decodeDraftSyncState,
+  decodeImportState,
+  decodeMailboxConnectionState,
+  decodeMailboxSyncState,
+  decodeResumeImportState,
+  type AiArtifact,
+  type CommandReceipt,
+  type Draft,
+  type DurableCommand,
+} from '@mailrovers/mail-contracts'
 import {
   aiArtifactId,
   commandId,
@@ -10,11 +21,9 @@ import {
   messageId,
   utcTimestamp,
   workspaceId,
-  type ImportState,
   type MailAddress,
   type Mailbox,
   type MailboxId,
-  type ResumeImportState,
   type SyncCheckpoint,
 } from '@mailrovers/mail-domain'
 
@@ -224,7 +233,7 @@ export function mapDraft(value: unknown): Draft {
     ...(htmlBody === undefined ? {} : { htmlBody }),
     version: Number(result.version),
     revisionFingerprint: draftRevisionFingerprint(String(result.revision_fingerprint)),
-    syncState: String(result.sync_state) as Draft['syncState'],
+    syncState: decodeDraftSyncState(result.sync_state),
     updatedAt: utcTimestamp(String(result.updated_at)),
   }
 }
@@ -245,7 +254,7 @@ export function mapCommand(value: unknown): CommandReceipt {
   return {
     id: commandId(String(result.id)),
     mailboxId: mailboxId(String(result.mailbox_id)),
-    state: String(result.state) as CommandReceipt['state'],
+    state: decodeCommandState(result.state),
     command: parseMailCommand(command),
     createdAt: utcTimestamp(String(result.created_at)),
     ...(nextAttemptAt === undefined ? {} : { nextAttemptAt: utcTimestamp(nextAttemptAt) }),
@@ -262,8 +271,8 @@ export function mapMailbox(value: unknown): Mailbox {
     providerAccountId: String(result.provider_account_id),
     emailAddress: String(result.email_address),
     displayName: String(result.display_name),
-    syncState: String(result.sync_state) as Mailbox['syncState'],
-    connectionState: result.connection_state === 'disconnected' ? 'disconnected' : 'connected',
+    syncState: decodeMailboxSyncState(result.sync_state),
+    connectionState: decodeMailboxConnectionState(result.connection_state ?? 'connected'),
     ...(lastSuccessfulSyncAt === undefined
       ? {}
       : { lastSuccessfulSyncAt: utcTimestamp(lastSuccessfulSyncAt) }),
@@ -298,11 +307,11 @@ export function mapCheckpoint(value: unknown): SyncCheckpoint {
     ...(optionalString(result.import_draft_page_token) === undefined
       ? {}
       : { importDraftPageToken: String(result.import_draft_page_token) }),
-    importState: String(result.import_state) as ImportState,
+    importState: decodeImportState(result.import_state),
     ...(optionalString(result.resume_import_state) === undefined
       ? {}
       : {
-          resumeImportState: String(result.resume_import_state) as ResumeImportState,
+          resumeImportState: decodeResumeImportState(result.resume_import_state),
         }),
     importedMessageCount: Number(result.imported_message_count),
     importedDraftCount: Number(result.imported_draft_count),

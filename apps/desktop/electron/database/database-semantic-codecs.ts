@@ -1,20 +1,26 @@
-import type {
-  AiArtifact,
-  CommandReceipt,
-  ConversationDetail,
-  ConversationPage,
-  Draft,
-  DraftCommand,
-  GetConversationInput,
-  GetMessageBodyInput,
-  LabelSummary,
-  ListConversationsInput,
-  MailCommand,
-  MailboxSummary,
-  MessageBody,
-  SaveDraftInput,
-  SearchMailInput,
-  SearchPage,
+import {
+  commandStateSchema,
+  draftSyncStateSchema,
+  importStateSchema,
+  mailboxConnectionStateSchema,
+  mailboxSyncStateSchema,
+  resumeImportStateSchema,
+  type AiArtifact,
+  type CommandReceipt,
+  type ConversationDetail,
+  type ConversationPage,
+  type Draft,
+  type DraftCommand,
+  type GetConversationInput,
+  type GetMessageBodyInput,
+  type LabelSummary,
+  type ListConversationsInput,
+  type MailCommand,
+  type MailboxSummary,
+  type MessageBody,
+  type SaveDraftInput,
+  type SearchMailInput,
+  type SearchPage,
 } from '@mailrovers/mail-contracts'
 import type {
   AiArtifactId,
@@ -122,8 +128,8 @@ export const mailboxSchema = z
     providerAccountId: requiredString(1_000),
     emailAddress: z.string().email().max(1_000),
     displayName: boundedString(500),
-    connectionState: z.enum(['connected', 'disconnected']).optional(),
-    syncState: z.enum(['importing', 'paused', 'reconciling', 'ready', 'auth_required', 'failed']),
+    connectionState: mailboxConnectionStateSchema.optional(),
+    syncState: mailboxSyncStateSchema,
     lastSuccessfulSyncAt: utc.optional(),
     createdAt: utc,
     updatedAt: utc,
@@ -135,25 +141,15 @@ const mailboxSummarySchema = z
     provider: z.literal('gmail'),
     emailAddress: z.string().email().max(1_000),
     displayName: boundedString(500),
-    syncState: z.enum(['importing', 'paused', 'reconciling', 'ready', 'auth_required', 'failed']),
-    connectionState: z.enum(['connected', 'disconnected']),
+    syncState: mailboxSyncStateSchema,
+    connectionState: mailboxConnectionStateSchema,
     capabilities,
     importedMessageCount: nonnegativeInteger,
     importTotalEstimate: nonnegativeInteger.optional(),
     lastSuccessfulSyncAt: utc.optional(),
   })
   .strict()
-export const importState = z.enum([
-  'pending',
-  'importing_labels',
-  'importing_messages',
-  'importing_drafts',
-  'reconciling_history',
-  'full_reconciliation',
-  'paused',
-  'complete',
-  'failed',
-])
+export const importState = importStateSchema
 export const checkpointSchema = z
   .object({
     mailboxId: mailbox,
@@ -164,7 +160,7 @@ export const checkpointSchema = z
     importMessagePageToken: boundedString(2_048).optional(),
     importDraftPageToken: boundedString(2_048).optional(),
     importState,
-    resumeImportState: importState.exclude(['paused', 'failed']).optional(),
+    resumeImportState: resumeImportStateSchema.optional(),
     importedMessageCount: nonnegativeInteger,
     importedDraftCount: nonnegativeInteger,
     importTotalEstimate: nonnegativeInteger.optional(),
@@ -334,7 +330,7 @@ const draftSchema = z
     htmlBody: boundedString(20_000_000).optional(),
     version: positiveInteger,
     revisionFingerprint: fingerprint,
-    syncState: z.enum(['local', 'pending', 'synced', 'conflict', 'failed', 'sent']),
+    syncState: draftSyncStateSchema,
     updatedAt: utc,
   })
   .strict()
@@ -383,15 +379,7 @@ const durableCommandSchemaLocal = z.discriminatedUnion('kind', [
   ...mailCommandSchema.options,
   ...draftCommandSchema.options,
 ])
-const commandState = z.enum([
-  'pending',
-  'running',
-  'retry_wait',
-  'succeeded',
-  'failed',
-  'needs_review',
-  'cancelled',
-])
+const commandState = commandStateSchema
 const commandReceiptSchemaLocal = z
   .object({
     id: command,

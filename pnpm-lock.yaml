@@ -220,6 +220,9 @@ importers:
       '@mailrovers/mail-domain':
         specifier: workspace:*
         version: link:../mail-domain
+      zod:
+        specifier: 3.24.3
+        version: 3.24.3
     devDependencies:
       vitest:
         specifier: 3.1.3

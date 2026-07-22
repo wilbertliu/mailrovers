@@ -1,5 +1,10 @@
 import type { CommittedChangeSet, MailStore, SyncLeaseFence } from '@mailrovers/mail-application'
-import { GMAIL_CAPABILITIES, type MailboxSummary } from '@mailrovers/mail-contracts'
+import {
+  decodeMailboxConnectionState,
+  decodeMailboxSyncState,
+  GMAIL_CAPABILITIES,
+  type MailboxSummary,
+} from '@mailrovers/mail-contracts'
 import {
   mailboxId,
   utcTimestamp,
@@ -45,9 +50,8 @@ export class SqliteMailboxesSync {
           provider: 'gmail',
           emailAddress: String(result.email_address),
           displayName: String(result.display_name),
-          syncState: String(result.sync_state) as Mailbox['syncState'],
-          connectionState:
-            result.connection_state === 'disconnected' ? 'disconnected' : 'connected',
+          syncState: decodeMailboxSyncState(result.sync_state),
+          connectionState: decodeMailboxConnectionState(result.connection_state ?? 'connected'),
           capabilities: GMAIL_CAPABILITIES,
           importedMessageCount: Number(result.imported_message_count ?? 0),
           ...(result.import_total_estimate === null || result.import_total_estimate === undefined
