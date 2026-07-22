@@ -32,7 +32,7 @@ The packaged check runs both direct and worker-backed SQLite modes. It verifies 
 
 ## Development OAuth setup
 
-Create a Google Cloud project for development, enable Gmail API, configure an external OAuth consent screen in testing mode, add the test accounts, and create a Desktop app OAuth client.
+Step-by-step Google Cloud setup for development and production (Desktop app client, consent screen, scopes, branding, and verification) is in [`gmail-oauth-setup.md`](gmail-oauth-setup.md).
 
 Run MailRovers with the public client ID:
 
@@ -62,4 +62,4 @@ Use a controlled Gmail test account and a packaged application built with the de
 
 ## Google release dependency
 
-`gmail.modify` is a restricted scope. Public distribution requires the production OAuth consent configuration, public home page and privacy policy, verified domains, and Google's restricted-scope verification. Keep development and production Google Cloud projects separate.
+`gmail.modify` is a high-access Gmail scope. Public distribution requires the production OAuth consent configuration, public home page and privacy policy, verified domains, and Google's scope verification. Keep development and production Google Cloud projects separate. Use the production checklist in [`gmail-oauth-setup.md`](gmail-oauth-setup.md).
