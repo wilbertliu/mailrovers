@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
+import { StartupSplash } from '@/components/startup-splash.js'
 import { Button } from '@/components/ui/button.js'
 import {
   Card,
@@ -31,13 +32,13 @@ import {
   ItemMedia,
   ItemTitle,
 } from '@/components/ui/item.js'
-import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker.js'
 import { Progress, ProgressLabel, ProgressValue } from '@/components/ui/progress.js'
 import { Spinner } from '@/components/ui/spinner.js'
 import logo from '@/assets/logo.png'
 import { DesktopApplicationError, desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
 import { ConnectionHandoffPage } from './ConnectionHandoffPage.js'
+import { useDeferredStartupSplash, useHtmlBootSplash } from './use-startup-splash.js'
 
 const CONNECTION_HANDOFF_MINIMUM_MS = 800
 
@@ -48,7 +49,7 @@ type MailboxGateIntent =
 
 type MailboxGateScreen =
   | { kind: 'loading' }
-  | { kind: 'error'; retrying: boolean; onRetry: () => void }
+  | { kind: 'error'; onRetry: () => void }
   | {
       kind: 'connect'
       onConnected: (mailboxId: MailboxId) => Promise<void>
@@ -85,20 +86,7 @@ function WindowFrame({
   )
 }
 
-function LoadingPage({ message }: { message: string }) {
-  return (
-    <main className="grid h-full place-items-center p-6">
-      <Marker className="w-auto" render={<output aria-live="polite" />}>
-        <MarkerIcon>
-          <Spinner aria-hidden="true" />
-        </MarkerIcon>
-        <MarkerContent>{message}</MarkerContent>
-      </Marker>
-    </main>
-  )
-}
-
-function MailboxErrorPage({ retrying, onRetry }: { retrying: boolean; onRetry: () => void }) {
+function MailboxErrorPage({ onRetry }: { onRetry: () => void }) {
   return (
     <main className="grid h-full place-items-center p-6">
       <Empty>
@@ -109,9 +97,8 @@ function MailboxErrorPage({ retrying, onRetry }: { retrying: boolean; onRetry: (
           <EmptyDescription role="alert">Couldn't open your local mailbox.</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
-          <Button type="button" onClick={onRetry} disabled={retrying}>
-            {retrying ? <Spinner data-icon="inline-start" /> : null}
-            {retrying ? 'Retrying…' : 'Retry'}
+          <Button type="button" onClick={onRetry}>
+            Retry
           </Button>
         </EmptyContent>
       </Empty>
@@ -486,13 +473,16 @@ export function MailboxGate() {
     [onChanged],
   )
   const retryInitialLoad = () => void mailboxes.refetch()
+  const openingMailboxes =
+    mailboxes.data === undefined && !(mailboxes.isError && !mailboxes.isFetching)
+  const hasHtmlBootSplash = useHtmlBootSplash(openingMailboxes)
+  const showReactStartupSplash = useDeferredStartupSplash(openingMailboxes && !hasHtmlBootSplash)
 
   let screen: MailboxGateScreen
 
-  if (mailboxes.data === undefined && mailboxes.isError) {
+  if (mailboxes.data === undefined && mailboxes.isError && !mailboxes.isFetching) {
     screen = {
       kind: 'error',
-      retrying: mailboxes.isFetching,
       onRetry: retryInitialLoad,
     }
   } else if (mailboxes.data === undefined) {
@@ -547,10 +537,10 @@ export function MailboxGate() {
   let dragRegion = true
   switch (screen.kind) {
     case 'loading':
-      content = <LoadingPage message="Opening your local mailbox…" />
+      content = showReactStartupSplash ? <StartupSplash /> : null
       break
     case 'error':
-      content = <MailboxErrorPage retrying={screen.retrying} onRetry={screen.onRetry} />
+      content = <MailboxErrorPage onRetry={screen.onRetry} />
       break
     case 'connect':
       content = (

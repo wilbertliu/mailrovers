@@ -1,0 +1,58 @@
+/** Full-viewport boot splash shown from index.html until the mailbox gate leaves loading. */
+#mailrovers-boot-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: #171717;
+  background: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  #mailrovers-boot-splash {
+    color: #fafafa;
+    background: #242424;
+  }
+}
+
+/* Keep in sync with `.startup-splash-logo` in styles.css and createStartupScreenDocument. */
+#mailrovers-boot-splash .startup-splash-logo {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  overflow: hidden;
+  border-radius: 18px;
+}
+
+#mailrovers-boot-splash .startup-splash-logo img {
+  display: block;
+  width: 72px;
+  height: 72px;
+}
+
+#mailrovers-boot-splash .startup-splash-logo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(
+    120deg,
+    rgba(255, 255, 255, 0) 35%,
+    rgba(255, 255, 255, 0.85) 50%,
+    rgba(255, 255, 255, 0) 65%
+  );
+  background-size: 200% auto;
+  animation: startup-splash-shine 2s linear infinite;
+  pointer-events: none;
+  mix-blend-mode: soft-light;
+}
+
+@keyframes startup-splash-shine {
+  0% {
+    background-position: 150% center;
+  }
+  100% {
+    background-position: -50% center;
+  }
+}

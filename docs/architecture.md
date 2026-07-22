@@ -175,7 +175,7 @@ The bridge must expose task-oriented operations such as `listThreads` and `sendD
 The main process owns:
 
 - Application lifecycle and windows.
-- Startup presentation. The main window displays a local, script-free startup surface before database initialization, then replaces it with the renderer after storage and IPC are ready. That surface is the centered MailRovers logo with a CSS shine sweep (no scripts; logo embedded as a data URI). Window presentation shows the window before activating and focusing the app so macOS can bring it to the foreground reliably.
+- Startup presentation. The main window displays a local, script-free startup surface before database initialization, then replaces it with the renderer after storage and IPC are ready. That surface is the centered MailRovers logo with a CSS shine sweep (no scripts; logo embedded as a data URI). The renderer index document paints the same boot splash immediately so opening stays visually continuous; React removes it only after the local mailbox list has opened (or failed). Retries and Storybook loading states reuse the matching React splash, deferred briefly so a fast open does not flash the logo before the next screen. Window presentation shows the window before activating and focusing the app so macOS can bring it to the foreground reliably.
 - Single-instance enforcement. `app.requestSingleInstanceLock()` runs before readiness, database opening, worker creation, provider construction, or command/sync startup. A losing process quits without opening local services; the winner restores, shows, and focuses its window on `second-instance`.
 - Deep links and OAuth callback coordination.
 - Native menus, notifications, dock integration, and updater lifecycle.

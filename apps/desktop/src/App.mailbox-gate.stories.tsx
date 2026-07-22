@@ -16,7 +16,7 @@ export const Opening: Story = {
   parameters: { mailrovers: storybookScenarios.mailboxOpening },
   play: async ({ canvasElement }) => {
     await expect(
-      await within(canvasElement).findByText('Opening your local mailbox…'),
+      await within(canvasElement).findByRole('img', { name: 'MailRovers' }, { timeout: 3000 }),
     ).toBeVisible()
   },
 }
@@ -35,16 +35,17 @@ export const Retrying: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     await userEvent.click(await canvas.findByRole('button', { name: 'Retry' }))
-    await expect(await canvas.findByRole('button', { name: 'Retrying…' })).toBeDisabled()
+    await expect(await canvas.findByRole('img', { name: 'MailRovers' }, { timeout: 3000 })).toBeVisible()
   },
 }
 
 export const NoAccountConnected: Story = {
   parameters: { mailrovers: storybookScenarios.noAccounts },
   play: async ({ canvasElement }) => {
-    await expect(
-      await within(canvasElement).findByRole('heading', { name: 'Before you connect' }),
-    ).toBeVisible()
+    const canvas = within(canvasElement)
+    await expect(await canvas.findByRole('heading', { name: 'Before you connect' })).toBeVisible()
+    await expect(canvasElement.querySelector('.startup-splash-logo')).toBeNull()
+    await expect(canvasElement.ownerDocument.getElementById('mailrovers-boot-splash')).toBeNull()
   },
 }
 

@@ -130,6 +130,46 @@
     @apply bg-background text-foreground;
   }
 
+  /* Keep in sync with createStartupScreenDocument shine styles. */
+  .startup-splash-logo {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+    overflow: hidden;
+    border-radius: 18px;
+  }
+
+  .startup-splash-logo img {
+    display: block;
+    width: 72px;
+    height: 72px;
+  }
+
+  .startup-splash-logo::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(
+      120deg,
+      rgba(255, 255, 255, 0) 35%,
+      rgba(255, 255, 255, 0.85) 50%,
+      rgba(255, 255, 255, 0) 65%
+    );
+    background-size: 200% auto;
+    animation: startup-splash-shine 2s linear infinite;
+    pointer-events: none;
+    mix-blend-mode: soft-light;
+  }
+
+  @keyframes startup-splash-shine {
+    0% {
+      background-position: 150% center;
+    }
+    100% {
+      background-position: -50% center;
+    }
+  }
+
   .window-titlebar {
     -webkit-app-region: drag;
     app-region: drag;
