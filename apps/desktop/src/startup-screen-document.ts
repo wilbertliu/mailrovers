@@ -8,8 +8,7 @@ export function createStartupScreenDocument(logoSrc: string): string {
     <meta name="color-scheme" content="light dark">
     <title>MailRovers</title>
     <style>
-      :root { color: #171717; background: #fff; }
-      @media (prefers-color-scheme: dark) { :root { color: #fafafa; background: #242424; } }
+      :root { color: light-dark(#171717, #fafafa); background: light-dark(#fff, #242424); }
       body { min-height: 100vh; margin: 0; display: grid; place-items: center; }
       main { text-align: center; }
       .logo-shine {

@@ -1,5 +1,7 @@
 /** Full-viewport startup splash for the React `StartupSplash` (Storybook / retries).
- * Shine rules stay aligned with `createStartupScreenDocument`. */
+ * Shine rules stay aligned with `createStartupScreenDocument`.
+ * `light-dark()` follows the document `color-scheme` (Storybook theme / next-themes),
+ * not only the OS `prefers-color-scheme` media query. */
 .mailrovers-startup-splash {
   position: fixed;
   inset: 0;
@@ -7,15 +9,8 @@
   display: grid;
   place-items: center;
   pointer-events: none;
-  color: #171717;
-  background: #fff;
-}
-
-@media (prefers-color-scheme: dark) {
-  .mailrovers-startup-splash {
-    color: #fafafa;
-    background: #242424;
-  }
+  color: light-dark(#171717, #fafafa);
+  background: light-dark(#fff, #242424);
 }
 
 /* Keep in sync with createStartupScreenDocument shine styles. */
