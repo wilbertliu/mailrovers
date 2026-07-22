@@ -1,33 +1,38 @@
 import { useEffect, useState } from 'react'
 
-const BOOT_SPLASH_ID = 'mailrovers-boot-splash'
-/** Avoid a one-frame logo flash when mailbox open resolves quickly (Storybook / retries). */
+/** Avoid a one-frame logo flash when mailbox open resolves quickly (Storybook). */
 const REACT_SPLASH_DEFER_MS = 120
 
-/** Keeps the index.html boot splash until opening finishes, then removes it. */
-export function useHtmlBootSplash(keepVisible: boolean): boolean {
-  const [hasBootSplash] = useState(() => document.getElementById(BOOT_SPLASH_ID) !== null)
-
-  useEffect(() => {
-    if (keepVisible) return
-    document.getElementById(BOOT_SPLASH_ID)?.remove()
-  }, [keepVisible])
-
-  return hasBootSplash
+function isElectronShell(): boolean {
+  return /Electron\//.test(navigator.userAgent)
 }
 
-/** Show the React splash only after opening has lasted long enough to matter. */
-export function useDeferredStartupSplash(loading: boolean): boolean {
-  const [show, setShow] = useState(false)
+/**
+ * Coordinates opening UX:
+ * - Marks `data-mailrovers-ui-ready` so Electron can dismiss its BrowserView splash
+ * - Returns whether to paint the React splash (Storybook + post-error retries only)
+ */
+export function useMailboxOpeningSplash(opening: boolean): boolean {
+  const [allowReactSplash, setAllowReactSplash] = useState(() => !isElectronShell())
+  const [showReactSplash, setShowReactSplash] = useState(false)
 
   useEffect(() => {
-    if (!loading) {
-      setShow(false)
+    if (opening) delete document.documentElement.dataset.mailroversUiReady
+    else document.documentElement.dataset.mailroversUiReady = '1'
+  }, [opening])
+
+  useEffect(() => {
+    if (!opening && isElectronShell()) setAllowReactSplash(true)
+  }, [opening])
+
+  useEffect(() => {
+    if (!opening || !allowReactSplash) {
+      setShowReactSplash(false)
       return
     }
-    const timer = window.setTimeout(() => setShow(true), REACT_SPLASH_DEFER_MS)
+    const timer = window.setTimeout(() => setShowReactSplash(true), REACT_SPLASH_DEFER_MS)
     return () => window.clearTimeout(timer)
-  }, [loading])
+  }, [opening, allowReactSplash])
 
-  return loading && show
+  return opening && allowReactSplash && showReactSplash
 }

@@ -14,7 +14,6 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { pathToFileURL } from 'node:url'
 import { performance } from 'node:perf_hooks'
 import logoSrc from '../src/assets/logo.png?inline'
-import { createStartupScreenDocument } from '../src/startup-screen-document.js'
 import { composeDesktopApplication } from './composition-root.js'
 import type { DatabaseHost } from './database/database-host.js'
 import { createMainDatabaseHost } from './database/main-database-host.js'
@@ -24,6 +23,7 @@ import { DesktopEventBus } from './ipc/desktop-event-bus.js'
 import { registerMailApplication } from './ipc/register-mail-application.js'
 import { isAllowedRendererUrl } from './ipc/authorization.js'
 import { acquireSingleInstance, presentWindow } from './single-instance.js'
+import { attachStartupSplashOverlay } from './startup-splash-overlay.js'
 
 app.setName('MailRovers')
 app.setAboutPanelOptions({ applicationName: 'MailRovers' })
@@ -140,9 +140,7 @@ async function createWindow(): Promise<void> {
   })
   mainWindow = window
   checkpoint('windowCreated')
-  await window.loadURL(
-    `data:text/html;charset=utf-8,${encodeURIComponent(createStartupScreenDocument(logoSrc))}`,
-  )
+  const startupSplash = await attachStartupSplashOverlay(window, logoSrc)
   await presentWindow(app, window)
   checkpoint('windowVisible')
 
@@ -204,6 +202,7 @@ async function createWindow(): Promise<void> {
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) await window.loadURL(rendererUrl)
   else await window.loadFile(packagedRendererPath)
   checkpoint('windowLoaded')
+  startupSplash.dismissWhenUiReady()
   const searchIndexing = backfillSearch(host.store)
   void searchIndexing.catch((error: unknown) =>
     logger.error('search-indexing-failed', { code: 'INTERNAL_ERROR', error }),

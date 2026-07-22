@@ -38,7 +38,7 @@ import logo from '@/assets/logo.png'
 import { DesktopApplicationError, desktopBridge } from '../../desktop-bridge.js'
 import { MailWorkspace } from './MailWorkspace.js'
 import { ConnectionHandoffPage } from './ConnectionHandoffPage.js'
-import { useDeferredStartupSplash, useHtmlBootSplash } from './use-startup-splash.js'
+import { useMailboxOpeningSplash } from './use-startup-splash.js'
 
 const CONNECTION_HANDOFF_MINIMUM_MS = 800
 
@@ -475,8 +475,7 @@ export function MailboxGate() {
   const retryInitialLoad = () => void mailboxes.refetch()
   const openingMailboxes =
     mailboxes.data === undefined && !(mailboxes.isError && !mailboxes.isFetching)
-  const hasHtmlBootSplash = useHtmlBootSplash(openingMailboxes)
-  const showReactStartupSplash = useDeferredStartupSplash(openingMailboxes && !hasHtmlBootSplash)
+  const showReactStartupSplash = useMailboxOpeningSplash(openingMailboxes)
 
   let screen: MailboxGateScreen
 
@@ -533,12 +532,15 @@ export function MailboxGate() {
     }
   }
 
+  // Electron keeps a BrowserView splash above this tree until ui-ready.
+  // In Storybook / retries, paint the same full-viewport splash without the titlebar frame.
+  if (screen.kind === 'loading') {
+    return showReactStartupSplash ? <StartupSplash /> : null
+  }
+
   let content: ReactNode
   let dragRegion = true
   switch (screen.kind) {
-    case 'loading':
-      content = showReactStartupSplash ? <StartupSplash /> : null
-      break
     case 'error':
       content = <MailboxErrorPage onRetry={screen.onRetry} />
       break

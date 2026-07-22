@@ -1,5 +1,6 @@
-/** Full-viewport boot splash shown from index.html until the mailbox gate leaves loading. */
-#mailrovers-boot-splash {
+/** Full-viewport startup splash for the React `StartupSplash` (Storybook / retries).
+ * Shine rules stay aligned with `createStartupScreenDocument`. */
+.mailrovers-startup-splash {
   position: fixed;
   inset: 0;
   z-index: 9999;
@@ -11,14 +12,14 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  #mailrovers-boot-splash {
+  .mailrovers-startup-splash {
     color: #fafafa;
     background: #242424;
   }
 }
 
-/* Keep in sync with `.startup-splash-logo` in styles.css and createStartupScreenDocument. */
-#mailrovers-boot-splash .startup-splash-logo {
+/* Keep in sync with createStartupScreenDocument shine styles. */
+.mailrovers-startup-splash .startup-splash-logo {
   position: relative;
   display: inline-block;
   line-height: 0;
@@ -26,13 +27,13 @@
   border-radius: 18px;
 }
 
-#mailrovers-boot-splash .startup-splash-logo img {
+.mailrovers-startup-splash .startup-splash-logo img {
   display: block;
   width: 72px;
   height: 72px;
 }
 
-#mailrovers-boot-splash .startup-splash-logo::after {
+.mailrovers-startup-splash .startup-splash-logo::after {
   content: '';
   position: absolute;
   inset: 0;

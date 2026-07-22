@@ -1,4 +1,4 @@
-/** Script-free Electron startup HTML. Shine rules stay aligned with `.startup-splash-logo` in styles.css. */
+/** Script-free Electron startup HTML. Shine rules stay aligned with `boot-splash.css`. */
 export function createStartupScreenDocument(logoSrc: string): string {
   return `<!doctype html>
 <html lang="en">

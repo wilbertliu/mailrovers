@@ -44,8 +44,7 @@ export const NoAccountConnected: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
     await expect(await canvas.findByRole('heading', { name: 'Before you connect' })).toBeVisible()
-    await expect(canvasElement.querySelector('.startup-splash-logo')).toBeNull()
-    await expect(canvasElement.ownerDocument.getElementById('mailrovers-boot-splash')).toBeNull()
+    await expect(canvasElement.querySelector('.mailrovers-startup-splash')).toBeNull()
   },
 }
 
