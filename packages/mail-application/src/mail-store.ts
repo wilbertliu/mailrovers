@@ -123,7 +123,8 @@ export interface CommittedChangeSource {
   subscribeCommittedChanges(listener: CommittedChangeListener): () => void
 }
 
-export interface MailStore {
+/** Conversation list/get, search, bodies, and attachment cache paths. */
+export interface ConversationQueryStore {
   listConversations(input: ListConversationsInput): Promise<ConversationPage>
   listLabels(mailboxId: MailboxId): Promise<LabelSummary[]>
   getConversation(input: GetConversationInput): Promise<ConversationDetail | undefined>
@@ -161,6 +162,10 @@ export interface MailStore {
     limit: number
     updatedAt: UtcTimestamp
   }): Promise<boolean>
+}
+
+/** Mailbox identity, sync leases, import, and history reconciliation. */
+export interface MailboxSyncStore {
   listMailboxes(): Promise<MailboxSummary[]>
   getMailbox(mailboxId: MailboxId): Promise<Mailbox | undefined>
   saveConnectedMailbox(input: {
@@ -170,55 +175,6 @@ export interface MailStore {
   }): Promise<void>
   removeMailbox(input: { mailboxId: MailboxId; removeLocalData: boolean }): Promise<void>
   getEncryptedRefreshToken(mailboxId: MailboxId): Promise<Uint8Array | undefined>
-  getAiConfiguration(mailboxId: MailboxId): Promise<StoredAiConfiguration | undefined>
-  saveAiConfiguration(input: {
-    mailboxId: MailboxId
-    baseUrl: string
-    model: string
-    encryptedApiKey?: Uint8Array | undefined
-    updatedAt: UtcTimestamp
-  }): Promise<void>
-  clearAiConfiguration(input: { mailboxId: MailboxId }): Promise<void>
-  setAiConfigurationValidated(input: {
-    mailboxId: MailboxId
-    validatedAt: UtcTimestamp
-  }): Promise<void>
-  findAiArtifact(input: {
-    mailboxId: MailboxId
-    conversationId: ConversationId
-    artifactType: AiArtifactType
-    sourceVersion: number
-    model: string
-    policyVersion: string
-  }): Promise<AiArtifact | undefined>
-  getAiArtifact(input: {
-    mailboxId: MailboxId
-    artifactId: AiArtifactId
-  }): Promise<AiArtifact | undefined>
-  /**
-   * Persists a generated artifact only while its conversation still has the
-   * source version used to create the request.
-   */
-  saveAiArtifactIfCurrent(artifact: AiArtifact): Promise<boolean>
-  saveAiArtifact(artifact: AiArtifact): Promise<void>
-  /**
-   * Atomically verifies a reply artifact, updates its draft, and records the
-   * acceptance decision. `undefined` means that an input became stale.
-   */
-  acceptAiReply(input: {
-    mailboxId: MailboxId
-    artifactId: AiArtifactId
-    expectedDraftVersion: number
-    idempotencyKey: string
-    updatedAt: UtcTimestamp
-  }): Promise<Draft | undefined>
-  reviewAiArtifact(input: {
-    mailboxId: MailboxId
-    artifactId: AiArtifactId
-    decision: 'accepted' | 'rejected'
-    reviewedAt: UtcTimestamp
-    expectedDraftVersion?: number | undefined
-  }): Promise<void>
   getSyncCheckpoint(mailboxId: MailboxId): Promise<SyncCheckpoint | undefined>
   acquireSyncLease(input: {
     mailboxId: MailboxId
@@ -234,84 +190,6 @@ export interface MailStore {
     ownerId: string
     fencingToken: number
   }): Promise<boolean>
-  enqueueCommand(input: {
-    id: CommandId
-    mailboxId: MailboxId
-    idempotencyKey: string
-    command: MailCommand
-    createdAt: UtcTimestamp
-  }): Promise<CommandReceipt>
-  enqueueInverseCommand(input: {
-    id: CommandId
-    mailboxId: MailboxId
-    sourceCommandId: CommandId
-    idempotencyKey: string
-    createdAt: UtcTimestamp
-  }): Promise<CommandReceipt>
-  enqueueDraftCommand(input: {
-    id: CommandId
-    mailboxId: MailboxId
-    idempotencyKey: string
-    command: DraftCommand
-    createdAt: UtcTimestamp
-  }): Promise<CommandReceipt>
-  claimNextCommand(input: {
-    now: UtcTimestamp
-    leaseExpiresAt: UtcTimestamp
-  }): Promise<StoredCommand | undefined>
-  resolveProviderCommand(command: StoredCommand): Promise<ResolvedProviderCommand>
-  completeCommand(input: {
-    id: CommandId
-    mailboxId: MailboxId
-    changes: ProviderChangeBatch
-    expectedDraftVersion?: number | undefined
-    expectedRevisionFingerprint?: DraftRevisionFingerprint | undefined
-    draftIdentity?:
-      | {
-          draftId: DraftId
-          providerDraftId: string
-          providerMessageId: string
-          providerFingerprint: DraftRevisionFingerprint
-        }
-      | undefined
-    sentDraftId?: DraftId | undefined
-    completedAt: UtcTimestamp
-  }): Promise<void>
-  setCommandState(input: CommandStateTransition): Promise<void>
-  cancelMailboxCommands(input: { mailboxId: MailboxId; updatedAt: UtcTimestamp }): Promise<void>
-  listCommandIssues(mailboxId: MailboxId): Promise<CommandReceipt[]>
-  saveDraft(input: {
-    request: SaveDraftInput
-    id: DraftId
-    internetMessageId: string
-    updatedAt: UtcTimestamp
-  }): Promise<Draft>
-  getDraft(input: { mailboxId: MailboxId; draftId: DraftId }): Promise<Draft | undefined>
-  listDrafts(mailboxId: MailboxId): Promise<Draft[]>
-  enqueueSendDraft(input: {
-    mailboxId: MailboxId
-    draftId: DraftId
-    expectedVersion: number
-    idempotencyKey: string
-    createdAt: UtcTimestamp
-  }): Promise<CommandReceipt>
-  beginDraftReconciliation(input: {
-    mailboxId: MailboxId
-    generation: string
-    fence: SyncLeaseFence
-  }): Promise<void>
-  stageDraftReconciliation(input: {
-    mailboxId: MailboxId
-    generation: string
-    drafts: NormalizedDraft[]
-    fence: SyncLeaseFence
-  }): Promise<void>
-  completeDraftReconciliation(input: {
-    mailboxId: MailboxId
-    generation: string
-    completedAt: UtcTimestamp
-    fence: SyncLeaseFence
-  }): Promise<void>
   setImportState(input: {
     mailboxId: MailboxId
     state: ImportState
@@ -399,3 +277,149 @@ export interface MailStore {
     analyzedAt: UtcTimestamp
   }): Promise<boolean>
 }
+
+/** Outbound command queue and provider command resolution. */
+export interface OutboxStore {
+  enqueueCommand(input: {
+    id: CommandId
+    mailboxId: MailboxId
+    idempotencyKey: string
+    command: MailCommand
+    createdAt: UtcTimestamp
+  }): Promise<CommandReceipt>
+  enqueueInverseCommand(input: {
+    id: CommandId
+    mailboxId: MailboxId
+    sourceCommandId: CommandId
+    idempotencyKey: string
+    createdAt: UtcTimestamp
+  }): Promise<CommandReceipt>
+  enqueueDraftCommand(input: {
+    id: CommandId
+    mailboxId: MailboxId
+    idempotencyKey: string
+    command: DraftCommand
+    createdAt: UtcTimestamp
+  }): Promise<CommandReceipt>
+  claimNextCommand(input: {
+    now: UtcTimestamp
+    leaseExpiresAt: UtcTimestamp
+  }): Promise<StoredCommand | undefined>
+  resolveProviderCommand(command: StoredCommand): Promise<ResolvedProviderCommand>
+  completeCommand(input: {
+    id: CommandId
+    mailboxId: MailboxId
+    changes: ProviderChangeBatch
+    expectedDraftVersion?: number | undefined
+    expectedRevisionFingerprint?: DraftRevisionFingerprint | undefined
+    draftIdentity?:
+      | {
+          draftId: DraftId
+          providerDraftId: string
+          providerMessageId: string
+          providerFingerprint: DraftRevisionFingerprint
+        }
+      | undefined
+    sentDraftId?: DraftId | undefined
+    completedAt: UtcTimestamp
+  }): Promise<void>
+  setCommandState(input: CommandStateTransition): Promise<void>
+  cancelMailboxCommands(input: { mailboxId: MailboxId; updatedAt: UtcTimestamp }): Promise<void>
+  listCommandIssues(mailboxId: MailboxId): Promise<CommandReceipt[]>
+}
+
+/** Local draft CRUD and send enqueue. */
+export interface DraftStore {
+  saveDraft(input: {
+    request: SaveDraftInput
+    id: DraftId
+    internetMessageId: string
+    updatedAt: UtcTimestamp
+  }): Promise<Draft>
+  getDraft(input: { mailboxId: MailboxId; draftId: DraftId }): Promise<Draft | undefined>
+  listDrafts(mailboxId: MailboxId): Promise<Draft[]>
+  enqueueSendDraft(input: {
+    mailboxId: MailboxId
+    draftId: DraftId
+    expectedVersion: number
+    idempotencyKey: string
+    createdAt: UtcTimestamp
+  }): Promise<CommandReceipt>
+  beginDraftReconciliation(input: {
+    mailboxId: MailboxId
+    generation: string
+    fence: SyncLeaseFence
+  }): Promise<void>
+  stageDraftReconciliation(input: {
+    mailboxId: MailboxId
+    generation: string
+    drafts: NormalizedDraft[]
+    fence: SyncLeaseFence
+  }): Promise<void>
+  completeDraftReconciliation(input: {
+    mailboxId: MailboxId
+    generation: string
+    completedAt: UtcTimestamp
+    fence: SyncLeaseFence
+  }): Promise<void>
+}
+
+/** AI configuration and generated conversation artifacts. */
+export interface AiArtifactStore {
+  getAiConfiguration(mailboxId: MailboxId): Promise<StoredAiConfiguration | undefined>
+  saveAiConfiguration(input: {
+    mailboxId: MailboxId
+    baseUrl: string
+    model: string
+    encryptedApiKey?: Uint8Array | undefined
+    updatedAt: UtcTimestamp
+  }): Promise<void>
+  clearAiConfiguration(input: { mailboxId: MailboxId }): Promise<void>
+  setAiConfigurationValidated(input: {
+    mailboxId: MailboxId
+    validatedAt: UtcTimestamp
+  }): Promise<void>
+  findAiArtifact(input: {
+    mailboxId: MailboxId
+    conversationId: ConversationId
+    artifactType: AiArtifactType
+    sourceVersion: number
+    model: string
+    policyVersion: string
+  }): Promise<AiArtifact | undefined>
+  getAiArtifact(input: {
+    mailboxId: MailboxId
+    artifactId: AiArtifactId
+  }): Promise<AiArtifact | undefined>
+  /**
+   * Persists a generated artifact only while its conversation still has the
+   * source version used to create the request.
+   */
+  saveAiArtifactIfCurrent(artifact: AiArtifact): Promise<boolean>
+  saveAiArtifact(artifact: AiArtifact): Promise<void>
+  /**
+   * Atomically verifies a reply artifact, updates its draft, and records the
+   * acceptance decision. `undefined` means that an input became stale.
+   */
+  acceptAiReply(input: {
+    mailboxId: MailboxId
+    artifactId: AiArtifactId
+    expectedDraftVersion: number
+    idempotencyKey: string
+    updatedAt: UtcTimestamp
+  }): Promise<Draft | undefined>
+  reviewAiArtifact(input: {
+    mailboxId: MailboxId
+    artifactId: AiArtifactId
+    decision: 'accepted' | 'rejected'
+    reviewedAt: UtcTimestamp
+    expectedDraftVersion?: number | undefined
+  }): Promise<void>
+}
+
+/** Full store surface: capability ports composed for consumers that need everything. */
+export type MailStore = ConversationQueryStore &
+  MailboxSyncStore &
+  OutboxStore &
+  DraftStore &
+  AiArtifactStore

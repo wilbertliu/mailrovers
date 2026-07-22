@@ -164,7 +164,7 @@ export const checkpointSchema = z
     importMessagePageToken: boundedString(2_048).optional(),
     importDraftPageToken: boundedString(2_048).optional(),
     importState,
-    resumeImportState: importState.exclude(['paused']).optional(),
+    resumeImportState: importState.exclude(['paused', 'failed']).optional(),
     importedMessageCount: nonnegativeInteger,
     importedDraftCount: nonnegativeInteger,
     importTotalEstimate: nonnegativeInteger.optional(),

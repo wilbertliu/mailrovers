@@ -1,10 +1,10 @@
-import type { MailStore, SyncEngine } from '@mailrovers/mail-application'
+import type { MailboxSyncStore, SyncEngine } from '@mailrovers/mail-application'
 import { operationId, type MailboxId } from '@mailrovers/mail-domain'
 
 export type SyncScheduleReason = 'startup' | 'timer' | 'focus' | 'manual'
 
 export type SyncSchedulerOptions = {
-  store: Pick<MailStore, 'getMailbox' | 'getSyncCheckpoint' | 'listMailboxes'>
+  store: Pick<MailboxSyncStore, 'getMailbox' | 'getSyncCheckpoint' | 'listMailboxes'>
   syncEngine: Pick<SyncEngine, 'start'>
   now?: (() => Date) | undefined
   setTimeout?: typeof globalThis.setTimeout | undefined

@@ -1,7 +1,7 @@
 import type {
   ImportPageCommit,
+  MailboxSyncStore,
   MailProvider,
-  MailStore,
   SyncLeaseFence,
 } from '@mailrovers/mail-application'
 import type { ImportState, MailboxId, SyncCheckpoint, UtcTimestamp } from '@mailrovers/mail-domain'
@@ -29,7 +29,7 @@ export type PagedImportRunScope = {
   mailboxId: MailboxId
   provider: MailProvider
   signal: AbortSignal
-  store: Pick<MailStore, 'applyImportBatch'>
+  store: Pick<MailboxSyncStore, 'applyImportBatch'>
   now(): UtcTimestamp
   withFence<T>(write: (fence: SyncLeaseFence) => Promise<T>): Promise<T>
   requireCheckpoint(): Promise<SyncCheckpoint>
@@ -40,7 +40,7 @@ export type LabelImportRunScope = {
   mailboxId: MailboxId
   provider: MailProvider
   signal: AbortSignal
-  store: Pick<MailStore, 'applyImportBatch' | 'setImportState'>
+  store: Pick<MailboxSyncStore, 'applyImportBatch' | 'setImportState'>
   now(): UtcTimestamp
   withFence<T>(write: (fence: SyncLeaseFence) => Promise<T>): Promise<T>
   publishProgress(): Promise<void>

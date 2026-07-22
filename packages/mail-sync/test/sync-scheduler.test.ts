@@ -1,4 +1,4 @@
-import type { MailStore, SyncEngine } from '@mailrovers/mail-application'
+import type { MailboxSyncStore, SyncEngine } from '@mailrovers/mail-application'
 import { GMAIL_CAPABILITIES, type MailboxSummary } from '@mailrovers/mail-contracts'
 import {
   mailboxId,
@@ -55,12 +55,14 @@ function schedulerFixture(
 ) {
   const mailboxes = input.mailboxes ?? [mailbox(mailboxOne)]
   const checkpoints = input.checkpoints ?? new Map([[mailboxOne, checkpoint(mailboxOne)]])
-  const store: Pick<MailStore, 'getMailbox' | 'getSyncCheckpoint' | 'listMailboxes'> = {
-    listMailboxes: vi.fn<MailStore['listMailboxes']>(async () => mailboxes),
-    getMailbox: vi.fn<MailStore['getMailbox']>(async (id) =>
+  const store: Pick<MailboxSyncStore, 'getMailbox' | 'getSyncCheckpoint' | 'listMailboxes'> = {
+    listMailboxes: vi.fn<MailboxSyncStore['listMailboxes']>(async () => mailboxes),
+    getMailbox: vi.fn<MailboxSyncStore['getMailbox']>(async (id) =>
       mailboxes.find((item) => item.id === id),
     ),
-    getSyncCheckpoint: vi.fn<MailStore['getSyncCheckpoint']>(async (id) => checkpoints.get(id)),
+    getSyncCheckpoint: vi.fn<MailboxSyncStore['getSyncCheckpoint']>(async (id) =>
+      checkpoints.get(id),
+    ),
   }
   const syncEngine: Pick<SyncEngine, 'start'> = {
     start:
