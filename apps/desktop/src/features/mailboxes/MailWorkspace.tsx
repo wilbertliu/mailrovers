@@ -63,7 +63,7 @@ function MailboxMenu({
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
-        render={<SidebarMenuButton size="sm" className="h-auto min-w-0" />}
+        render={<SidebarMenuButton size="sm" className="h-auto w-fit min-w-0" />}
       >
         <span
           className="grid size-5.5 shrink-0 place-items-center rounded-md bg-foreground text-[0.625rem] font-bold text-background"
@@ -221,7 +221,7 @@ export function MailWorkspace({
           </div>
           <SidebarProvider className="flex min-h-0 min-w-0 flex-1 flex-col">
             <SidebarHeader className="flex-row items-center gap-2">
-              <SidebarMenu className="min-w-0 flex-1">
+              <SidebarMenu className="min-w-0 w-fit">
                 <SidebarMenuItem className="min-w-0">
                   <MailboxMenu
                     mailbox={mailbox}
@@ -237,7 +237,7 @@ export function MailWorkspace({
                 label="Write email"
                 icon={PencilEdit02Icon}
                 variant="outline"
-                className="shrink-0 rounded-full border-border bg-background shadow-sm hover:bg-muted hover:text-foreground"
+                className="ml-auto shrink-0 rounded-full border-border bg-background shadow-sm hover:bg-muted hover:text-foreground"
                 onClick={() => setComposer({ kind: 'new' })}
               />
             </SidebarHeader>
