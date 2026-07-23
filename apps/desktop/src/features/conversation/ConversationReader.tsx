@@ -183,7 +183,7 @@ function ConversationReaderContent({
               {conversation.subject || '(No subject)'}
             </h1>
           </div>
-          <div className="flex h-7 items-center justify-self-end gap-0.5">
+          <div className="flex h-7 items-center justify-self-end gap-0.5 *:last:-mr-2">
             <IconTooltipButton
               label="Summarize conversation"
               icon={AiMagicIcon}
