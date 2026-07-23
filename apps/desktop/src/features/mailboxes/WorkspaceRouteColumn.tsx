@@ -4,7 +4,6 @@ import type { InfiniteData } from '@tanstack/react-query'
 import type { ComposerMode } from '../composer/Composer.js'
 import { InboxPage } from '../inbox/InboxPage.js'
 import { SearchResults } from '../inbox/SearchResults.js'
-import { AiSettingsColumn } from './AiSettingsColumn.js'
 import { DraftsListColumn } from './DraftsListColumn.js'
 import type { WorkspaceRoute } from './MailWorkspace.js'
 
@@ -30,7 +29,6 @@ export function WorkspaceRouteColumn({
   onLoadMoreSearch,
   drafts,
   onOpenComposer,
-  onCloseAiSettings,
 }: {
   route: WorkspaceRoute
   mailboxId: MailboxId
@@ -53,19 +51,8 @@ export function WorkspaceRouteColumn({
   onLoadMoreSearch: () => void
   drafts: Draft[] | undefined
   onOpenComposer: (mode: ComposerMode) => void
-  onCloseAiSettings: () => void
 }) {
   switch (route.kind) {
-    case 'ai-settings':
-      return (
-        <AiSettingsColumn
-          mailboxId={mailboxId}
-          showSidebarToggle={showSidebarToggle}
-          onShowSidebar={onShowSidebar}
-          importMailbox={importMailbox}
-          onClose={onCloseAiSettings}
-        />
-      )
     case 'drafts':
       return (
         <DraftsListColumn

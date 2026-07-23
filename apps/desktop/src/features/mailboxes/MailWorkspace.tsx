@@ -38,9 +38,11 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from '@/components/ui/sidebar.js'
+import logo from '@/assets/logo.png'
 import { IconTooltipButton } from '@/components/icon-tooltip-button.js'
 import { cn } from '@/lib/utils.js'
 import { desktopBridge } from '../../desktop-bridge.js'
+import { AiSettingsDialog } from '../ai/AiSettings.js'
 import { Composer, type ComposerMode } from '../composer/Composer.js'
 import { ConversationReader } from '../conversation/ConversationReader.js'
 import { useSearchPages } from '../inbox/useSearchPages.js'
@@ -67,12 +69,14 @@ function MailboxMenu({
       <DropdownMenuTrigger
         render={<SidebarMenuButton size="sm" className="h-auto w-fit min-w-0" />}
       >
-        <span
-          className="grid size-5.5 shrink-0 place-items-center rounded-md bg-foreground text-[0.625rem] font-bold text-background"
+        <img
+          src={logo}
+          alt=""
+          width={22}
+          height={22}
+          className="size-5.5 shrink-0 rounded-md -ml-[calc(1.375rem*0.10)]"
           aria-hidden="true"
-        >
-          MR
-        </span>
+        />
         <strong className="min-w-0 truncate text-left text-sm">MailRovers</strong>
         <HugeiconsIcon
           className="size-3.5 shrink-0 text-muted-foreground"
@@ -139,7 +143,6 @@ export type WorkspaceRoute =
   | { kind: 'inbox'; labelId?: LabelId | undefined }
   | { kind: 'search'; query: string }
   | { kind: 'drafts' }
-  | { kind: 'ai-settings' }
 
 export function MailWorkspace({
   mailbox,
@@ -158,6 +161,7 @@ export function MailWorkspace({
   const [searchInput, setSearchInput] = useState('')
   const [mailboxMenuOpen, setMailboxMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [aiSettingsOpen, setAiSettingsOpen] = useState(false)
   const [archiveUndo, setArchiveUndo] = useState<CommandReceipt>()
   const [composer, setComposer] = useState<ComposerMode>()
   const drafts = useQuery({
@@ -200,10 +204,6 @@ export function MailWorkspace({
     setRoute({ kind: 'drafts' })
     clearWorkspaceSelection()
   }
-  const showAiSettingsView = () => {
-    setRoute({ kind: 'ai-settings' })
-    clearWorkspaceSelection()
-  }
   const executeCommand = async (command: MailCommand) => {
     const receipt = await desktopBridge.executeCommand({
       mailboxId,
@@ -235,7 +235,7 @@ export function MailWorkspace({
           ? 'grid-cols-[minmax(320px,370px)_minmax(390px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]'
           : 'grid-cols-[236px_minmax(320px,370px)_minmax(390px,1fr)] max-[980px]:min-w-0 max-[980px]:grid-cols-[minmax(280px,340px)_minmax(360px,1fr)]',
       )}
-      data-disable-window-drag={mailboxMenuOpen || undefined}
+      data-disable-window-drag={mailboxMenuOpen || aiSettingsOpen || undefined}
     >
       {sidebarCollapsed ? null : (
         <aside className="flex min-h-0 flex-col overflow-y-auto border-r bg-sidebar max-[980px]:hidden">
@@ -341,8 +341,8 @@ export function MailWorkspace({
                       <SidebarMenuItem>
                         <SidebarMenuButton
                           size="sm"
-                          isActive={route.kind === 'ai-settings'}
-                          onClick={showAiSettingsView}
+                          isActive={aiSettingsOpen}
+                          onClick={() => setAiSettingsOpen(true)}
                         >
                           <HugeiconsIcon icon={AiMailIcon} aria-hidden="true" />
                           <span>AI provider</span>
@@ -417,7 +417,12 @@ export function MailWorkspace({
         }}
         drafts={drafts.data}
         onOpenComposer={setComposer}
-        onCloseAiSettings={showInbox}
+      />
+
+      <AiSettingsDialog
+        mailboxId={mailboxId}
+        open={aiSettingsOpen}
+        onOpenChange={setAiSettingsOpen}
       />
 
       {selectedConversation ? (

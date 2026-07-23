@@ -15,92 +15,72 @@ type Story = StoryObj<typeof meta>
 
 async function openAiSettings(canvasElement: HTMLElement) {
   const canvas = within(canvasElement)
+  const body = within(canvasElement.ownerDocument.body)
   await userEvent.click(await canvas.findByRole('button', { name: 'AI provider' }))
-  await expect(await canvas.findByRole('heading', { name: 'AI provider' })).toBeVisible()
-  return canvas
+  const dialog = await body.findByRole('dialog')
+  await expect(await within(dialog).findByRole('heading', { name: 'OpenAI API key' })).toBeVisible()
+  return { canvas, dialog: within(dialog), body }
 }
 
 export const SettingsConfigured: Story = {
   parameters: { mailrovers: storybookScenarios.aiSettings },
   play: async ({ canvasElement }) => {
-    const canvas = await openAiSettings(canvasElement)
-    await expect(await canvas.findByDisplayValue('gpt-5-mini')).toBeVisible()
-    await expect(await canvas.findByText('Connection verified.')).toBeVisible()
+    const { dialog } = await openAiSettings(canvasElement)
+    await expect(
+      await dialog.findByText(/If you already saved one, this replaces it/),
+    ).toBeVisible()
+    await expect(await dialog.findByText('How we store your key')).toBeVisible()
+    await expect(
+      await dialog.findByPlaceholderText('Enter a new key to replace the stored one'),
+    ).toBeVisible()
+    await expect(await dialog.findByRole('button', { name: 'Replace API key' })).toBeDisabled()
   },
 }
 
 export const SettingsFailedToLoad: Story = {
   parameters: { mailrovers: storybookScenarios.aiSettingsError },
   play: async ({ canvasElement }) => {
-    const canvas = await openAiSettings(canvasElement)
-    await expect(await canvas.findByRole('alert')).toHaveTextContent('Could not load AI settings.')
+    const { dialog } = await openAiSettings(canvasElement)
+    await expect(await dialog.findByRole('alert')).toHaveTextContent('Could not load AI settings.')
   },
 }
 
 export const SettingsLoading: Story = {
   parameters: { mailrovers: storybookScenarios.aiSettingsLoading },
   play: async ({ canvasElement }) => {
-    const canvas = await openAiSettings(canvasElement)
-    await expect(await canvas.findByText('Loading AI settings…')).toBeVisible()
+    const { dialog } = await openAiSettings(canvasElement)
+    await expect(await dialog.findByText('Loading AI settings…')).toBeVisible()
   },
 }
 
 export const SettingsNotConfigured: Story = {
   parameters: { mailrovers: storybookScenarios.aiSettingsUnconfigured },
   play: async ({ canvasElement }) => {
-    const canvas = await openAiSettings(canvasElement)
-    await expect(await canvas.findByRole('button', { name: 'Save settings' })).toBeDisabled()
-    await expect(await canvas.findByPlaceholderText('Required')).toBeVisible()
+    const { dialog } = await openAiSettings(canvasElement)
+    await expect(await dialog.findByRole('button', { name: 'Save API key' })).toBeDisabled()
+    await expect(await dialog.findByPlaceholderText('sk-…')).toBeVisible()
   },
 }
 
 export const SettingsSaving: Story = {
   parameters: { mailrovers: storybookScenarios.aiSettingsSaving },
   play: async ({ canvasElement }) => {
-    const canvas = await openAiSettings(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Save settings' }))
-    await expect(await canvas.findByRole('button', { name: 'Saving…' })).toBeDisabled()
+    const { dialog } = await openAiSettings(canvasElement)
+    await userEvent.type(await dialog.findByLabelText('API key'), 'sk-test-key')
+    await userEvent.click(await dialog.findByRole('button', { name: 'Replace API key' }))
+    await expect(await dialog.findByRole('button', { name: 'Saving…' })).toBeDisabled()
   },
 }
 
 export const SettingsSaveFailed: Story = {
   parameters: { mailrovers: storybookScenarios.aiSettingsSaveFailed },
   play: async ({ canvasElement }) => {
-    const canvas = await openAiSettings(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Save settings' }))
-    await expect(await canvas.findByRole('alert')).toHaveTextContent(
+    const { dialog } = await openAiSettings(canvasElement)
+    await userEvent.type(await dialog.findByLabelText('API key'), 'sk-test-key')
+    await userEvent.click(await dialog.findByRole('button', { name: 'Replace API key' }))
+    await expect(await dialog.findByRole('alert')).toHaveTextContent(
       'The AI provider settings could not be saved.',
     )
-  },
-}
-
-export const SettingsTesting: Story = {
-  parameters: { mailrovers: storybookScenarios.aiSettingsTesting },
-  play: async ({ canvasElement }) => {
-    const canvas = await openAiSettings(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Test connection' }))
-    await expect(await canvas.findByRole('button', { name: 'Testing…' })).toBeDisabled()
-  },
-}
-
-export const SettingsTestFailed: Story = {
-  parameters: { mailrovers: storybookScenarios.aiSettingsTestFailed },
-  play: async ({ canvasElement }) => {
-    const canvas = await openAiSettings(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Test connection' }))
-    await expect(await canvas.findByRole('alert')).toHaveTextContent(
-      'The AI provider could not be reached.',
-    )
-  },
-}
-
-export const SettingsRemoved: Story = {
-  parameters: { mailrovers: storybookScenarios.aiSettingsRemoved },
-  play: async ({ canvasElement }) => {
-    const canvas = await openAiSettings(canvasElement)
-    await userEvent.click(await canvas.findByRole('button', { name: 'Remove AI configuration' }))
-    await expect(await canvas.findByPlaceholderText('Required')).toBeVisible()
-    await expect(await canvas.findByRole('button', { name: 'Save settings' })).toBeDisabled()
   },
 }
 

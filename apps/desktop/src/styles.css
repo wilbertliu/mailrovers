@@ -146,6 +146,15 @@
     app-region: no-drag;
   }
 
+  /* Portaled overlays sit above titlebars but Electron still hit-tests drag regions underneath. */
+  [data-slot='dialog-overlay'],
+  [data-slot='dialog-content'],
+  [data-slot='alert-dialog-overlay'],
+  [data-slot='alert-dialog-content'] {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+  }
+
   button:not(:disabled),
   [role='button']:not(:disabled) {
     cursor: pointer;

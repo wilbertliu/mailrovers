@@ -1,206 +1,167 @@
 import type { MailboxId } from '@mailrovers/mail-domain'
+import { SquareLock01Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button.js'
-import { desktopBridge } from '../../desktop-bridge.js'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog.js'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui/field.js'
 import { Input } from '@/components/ui/input.js'
+import { Spinner } from '@/components/ui/spinner.js'
+import { desktopBridge } from '../../desktop-bridge.js'
+
+const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
+const DEFAULT_MODEL = 'gpt-5-mini'
 
 type AiConfiguration = Awaited<ReturnType<typeof desktopBridge.getAiConfiguration>>
 
 function AiSettingsForm({
   mailboxId,
-  onClose,
   configuration,
+  onClose,
 }: {
   mailboxId: MailboxId
-  onClose: () => void
   configuration: AiConfiguration
+  onClose: () => void
 }) {
   const queryClient = useQueryClient()
-  const [baseUrl, setBaseUrl] = useState(configuration.baseUrl ?? 'https://api.openai.com/v1')
-  const [model, setModel] = useState(configuration.model ?? '')
   const [apiKey, setApiKey] = useState('')
-  const [status, setStatus] = useState<'idle' | 'saving' | 'testing' | 'saved' | 'valid'>('idle')
+  const [status, setStatus] = useState<'idle' | 'saving'>('idle')
   const [error, setError] = useState<string>()
+  const hasStoredKey = configuration.hasApiKey
+  const saveLabel = hasStoredKey ? 'Replace API key' : 'Save API key'
 
   const save = async () => {
+    const trimmed = apiKey.trim()
+    if (trimmed.length === 0) return
     setStatus('saving')
     setError(undefined)
     try {
       await desktopBridge.saveAiConfiguration({
         mailboxId,
-        baseUrl,
-        model,
-        ...(apiKey ? { apiKey } : {}),
+        baseUrl: configuration.baseUrl ?? DEFAULT_BASE_URL,
+        model: configuration.model ?? DEFAULT_MODEL,
+        apiKey: trimmed,
       })
       setApiKey('')
-      setStatus('saved')
       await queryClient.invalidateQueries({ queryKey: ['ai-configuration', mailboxId] })
+      onClose()
     } catch (caught) {
       setStatus('idle')
       setError(caught instanceof Error ? caught.message : 'Could not save AI settings.')
     }
   }
 
-  const validate = async () => {
-    setStatus('testing')
-    setError(undefined)
-    try {
-      await desktopBridge.validateAiConfiguration(mailboxId)
-      setStatus('valid')
-      await queryClient.invalidateQueries({ queryKey: ['ai-configuration', mailboxId] })
-    } catch (caught) {
-      setStatus('idle')
-      setError(caught instanceof Error ? caught.message : 'Could not reach the AI provider.')
-    }
-  }
-
-  const clear = async () => {
-    if (!window.confirm('Remove the AI provider configuration and encrypted API key?')) return
-    await desktopBridge.clearAiConfiguration(mailboxId)
-    setApiKey('')
-    setModel('')
-    setBaseUrl('https://api.openai.com/v1')
-    setStatus('idle')
-    await queryClient.invalidateQueries({ queryKey: ['ai-configuration', mailboxId] })
-  }
-
   return (
-    <section className="min-w-0 overflow-hidden" aria-labelledby="ai-settings-title">
-      <header className="window-titlebar flex h-19 items-center justify-between px-4.5 py-4">
-        <div>
-          <h1 className="truncate" id="ai-settings-title">
-            AI provider
-          </h1>
-          <p className="mt-1">Configured for this mailbox</p>
-        </div>
-        <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-          Done
-        </Button>
-      </header>
-      <form
-        className="overflow-y-auto px-4.5 py-5"
-        onSubmit={(event) => {
-          event.preventDefault()
-          void save()
-        }}
-      >
-        <label htmlFor="ai-base-url" className="mb-4 flex flex-col gap-1.5">
-          <span>Base URL</span>
-          <Input
-            id="ai-base-url"
-            className="w-full px-2.5 py-2"
-            type="url"
-            required
-            value={baseUrl}
-            onChange={(event) => setBaseUrl(event.target.value)}
-            placeholder="https://api.openai.com/v1"
-          />
-        </label>
-        <label htmlFor="ai-model" className="mb-4 flex flex-col gap-1.5">
-          <span>Model</span>
-          <Input
-            id="ai-model"
-            className="w-full px-2.5 py-2"
-            required
-            value={model}
-            onChange={(event) => setModel(event.target.value)}
-            placeholder="Provider model identifier"
-          />
-        </label>
-        <label htmlFor="ai-api-key" className="mb-4 flex flex-col gap-1.5">
-          <span>API key</span>
+    <form
+      className="flex flex-col gap-6"
+      onSubmit={(event) => {
+        event.preventDefault()
+        void save()
+      }}
+    >
+      <DialogHeader>
+        <DialogTitle>OpenAI API key</DialogTitle>
+        <DialogDescription>
+          Paste your OpenAI API key for this mailbox. If you already saved one, this replaces it.
+        </DialogDescription>
+      </DialogHeader>
+      <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="ai-api-key">API key</FieldLabel>
           <Input
             id="ai-api-key"
-            className="w-full px-2.5 py-2"
             type="password"
             autoComplete="off"
+            autoFocus
             value={apiKey}
             onChange={(event) => setApiKey(event.target.value)}
-            placeholder={
-              configuration.hasApiKey ? 'Stored securely. Enter to replace.' : 'Required'
-            }
+            placeholder={hasStoredKey ? 'Enter a new key to replace the stored one' : 'sk-…'}
           />
-        </label>
-        <p className="max-w-[48ch]">
-          MailRovers sends only the selected conversation to this provider. The key is encrypted on
-          this Mac and cannot be read back.
-        </p>
-        {error ? (
-          <p className="mt-3" role="alert">
-            {error}
+          <FieldDescription>
+            {hasStoredKey
+              ? 'A key is already stored for this mailbox. Saving replaces it permanently.'
+              : 'Required to summarize conversations and draft replies.'}
+          </FieldDescription>
+        </Field>
+        <div className="flex flex-col gap-2 rounded-lg border px-4 py-3">
+          <p className="flex items-center gap-2 font-medium">
+            <HugeiconsIcon icon={SquareLock01Icon} size={14} strokeWidth={2} aria-hidden="true" />
+            How we store your key
           </p>
-        ) : null}
-        <div className="mt-6.5 flex items-center gap-2">
-          <Button
-            type="submit"
-            disabled={
-              status === 'saving' || !baseUrl || !model || (!apiKey && !configuration.hasApiKey)
-            }
-          >
-            {status === 'saving' ? 'Saving…' : 'Save settings'}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={!configuration.hasApiKey || status === 'testing'}
-            onClick={() => void validate()}
-          >
-            {status === 'testing' ? 'Testing…' : 'Test connection'}
-          </Button>
+          <p className="text-sm text-muted-foreground">
+            Encrypted with this Mac&apos;s Keychain and kept only on your device. After you save, we
+            can&apos;t read it back—and it&apos;s sent only to OpenAI when you use AI.
+          </p>
         </div>
-        <output className="mt-3 block min-h-4.5" aria-live="polite">
-          {status === 'valid' || configuration.state === 'valid'
-            ? 'Connection verified.'
-            : status === 'saved'
-              ? 'Settings saved.'
-              : configuration.hasApiKey
-                ? 'API key stored securely.'
-                : ''}
-        </output>
-        {configuration.hasApiKey ? (
-          <Button
-            type="button"
-            variant="ghost"
-            className="mt-4.5 px-0"
-            onClick={() => void clear()}
-          >
-            Remove AI configuration
-          </Button>
-        ) : null}
-      </form>
-    </section>
+      </FieldGroup>
+      {error ? (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+      <DialogFooter>
+        <DialogClose render={<Button type="button" variant="outline" />}>Cancel</DialogClose>
+        <Button type="submit" disabled={status === 'saving' || apiKey.trim().length === 0}>
+          {status === 'saving' ? <Spinner data-icon="inline-start" /> : null}
+          {status === 'saving' ? 'Saving…' : saveLabel}
+        </Button>
+      </DialogFooter>
+    </form>
   )
 }
 
-export function AiSettings({ mailboxId, onClose }: { mailboxId: MailboxId; onClose: () => void }) {
+export function AiSettingsDialog({
+  mailboxId,
+  open,
+  onOpenChange,
+}: {
+  mailboxId: MailboxId
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const configuration = useQuery({
     queryKey: ['ai-configuration', mailboxId],
     queryFn: () => desktopBridge.getAiConfiguration(mailboxId),
+    enabled: open,
   })
 
-  if (configuration.data === undefined) {
-    return (
-      <section className="min-w-0 overflow-hidden" aria-labelledby="ai-settings-title">
-        <header className="window-titlebar flex h-19 items-center justify-between px-4.5 py-4">
-          <div>
-            <h1 className="truncate" id="ai-settings-title">
-              AI provider
-            </h1>
-            <p className="mt-1">Configured for this mailbox</p>
-          </div>
-          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
-            Done
-          </Button>
-        </header>
-        <p className="px-4.5 py-5" role={configuration.isError ? 'alert' : undefined}>
-          {configuration.isError ? 'Could not load AI settings.' : 'Loading AI settings…'}
-        </p>
-      </section>
-    )
-  }
-
   return (
-    <AiSettingsForm mailboxId={mailboxId} onClose={onClose} configuration={configuration.data} />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        {configuration.data === undefined ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>OpenAI API key</DialogTitle>
+              <DialogDescription>
+                Paste your OpenAI API key for this mailbox. If you already saved one, this replaces
+                it.
+              </DialogDescription>
+            </DialogHeader>
+            <p role={configuration.isError ? 'alert' : undefined}>
+              {configuration.isError ? 'Could not load AI settings.' : 'Loading AI settings…'}
+            </p>
+            <DialogFooter>
+              <DialogClose render={<Button type="button" variant="outline" />}>Close</DialogClose>
+            </DialogFooter>
+          </>
+        ) : (
+          <AiSettingsForm
+            key={`${mailboxId}-${configuration.data.hasApiKey ? 'configured' : 'empty'}-${open}`}
+            mailboxId={mailboxId}
+            configuration={configuration.data}
+            onClose={() => onOpenChange(false)}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
