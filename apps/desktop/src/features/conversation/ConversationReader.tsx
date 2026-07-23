@@ -35,6 +35,16 @@ export function shouldLoadMessageBody(expanded: boolean, bodyAvailable: boolean)
   return expanded && bodyAvailable
 }
 
+export function sortConversationMessagesNewestFirst(
+  messages: MessageDetail[],
+): MessageDetail[] {
+  return [...messages].sort((left, right) => {
+    const byReceivedAt = right.receivedAt.localeCompare(left.receivedAt)
+    if (byReceivedAt !== 0) return byReceivedAt
+    return right.id.localeCompare(left.id)
+  })
+}
+
 function addressLabel(address: { name?: string | undefined; address: string }): string {
   return address.name ? `${address.name} <${address.address}>` : address.address
 }
@@ -165,7 +175,8 @@ function ConversationReaderContent({
   }) => void
   conversation: ConversationDetail
 }) {
-  const latestMessage = conversation.messages.at(-1)
+  const messages = sortConversationMessagesNewestFirst(conversation.messages)
+  const latestMessage = messages[0]
   const summary = useConversationSummary({
     mailboxId,
     conversationId,
@@ -290,13 +301,13 @@ function ConversationReaderContent({
         onRegenerate={summary.regenerate}
       />
       <div>
-        {conversation.messages.map((message, index) => (
+        {messages.map((message, index) => (
           <MessageCard
             key={message.id}
             mailboxId={mailboxId}
             conversationId={conversationId}
             message={message}
-            initiallyExpanded={index === conversation.messages.length - 1}
+            initiallyExpanded={index === 0}
           />
         ))}
       </div>
