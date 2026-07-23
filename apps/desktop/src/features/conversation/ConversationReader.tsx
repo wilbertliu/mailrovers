@@ -78,12 +78,12 @@ function MessageCard({
     >
       <summary className="flex cursor-pointer list-none flex-col gap-0.5 px-6 py-4 max-[980px]:px-5">
         <div className="flex items-baseline justify-between gap-4">
-          <span className="min-w-0 truncate text-sm font-medium">
+          <span className="min-w-0 truncate text-xs font-medium">
             {addressLabel(message.sender)}
           </span>
           <MailRelativeTime className="shrink-0" value={message.receivedAt} />
         </div>
-        <small className="min-w-0 truncate text-sm text-muted-foreground">
+        <small className="min-w-0 truncate text-xs text-muted-foreground">
           to {message.recipients.to.map(addressLabel).join(', ') || 'me'}
         </small>
       </summary>
