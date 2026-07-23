@@ -1117,7 +1117,7 @@ Exit criteria:
 
 Deliver:
 
-- Inbox and label navigation.
+- Inbox, Spam, Trash, and label navigation.
 - Conversation reader.
 - FTS5 search.
 - Compose, reply, draft, and send.

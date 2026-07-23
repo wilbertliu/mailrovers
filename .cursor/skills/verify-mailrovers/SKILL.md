@@ -75,7 +75,7 @@ Stable handles:
 | Search               | `role=textbox` name `Search mail`                                                  |
 | Conversation row     | `role=button` name matching subject (fixture: `/Launch checklist and final copy/`) |
 | Compose              | `role=button` / `region` `New message` or `Reply`                                  |
-| Workspace nav        | `[aria-label="Workspace"]`, `[aria-label="Labels"]`                                |
+| Workspace nav        | `[aria-label="Workspace"]`, Inbox / Spam / Trash / Drafts, `[aria-label="Labels"]` |
 | AI settings          | `role=button` / heading `AI provider`                                              |
 | Commands             | `Mark read`, `Archive`, `Star`, `Add label`                                        |
 | Connect              | `Connect Gmail`, `Waiting for Google…`, toast `Gmail connected`, button `Importing email` |

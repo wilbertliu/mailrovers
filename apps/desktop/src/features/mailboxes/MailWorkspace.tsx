@@ -2,14 +2,16 @@ import {
   Add01Icon,
   AiMailIcon,
   ArrowDown01Icon,
+  Delete02Icon,
   InboxIcon,
   LabelIcon,
   Mail02Icon,
   PencilEdit02Icon,
   SidebarLeftIcon,
+  SpamIcon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import type { CommandReceipt, MailCommand, MailboxSummary } from '@mailrovers/mail-contracts'
+import type { CommandReceipt, LabelSummary, MailCommand, MailboxSummary } from '@mailrovers/mail-contracts'
 import type { ConversationId, LabelId, MailboxId } from '@mailrovers/mail-domain'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
@@ -108,6 +110,31 @@ function SidebarMenuCount({ value }: { value: number }) {
   )
 }
 
+/** System labels that belong in primary nav, not the Labels group. */
+const PRIMARY_NAV_PROVIDER_LABEL_IDS = new Set(['INBOX', 'SPAM', 'TRASH'])
+
+function primaryNavTitle(providerLabelId: string | undefined, fallback: string): string {
+  switch (providerLabelId) {
+    case 'INBOX':
+      return 'Inbox'
+    case 'SPAM':
+      return 'Spam'
+    case 'TRASH':
+      return 'Trash'
+    case undefined:
+      return fallback
+    default:
+      return fallback
+  }
+}
+
+function findLabelByProviderId(
+  labels: LabelSummary[] | undefined,
+  providerLabelId: string,
+): LabelSummary | undefined {
+  return labels?.find((label) => label.providerLabelId === providerLabelId)
+}
+
 export type WorkspaceRoute =
   | { kind: 'inbox'; labelId?: LabelId | undefined }
   | { kind: 'search'; query: string }
@@ -146,17 +173,18 @@ export function MailWorkspace({
     queryFn: () => desktopBridge.listLabels(mailboxId),
     staleTime: 60_000,
   })
-  const inbox = useMemo(
-    () => labels.data?.find((label) => label.providerLabelId === 'INBOX'),
-    [labels.data],
-  )
+  const inbox = useMemo(() => findLabelByProviderId(labels.data, 'INBOX'), [labels.data])
+  const spam = useMemo(() => findLabelByProviderId(labels.data, 'SPAM'), [labels.data])
+  const trash = useMemo(() => findLabelByProviderId(labels.data, 'TRASH'), [labels.data])
   const activeLabelId = route.kind === 'inbox' ? (route.labelId ?? inbox?.id) : undefined
   const activeLabel = useMemo(() => {
     if (route.kind !== 'inbox' || route.labelId === undefined) return inbox
     return labels.data?.find((label) => label.id === route.labelId)
   }, [inbox, labels.data, route])
   const activeLabelName =
-    route.kind === 'inbox' && route.labelId !== undefined ? (activeLabel?.name ?? 'Inbox') : 'Inbox'
+    route.kind === 'inbox' && route.labelId !== undefined
+      ? primaryNavTitle(activeLabel?.providerLabelId, activeLabel?.name ?? 'Inbox')
+      : 'Inbox'
   const activeLabelUnreadCount = activeLabel?.unreadCount ?? 0
   const clearWorkspaceSelection = () => {
     setSearchInput('')
@@ -246,17 +274,57 @@ export function MailWorkspace({
                   <SidebarGroupContent>
                     <SidebarMenu>
                       {labels.isError ? null : (
-                        <SidebarMenuItem>
-                          <SidebarMenuButton
-                            size="sm"
-                            isActive={route.kind === 'inbox' && route.labelId === undefined}
-                            onClick={() => showInbox()}
-                          >
-                            <HugeiconsIcon icon={InboxIcon} aria-hidden="true" />
-                            <span className="min-w-0 truncate">Inbox</span>
-                            <SidebarMenuCount value={inbox?.unreadCount ?? 0} />
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
+                        <>
+                          <SidebarMenuItem>
+                            <SidebarMenuButton
+                              size="sm"
+                              isActive={route.kind === 'inbox' && route.labelId === undefined}
+                              onClick={() => showInbox()}
+                            >
+                              <HugeiconsIcon icon={InboxIcon} aria-hidden="true" />
+                              <span className="min-w-0 truncate">Inbox</span>
+                              <SidebarMenuCount value={inbox?.unreadCount ?? 0} />
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                          <SidebarMenuItem>
+                            <SidebarMenuButton
+                              size="sm"
+                              isActive={
+                                route.kind === 'inbox' &&
+                                route.labelId !== undefined &&
+                                spam !== undefined &&
+                                route.labelId === spam.id
+                              }
+                              disabled={spam === undefined}
+                              onClick={() => {
+                                if (spam) showInbox(spam.id)
+                              }}
+                            >
+                              <HugeiconsIcon icon={SpamIcon} aria-hidden="true" />
+                              <span className="min-w-0 truncate">Spam</span>
+                              <SidebarMenuCount value={spam?.unreadCount ?? 0} />
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                          <SidebarMenuItem>
+                            <SidebarMenuButton
+                              size="sm"
+                              isActive={
+                                route.kind === 'inbox' &&
+                                route.labelId !== undefined &&
+                                trash !== undefined &&
+                                route.labelId === trash.id
+                              }
+                              disabled={trash === undefined}
+                              onClick={() => {
+                                if (trash) showInbox(trash.id)
+                              }}
+                            >
+                              <HugeiconsIcon icon={Delete02Icon} aria-hidden="true" />
+                              <span className="min-w-0 truncate">Trash</span>
+                              <SidebarMenuCount value={trash?.unreadCount ?? 0} />
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        </>
                       )}
                       <SidebarMenuItem>
                         <SidebarMenuButton
@@ -292,7 +360,9 @@ export function MailWorkspace({
                       ) : (
                         <SidebarMenu>
                           {labels.data
-                            ?.filter((label) => label.providerLabelId !== 'INBOX')
+                            ?.filter(
+                              (label) => !PRIMARY_NAV_PROVIDER_LABEL_IDS.has(label.providerLabelId),
+                            )
                             .map((label) => (
                               <SidebarMenuItem key={label.id}>
                                 <SidebarMenuButton

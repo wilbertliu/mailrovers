@@ -90,6 +90,21 @@ export const MailboxSwitchResetsWorkspaceState: Story = {
   },
 }
 
+export const SpamAndTrashPrimaryNav: Story = {
+  parameters: { mailrovers: storybookScenarios.workspace },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(await canvas.findByRole('button', { name: /^Spam/ })).toBeVisible()
+    await expect(await canvas.findByRole('button', { name: /^Trash/ })).toBeVisible()
+    await expect(canvas.queryByRole('button', { name: /^SPAM/ })).not.toBeInTheDocument()
+    await expect(canvas.queryByRole('button', { name: /^TRASH/ })).not.toBeInTheDocument()
+    await userEvent.click(await canvas.findByRole('button', { name: /^Spam/ }))
+    await expect(await canvas.findByRole('heading', { name: /Spam/ })).toBeVisible()
+    await userEvent.click(await canvas.findByRole('button', { name: /^Trash/ }))
+    await expect(await canvas.findByRole('heading', { name: /Trash/ })).toBeVisible()
+  },
+}
+
 export const SearchResults: Story = {
   parameters: { mailrovers: storybookScenarios.searchResults },
   play: async ({ canvasElement }) => {
