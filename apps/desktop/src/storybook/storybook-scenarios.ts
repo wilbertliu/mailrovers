@@ -437,7 +437,7 @@ export const storybookScenarios = {
       getMessageBody: success({
         messageId: storybookIds.launchReply,
         sanitizedHtmlBody:
-          '<main><h2>Launch ready</h2><p>Everything is ready on my side.</p></main>',
+          '<h2>Launch ready</h2><p>Everything is ready on my side.</p><p><img src="https://placehold.co/640x200/png" alt="Launch banner" width="640" height="200"></p>',
       }),
     },
   }),

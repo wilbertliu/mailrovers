@@ -8,7 +8,7 @@ Milestone 3 adds the complete local mail workflow on top of the Milestone 1 and 
 - On-demand conversation detail with attachment metadata.
 - Transactionally maintained FTS5 search over subject, participants, body text, and attachment filenames.
 - Resumable background FTS backfill for upgraded databases.
-- Sandboxed sanitized email HTML with remote resources disabled and main-process link validation.
+- Sandboxed sanitized email HTML (images allowed; scripts and navigation blocked) and main-process link validation.
 - Durable archive, read, star, and user-label commands.
 - Local versioned drafts, serialized autosave, compose, reply, draft reopening, and provider draft synchronization.
 - RFC-compliant outbound MIME through MIMEText, with stable `Message-ID` and reply headers.

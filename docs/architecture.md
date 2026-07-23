@@ -755,8 +755,8 @@ Email rendering rules:
 - The main renderer uses `sandbox: true`, `contextIsolation: true`, and `nodeIntegration: false`.
 - Apply a restrictive Content Security Policy to application content and prohibit `unsafe-eval`.
 - Sanitize HTML using a maintained allowlist sanitizer.
-- Render sanitized mail in a sandboxed frame on an isolated application origin with scripts, forms, popups, top navigation, and same-origin privileges disabled.
-- Block remote images by default.
+- Render sanitized mail in a sandboxed frame with scripts, forms, popups, and top navigation disabled. `allow-same-origin` is enabled only so the parent can measure content height for frame sizing.
+- Allow `http`, `https`, and `data` images in sanitized HTML; the frame CSP permits those `img-src` schemes and uses `referrerPolicy=no-referrer`.
 - Deny unexpected navigation through `will-navigate` and deny new windows through `setWindowOpenHandler`.
 - Route link opening through one main-process handler that parses the URL, permits only HTTP or HTTPS, and rejects credentials and malformed URLs before calling `shell.openExternal`.
 - Prevent email content from navigating the application frame.

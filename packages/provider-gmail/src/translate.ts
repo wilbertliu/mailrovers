@@ -81,6 +81,7 @@ function cleanHtml(value: string): string | undefined {
       'h4',
       'hr',
       'i',
+      'img',
       'li',
       'ol',
       'p',
@@ -98,10 +99,14 @@ function cleanHtml(value: string): string | undefined {
     ],
     allowedAttributes: {
       a: ['href', 'title'],
+      img: ['src', 'alt', 'title', 'width', 'height'],
       td: ['colspan', 'rowspan'],
       th: ['colspan', 'rowspan'],
     },
     allowedSchemes: ['http', 'https'],
+    allowedSchemesByTag: {
+      img: ['http', 'https', 'data'],
+    },
     allowProtocolRelative: false,
     disallowedTagsMode: 'discard',
   })

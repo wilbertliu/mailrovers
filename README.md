@@ -28,7 +28,7 @@ The first release is a macOS application that connects directly to Gmail and an 
 - Summarize conversations with AI
 - Draft replies with AI and review them before sending
 - Store Gmail and AI credentials with operating-system-protected encryption
-- Block remote images and isolate untrusted email HTML by default
+- Isolate untrusted email HTML in a sandboxed frame (scripts and navigation blocked)
 
 ## How it works
 

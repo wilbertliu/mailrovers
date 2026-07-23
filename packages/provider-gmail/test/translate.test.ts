@@ -67,7 +67,9 @@ describe('Gmail payload translation', () => {
         providerLabelIds: ['INBOX', 'UNREAD'],
       }),
     )
-    expect(normalized.sanitizedHtmlBody).toBe('<p>Hello</p>')
+    expect(normalized.sanitizedHtmlBody).toBe(
+      '<p>Hello</p><img src="https://tracker.test/pixel" />',
+    )
     expect(normalized.attachments).toEqual([
       expect.objectContaining({
         providerAttachmentId: 'attachment-1',
