@@ -179,7 +179,7 @@ export const ImportingOlderMail: Story = {
 }
 
 export const ArchiveUndo: Story = {
-  tags: featureFlags.readerThreadActions ? undefined : ['!test'],
+  ...(featureFlags.readerThreadActions ? {} : { tags: ['!test'] }),
   parameters: { mailrovers: storybookScenarios.archiveUndo },
   play: async ({ canvasElement }) => {
     const canvas = await openLaunchConversation(canvasElement)
