@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { expect, userEvent, within } from 'storybook/test'
 import { App } from './App.js'
+import { featureFlags } from './feature-flags.js'
 import { openLaunchConversation, submitSearch } from './storybook/story-helpers.js'
 import { storybookScenarios } from './storybook/storybook-scenarios.js'
 
@@ -178,6 +179,7 @@ export const ImportingOlderMail: Story = {
 }
 
 export const ArchiveUndo: Story = {
+  tags: featureFlags.readerThreadActions ? undefined : ['!test'],
   parameters: { mailrovers: storybookScenarios.archiveUndo },
   play: async ({ canvasElement }) => {
     const canvas = await openLaunchConversation(canvasElement)
@@ -186,3 +188,4 @@ export const ArchiveUndo: Story = {
     await expect(await canvas.findByRole('button', { name: 'Undo archive' })).toBeVisible()
   },
 }
+

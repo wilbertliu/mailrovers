@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.js'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.js'
+import { featureFlags } from '@/feature-flags.js'
 import { desktopBridge } from '../../desktop-bridge.js'
 import { ConversationSummaryPanel, useConversationSummary } from '../ai/ConversationSummary.js'
 import { EmailFrame } from './EmailFrame.js'
@@ -205,74 +206,78 @@ function ConversationReaderContent({
                 }
               />
             ) : null}
-            <IconTooltipButton
-              label="Mark read"
-              icon={MailOpen01Icon}
-              onClick={() =>
-                void onCommand({ kind: 'set-thread-read', conversationId, read: true })
-              }
-            />
-            <IconTooltipButton
-              label="Archive"
-              icon={Archive02Icon}
-              onClick={() =>
-                void onCommand({ kind: 'set-thread-archived', conversationId, archived: true })
-              }
-            />
-            {latestMessage ? (
-              <IconTooltipButton
-                label="Star"
-                icon={StarIcon}
-                onClick={() =>
-                  void onCommand({
-                    kind: 'set-message-starred',
-                    messageId: latestMessage.id,
-                    starred: true,
-                  })
-                }
-              />
-            ) : null}
-            <DropdownMenu>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          className="rounded-md"
-                          aria-label="Add label"
-                          disabled={userLabels.length === 0}
-                        />
-                      }
-                    />
+            {featureFlags.readerThreadActions ? (
+              <>
+                <IconTooltipButton
+                  label="Mark read"
+                  icon={MailOpen01Icon}
+                  onClick={() =>
+                    void onCommand({ kind: 'set-thread-read', conversationId, read: true })
                   }
-                >
-                  <HugeiconsIcon icon={Tag01Icon} aria-hidden="true" />
-                </TooltipTrigger>
-                <TooltipContent>Add label</TooltipContent>
-              </Tooltip>
-              <DropdownMenuContent align="end" className="min-w-44">
-                {userLabels.map((label) => (
-                  <DropdownMenuItem
-                    key={label.id}
-                    className="text-sm"
+                />
+                <IconTooltipButton
+                  label="Archive"
+                  icon={Archive02Icon}
+                  onClick={() =>
+                    void onCommand({ kind: 'set-thread-archived', conversationId, archived: true })
+                  }
+                />
+                {latestMessage ? (
+                  <IconTooltipButton
+                    label="Star"
+                    icon={StarIcon}
                     onClick={() =>
                       void onCommand({
-                        kind: 'set-thread-label',
-                        conversationId,
-                        labelId: label.id,
-                        applied: true,
+                        kind: 'set-message-starred',
+                        messageId: latestMessage.id,
+                        starred: true,
                       })
                     }
-                  >
-                    {label.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  />
+                ) : null}
+                <DropdownMenu>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="rounded-md"
+                              aria-label="Add label"
+                              disabled={userLabels.length === 0}
+                            />
+                          }
+                        />
+                      }
+                    >
+                      <HugeiconsIcon icon={Tag01Icon} aria-hidden="true" />
+                    </TooltipTrigger>
+                    <TooltipContent>Add label</TooltipContent>
+                  </Tooltip>
+                  <DropdownMenuContent align="end" className="min-w-44">
+                    {userLabels.map((label) => (
+                      <DropdownMenuItem
+                        key={label.id}
+                        className="text-sm"
+                        onClick={() =>
+                          void onCommand({
+                            kind: 'set-thread-label',
+                            conversationId,
+                            labelId: label.id,
+                            applied: true,
+                          })
+                        }
+                      >
+                        {label.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            ) : null}
           </div>
         </div>
       </header>
