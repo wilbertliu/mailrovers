@@ -3,6 +3,7 @@ import {
   AiMailIcon,
   ArrowDown01Icon,
   InboxIcon,
+  LabelIcon,
   Mail02Icon,
   PencilEdit02Icon,
   SidebarLeftIcon,
@@ -23,6 +24,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.js'
+import {
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+} from '@/components/ui/sidebar.js'
 import { IconTooltipButton } from '@/components/icon-tooltip-button.js'
 import { cn } from '@/lib/utils.js'
 import { desktopBridge } from '../../desktop-bridge.js'
@@ -50,13 +63,7 @@ function MailboxMenu({
   return (
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-auto w-auto min-w-0 justify-start gap-2 rounded-md px-2 py-1.5 text-sm"
-          />
-        }
+        render={<SidebarMenuButton size="sm" className="h-auto min-w-0" />}
       >
         <span
           className="grid size-5.5 shrink-0 place-items-center rounded-md bg-foreground text-[0.625rem] font-bold text-background"
@@ -94,12 +101,11 @@ function MailboxMenu({
   )
 }
 
-const sidebarNavClassName =
-  'h-8 justify-start gap-2 rounded-md px-2 text-sm text-muted-foreground aria-pressed:bg-accent aria-pressed:font-semibold aria-pressed:text-foreground'
-
-function SidebarCount({ value }: { value: number }) {
+function SidebarMenuCount({ value }: { value: number }) {
   if (value <= 0) return null
-  return <small className="ml-auto text-sm font-normal text-muted-foreground">{value}</small>
+  return (
+    <small className="ml-auto shrink-0 tabular-nums font-normal text-muted-foreground">{value}</small>
+  )
 }
 
 export type WorkspaceRoute =
@@ -213,92 +219,107 @@ export function MailWorkspace({
             />
             {importMailbox ? <ImportStatusIndicator mailbox={importMailbox} /> : null}
           </div>
-          <div className="flex min-h-0 flex-1 flex-col gap-5 px-2 pt-3 pb-2.5">
-            <div className="flex h-9 items-center gap-2 px-0.5">
-              <MailboxMenu
-                mailbox={mailbox}
-                mailboxes={mailboxes}
-                open={mailboxMenuOpen}
-                onOpenChange={setMailboxMenuOpen}
-                onSelectMailbox={onSelectMailbox}
-                onAddAccount={onAddAccount}
-              />
+          <SidebarProvider className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <SidebarHeader className="flex-row items-center gap-2">
+              <SidebarMenu className="min-w-0 flex-1">
+                <SidebarMenuItem className="min-w-0">
+                  <MailboxMenu
+                    mailbox={mailbox}
+                    mailboxes={mailboxes}
+                    open={mailboxMenuOpen}
+                    onOpenChange={setMailboxMenuOpen}
+                    onSelectMailbox={onSelectMailbox}
+                    onAddAccount={onAddAccount}
+                  />
+                </SidebarMenuItem>
+              </SidebarMenu>
               <IconTooltipButton
                 label="Write email"
                 icon={PencilEdit02Icon}
                 variant="outline"
-                className="ml-auto shrink-0 rounded-full border-border bg-background shadow-sm hover:bg-muted hover:text-foreground"
+                className="shrink-0 rounded-full border-border bg-background shadow-sm hover:bg-muted hover:text-foreground"
                 onClick={() => setComposer({ kind: 'new' })}
               />
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-2">
-              <nav className="flex flex-col gap-1" aria-label="Workspace">
+            </SidebarHeader>
+            <SidebarContent>
+                <SidebarGroup>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {labels.isError ? null : (
+                        <SidebarMenuItem>
+                          <SidebarMenuButton
+                            size="sm"
+                            isActive={route.kind === 'inbox' && route.labelId === undefined}
+                            onClick={() => showInbox()}
+                          >
+                            <HugeiconsIcon icon={InboxIcon} aria-hidden="true" />
+                            <span className="min-w-0 truncate">Inbox</span>
+                            <SidebarMenuCount value={inbox?.unreadCount ?? 0} />
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      )}
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          size="sm"
+                          isActive={route.kind === 'drafts'}
+                          aria-label="Local drafts"
+                          onClick={showDraftsView}
+                        >
+                          <HugeiconsIcon icon={Mail02Icon} aria-hidden="true" />
+                          <span className="min-w-0 truncate">Drafts</span>
+                          <SidebarMenuCount value={drafts.data?.length ?? 0} />
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          size="sm"
+                          isActive={route.kind === 'ai-settings'}
+                          onClick={showAiSettingsView}
+                        >
+                          <HugeiconsIcon icon={AiMailIcon} aria-hidden="true" />
+                          <span>AI provider</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
                 {labels.isError ? null : (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className={sidebarNavClassName}
-                    aria-pressed={route.kind === 'inbox' && route.labelId === undefined}
-                    onClick={() => showInbox()}
-                  >
-                    <HugeiconsIcon icon={InboxIcon} data-icon="inline-start" aria-hidden="true" />
-                    <span>Inbox</span>
-                    <SidebarCount value={inbox?.unreadCount ?? 0} />
-                  </Button>
+                  <SidebarGroup>
+                    <SidebarGroupLabel>Labels</SidebarGroupLabel>
+                    <SidebarGroupContent>
+                      {labels.isPending ? (
+                        <p className="px-3 py-1.5 text-sm text-muted-foreground">Loading labels…</p>
+                      ) : (
+                        <SidebarMenu>
+                          {labels.data
+                            ?.filter((label) => label.providerLabelId !== 'INBOX')
+                            .map((label) => (
+                              <SidebarMenuItem key={label.id}>
+                                <SidebarMenuButton
+                                  size="sm"
+                                  isActive={route.kind === 'inbox' && label.id === activeLabelId}
+                                  onClick={() => showInbox(label.id)}
+                                >
+                                  <HugeiconsIcon icon={LabelIcon} aria-hidden="true" />
+                                  <span className="min-w-0 truncate">{label.name}</span>
+                                  <SidebarMenuCount value={label.unreadCount} />
+                                </SidebarMenuButton>
+                              </SidebarMenuItem>
+                            ))}
+                        </SidebarMenu>
+                      )}
+                    </SidebarGroupContent>
+                  </SidebarGroup>
                 )}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className={sidebarNavClassName}
-                  aria-label="Local drafts"
-                  aria-pressed={route.kind === 'drafts'}
-                  onClick={showDraftsView}
-                >
-                  <HugeiconsIcon icon={Mail02Icon} data-icon="inline-start" aria-hidden="true" />
-                  <span>Drafts</span>
-                  <SidebarCount value={drafts.data?.length ?? 0} />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className={sidebarNavClassName}
-                  aria-pressed={route.kind === 'ai-settings'}
-                  onClick={showAiSettingsView}
-                >
-                  <HugeiconsIcon icon={AiMailIcon} data-icon="inline-start" aria-hidden="true" />
-                  <span>AI provider</span>
-                </Button>
-              </nav>
-              <nav className="flex flex-col gap-1" aria-label="Labels">
-                {labels.isPending ? (
-                  <p className="px-2 py-1.5 text-sm text-muted-foreground">Loading labels…</p>
-                ) : null}
-                {labels.data
-                  ?.filter((label) => label.providerLabelId !== 'INBOX')
-                  .map((label) => (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className={sidebarNavClassName}
-                      key={label.id}
-                      aria-pressed={route.kind === 'inbox' && label.id === activeLabelId}
-                      onClick={() => showInbox(label.id)}
-                    >
-                      <i className="size-1.5 rounded-xs bg-chart-2" aria-hidden="true" />
-                      <span>{label.name}</span>
-                      <SidebarCount value={label.unreadCount} />
-                    </Button>
-                  ))}
-              </nav>
-            </div>
+            </SidebarContent>
             {mailbox.connectionState === 'disconnected' ? (
-              <div className="mt-auto pt-1">
-                <output className="block px-0.5 text-sm leading-snug text-muted-foreground">
+              <SidebarFooter>
+                <output className="block text-sm leading-snug text-muted-foreground">
                   Offline cache retained. Reconnect Gmail to refresh, send, or edit Gmail.
                 </output>
-              </div>
+              </SidebarFooter>
             ) : null}
-          </div>
+          </SidebarProvider>
         </aside>
       )}
 
