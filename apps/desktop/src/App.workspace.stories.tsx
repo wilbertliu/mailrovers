@@ -16,6 +16,11 @@ type Story = StoryObj<typeof meta>
 
 export const PopulatedInbox: Story = {
   parameters: { mailrovers: storybookScenarios.workspace },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    await expect(await canvas.findByRole('button', { name: /Launch checklist/i })).toBeVisible()
+    await expect(await canvas.findByText('Select a conversation')).toBeVisible()
+  },
 }
 
 export const EmptyInbox: Story = {

@@ -38,11 +38,6 @@ export function InboxPage({
     <section
       className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r bg-background"
       aria-label="Conversations"
-      ref={(node) => {
-        const first = items[0]
-        if (node !== null && selectedId === undefined && first !== undefined)
-          queueMicrotask(() => onSelect(first.id))
-      }}
     >
       <ListColumnHeader
         title={

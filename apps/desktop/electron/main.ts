@@ -140,6 +140,7 @@ async function createWindow(): Promise<void> {
   })
   mainWindow = window
   checkpoint('windowCreated')
+  window.maximize()
   const startupSplash = await attachStartupSplashOverlay(window, logoSrc)
   await presentWindow(app, window)
   checkpoint('windowVisible')
