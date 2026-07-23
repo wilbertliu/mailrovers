@@ -45,7 +45,7 @@ export function ConversationVirtualList({
               type="button"
               key={item.id}
               variant="ghost"
-              className="absolute inset-x-0 grid h-21 w-full grid-cols-[8px_minmax(0,1fr)_auto] items-start gap-2 rounded-md px-2.5 py-2.5 text-start text-sm font-medium aria-pressed:bg-accent"
+              className="absolute inset-x-0 grid h-21 w-full grid-cols-[minmax(0,1fr)_auto] items-start gap-2 rounded-md py-2.5 pr-2.5 pl-4 text-start text-sm font-medium aria-pressed:bg-accent"
               aria-pressed={selectedId === item.id}
               data-unread={item.unreadCount > 0}
               onClick={() => onSelect(item)}
@@ -53,11 +53,6 @@ export function ConversationVirtualList({
                 transform: `translateY(${row.start}px)`,
               }}
             >
-              <span
-                className="mt-1.5 size-1.5 rounded-full bg-transparent data-[unread=true]:bg-primary"
-                data-unread={item.unreadCount > 0}
-                aria-label={item.unreadCount > 0 ? 'Unread' : undefined}
-              />
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="truncate text-sm font-medium">{sendersLabel(item.senders)}</span>
                 <strong className="truncate text-xs font-normal">
@@ -67,7 +62,14 @@ export function ConversationVirtualList({
                   {item.snippet}
                 </span>
               </div>
-              <MailRelativeTime value={item.lastMessageAt} />
+              <div className="flex flex-col items-end gap-1.5">
+                <MailRelativeTime value={item.lastMessageAt} />
+                <span
+                  className="size-1.5 rounded-full bg-transparent data-[unread=true]:bg-primary"
+                  data-unread={item.unreadCount > 0}
+                  aria-label={item.unreadCount > 0 ? 'Unread' : undefined}
+                />
+              </div>
             </Button>
           )
         })}
