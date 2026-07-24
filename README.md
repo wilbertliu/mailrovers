@@ -9,6 +9,9 @@ An open-source, local-first desktop email client for Gmail. MailRovers stores ma
 application data on your Mac, connects directly to Gmail, and lets you use your own
 OpenAI-compatible AI provider.
 
+MailRovers is from [Rinhelp](https://rinhelp.com), an AI support tool that answers
+questions using your website and cites the pages it used.
+
 > [!WARNING]
 > MailRovers is alpha software. It currently targets macOS, must be built from source,
 > and is not ready for a primary or business-critical inbox.
