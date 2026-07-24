@@ -35,7 +35,9 @@ pnpm check
 pnpm fixture:seed
 pnpm --filter @mailrovers/desktop perf
 pnpm smoke:packaged
-pnpm --filter @mailrovers/desktop exec tsx perf/smoke-packaged.ts --performance --idle-ms=1000 --mode=main
+cd apps/desktop && ELECTRON_RUN_AS_NODE=1 ../../node_modules/.bin/electron \
+  ../../node_modules/tsx/dist/cli.mjs perf/smoke-packaged.ts --performance --idle-ms=1000 --mode=main
+pnpm --filter @mailrovers/desktop performance:packaged:pending-fts
 # Full idle-memory gate (60 seconds)
 pnpm performance:packaged
 ```

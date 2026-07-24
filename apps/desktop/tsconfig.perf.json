@@ -7,5 +7,5 @@
     "moduleResolution": "Bundler",
     "types": ["node"]
   },
-  "include": ["perf/**/*.ts"]
+  "include": ["perf/**/*.ts", "shared/**/*.ts"]
 }

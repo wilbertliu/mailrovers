@@ -11,17 +11,47 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { migrate, openDatabase } from '@mailrovers/mail-store-sqlite'
 import { redactedJson, redactLogValue, writeRedactedJsonLine } from '@mailrovers/platform-electron'
-import { seedMailboxFixture } from '@mailrovers/test-support'
-import { evaluatePerformanceBudgets, PERFORMANCE_BUDGETS } from './budgets.js'
+import { seedMailboxFixture, seedPendingFtsMailboxFixture } from '@mailrovers/test-support'
+import {
+  completeIndexBudgetPolicy,
+  evaluatePerformanceBudgets,
+  pendingFtsBudgetPolicy,
+  PERFORMANCE_BUDGETS,
+} from './budgets.js'
 import { packagedAppEnvironment } from './packaged-app-environment.js'
 import { measureQueryPerformance, type QueryPerformanceReport } from './query.js'
+import {
+  packagedRunTimeouts,
+  parseSmokePackagedArgs,
+  shouldPrecompleteSearchIndex,
+  shouldSeedPendingFtsBodies,
+  type PerformanceScenario,
+  type SmokeMode,
+} from './smoke-packaged-args.js'
 
-type Mode = 'main' | 'worker'
+type Mode = SmokeMode
 type SmokeResult = {
   status: string
   databaseHost: string
+  performanceScenario?: PerformanceScenario
   stages?: Record<string, number>
   mainEventLoopStallMs?: number
+  searchBackfillMs?: number
+  duringIndexingQuery?: {
+    latencyMs?: number
+    overlapped?: boolean
+    rows?: number
+    rowsOk?: boolean
+    valid?: boolean
+    request?: { startWall?: number; endWall?: number }
+    batch?: { id?: number; startWall?: number; endWall?: number; durationMs?: number }
+  }
+  searchIndexing?: {
+    peakDuringIndexingMb?: number
+    workingSetAtIndexingEndMb?: number
+    batchCount?: number
+    maxBatchDurationMs?: number
+  }
   rendererProbe?: {
     rows?: number
     processType?: string
@@ -43,6 +73,9 @@ type SmokeResult = {
   packagedPerformance?: {
     idleDelayMs?: number
     workingSetMb?: number
+    peakDuringIndexingMb?: number
+    workingSetAtIndexingEndMb?: number
+    capturedAt?: string
     processes?: Array<{ pid: number; type: string; workingSetKb: number }>
   }
   error?: unknown
@@ -80,12 +113,18 @@ async function runMode(input: {
   database: string
   directory: string
   performanceRequested: boolean
+  scenario: PerformanceScenario
   idleDelayMs: number
 }): Promise<SmokeResult> {
   const resultPath = path.join(input.directory, `${input.mode}-result.json`)
   const checkpointPath = path.join(input.directory, `${input.mode}-checkpoints.jsonl`)
   const stdoutPath = path.join(input.directory, `${input.mode}-stdout.log`)
   const stderrPath = path.join(input.directory, `${input.mode}-stderr.log`)
+  const { noProgressTimeoutMs, totalTimeoutMs } = packagedRunTimeouts({
+    performanceRequested: input.performanceRequested,
+    scenario: input.scenario,
+    idleDelayMs: input.idleDelayMs,
+  })
   const child = spawn(input.executable, [], {
     detached: true,
     env: {
@@ -96,6 +135,7 @@ async function runMode(input: {
       MAILROVERS_SMOKE_CHECKPOINT_PATH: checkpointPath,
       ELECTRON_ENABLE_LOGGING: '1',
       MAILROVERS_PERFORMANCE: input.performanceRequested ? '1' : '0',
+      MAILROVERS_PERFORMANCE_SCENARIO: input.scenario,
       MAILROVERS_IDLE_DELAY_MS: String(input.idleDelayMs),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -104,8 +144,6 @@ async function runMode(input: {
   child.stderr?.on('data', (data: Buffer) => appendFileSync(stderrPath, data))
 
   const startedAt = Date.now()
-  const noProgressTimeoutMs = input.performanceRequested ? input.idleDelayMs + 20_000 : 15_000
-  const totalTimeoutMs = input.performanceRequested ? input.idleDelayMs + 60_000 : 45_000
   let lastProgressAt = startedAt
   let checkpointCount = 0
   try {
@@ -186,6 +224,7 @@ async function runMode(input: {
     const checkpoints = readCheckpoints(checkpointPath)
     const detail = {
       mode: input.mode,
+      scenario: input.scenario,
       error: error instanceof Error ? error.message : String(error),
       checkpoints,
       stdout: existsSync(stdoutPath) ? readFileSync(stdoutPath, 'utf8') : '',
@@ -199,22 +238,10 @@ async function runMode(input: {
 }
 
 async function main(): Promise<void> {
-  const argumentsList = process.argv.slice(2)
-  const performanceRequested = argumentsList.includes('--performance')
-  const idleArgument = argumentsList.find((argument) => argument.startsWith('--idle-ms='))
-  const idleDelayMs = idleArgument
-    ? Number.parseInt(idleArgument.slice('--idle-ms='.length), 10)
-    : 60_000
-  if (!Number.isFinite(idleDelayMs) || idleDelayMs < 0) throw new Error('Invalid --idle-ms value')
-  const requestedMode = argumentsList
-    .find((argument) => argument.startsWith('--mode='))
-    ?.slice('--mode='.length)
-  if (requestedMode !== undefined && requestedMode !== 'main' && requestedMode !== 'worker')
-    throw new Error('Invalid --mode value')
-  const appArgument = argumentsList.find((argument) => !argument.startsWith('--'))
+  const args = parseSmokePackagedArgs(process.argv.slice(2))
   const architecture = process.arch === 'arm64' ? 'arm64' : 'x64'
   const appBundle =
-    appArgument ??
+    args.appArgument ??
     path.join(process.cwd(), 'out', `MailRovers-darwin-${architecture}`, 'MailRovers.app')
   const executable = path.join(appBundle, 'Contents', 'MacOS', 'MailRovers')
   if (!existsSync(executable)) throw new Error(`Packaged executable not found at ${executable}`)
@@ -229,13 +256,16 @@ async function main(): Promise<void> {
   const fixtureDatabase = path.join(directory, 'fixture.sqlite')
   const db = openDatabase(fixtureDatabase)
   migrate(db)
-  const fixture = seedMailboxFixture(db)
+  const fixture = shouldSeedPendingFtsBodies(args.scenario)
+    ? seedPendingFtsMailboxFixture(db)
+    : seedMailboxFixture(db)
   db.close()
-  const queryPerformance: QueryPerformanceReport | undefined = performanceRequested
-    ? await measureQueryPerformance(fixtureDatabase)
-    : undefined
+  const queryPerformance: QueryPerformanceReport | undefined =
+    args.performanceRequested && shouldPrecompleteSearchIndex(args.scenario)
+      ? await measureQueryPerformance(fixtureDatabase)
+      : undefined
 
-  const modes: Mode[] = requestedMode ? [requestedMode] : ['main', 'worker']
+  const modes: Mode[] = args.mode ? [args.mode] : ['main', 'worker']
   const results: Array<{ mode: Mode; result: SmokeResult }> = []
   for (const mode of modes) {
     const database = path.join(directory, `${mode}.sqlite`)
@@ -247,16 +277,17 @@ async function main(): Promise<void> {
         executable,
         database,
         directory,
-        performanceRequested,
-        idleDelayMs,
+        performanceRequested: args.performanceRequested,
+        scenario: args.scenario,
+        idleDelayMs: args.idleDelayMs,
       }),
     })
   }
   const performanceFailures: string[] = []
   const performanceAdvisories: string[] = []
-  if (performanceRequested) {
+  if (args.performanceRequested) {
     for (const { mode, result } of results) {
-      const fps = result.rendererProbe?.scroll?.fps ?? 0
+      const fps = result.rendererProbe?.scroll?.fps
       const workingSetMb = result.packagedPerformance?.workingSetMb ?? Number.POSITIVE_INFINITY
       const mainEntry = result.stages?.mainEntry
       const windowVisible = result.stages?.windowVisible
@@ -267,21 +298,37 @@ async function main(): Promise<void> {
           : windowVisible - mainEntry
       const cachedInboxMs =
         mainEntry === undefined || inboxUsable === undefined ? undefined : inboxUsable - mainEntry
-      const verdict = evaluatePerformanceBudgets({
-        firstWindowMs,
-        cachedInboxMs,
-        queryP95Ms: queryPerformance?.inbox.p95,
-        threadMetadataP95Ms: queryPerformance?.conversation.p95,
-        mainEventLoopStallMs: result.mainEventLoopStallMs,
-        idleRssMiB: workingSetMb,
-      })
+      const verdict = evaluatePerformanceBudgets(
+        {
+          firstWindowMs,
+          cachedInboxMs,
+          queryP95Ms: queryPerformance?.inbox.p95,
+          threadMetadataP95Ms: queryPerformance?.conversation.p95,
+          mainEventLoopStallMs: result.mainEventLoopStallMs,
+          idleRssMiB:
+            args.scenario === 'complete-index' && Number.isFinite(workingSetMb)
+              ? workingSetMb
+              : undefined,
+          peakDuringIndexingMb:
+            result.searchIndexing?.peakDuringIndexingMb ??
+            result.packagedPerformance?.peakDuringIndexingMb,
+          workingSetAtIndexingEndMb:
+            result.searchIndexing?.workingSetAtIndexingEndMb ??
+            result.packagedPerformance?.workingSetAtIndexingEndMb,
+          searchBackfillMs: result.searchBackfillMs,
+          duringIndexingQueryMs: result.duringIndexingQuery?.latencyMs,
+          duringIndexingQueryOverlapped: result.duringIndexingQuery?.overlapped,
+          duringIndexingQueryValid: result.duringIndexingQuery?.valid,
+        },
+        { scenario: args.scenario },
+      )
       performanceFailures.push(...verdict.hardFailures.map((failure) => `${mode} ${failure}`))
       performanceAdvisories.push(...verdict.advisories.map((advisory) => `${mode} ${advisory}`))
-      if (fps < 59.5)
+      if (fps !== undefined && fps < 59.5)
         performanceAdvisories.push(
           `${mode} packaged scroll measured ${fps.toFixed(2)} FPS, below the 60 FPS target`,
         )
-      if (result.packagedPerformance?.idleDelayMs !== idleDelayMs)
+      if (result.packagedPerformance?.idleDelayMs !== args.idleDelayMs)
         performanceFailures.push(`${mode} packaged performance used an unexpected idle delay`)
     }
   }
@@ -290,9 +337,14 @@ async function main(): Promise<void> {
     appBundle,
     directory,
     fixture,
-    performanceRequested,
-    idleDelayMs,
+    performanceRequested: args.performanceRequested,
+    scenario: args.scenario,
+    idleDelayMs: args.idleDelayMs,
     budgets: PERFORMANCE_BUDGETS,
+    budgetPolicy:
+      args.scenario === 'pending-fts-backfill'
+        ? pendingFtsBudgetPolicy()
+        : completeIndexBudgetPolicy(),
     queryPerformance,
     results,
     performanceFailures,

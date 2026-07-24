@@ -9,6 +9,7 @@
   },
   "include": [
     "electron/**/*.ts",
+    "shared/**/*.ts",
     "vite.*.config.ts",
     "src/development-csp.ts",
     "src/startup-screen-document.ts",

@@ -16,7 +16,8 @@
     "fixture:seed": "pnpm --filter @mailrovers/desktop fixture:seed",
     "package:mac": "pnpm --filter @mailrovers/desktop package:mac",
     "smoke:packaged": "pnpm --filter @mailrovers/desktop smoke:packaged",
-    "performance:packaged": "pnpm --filter @mailrovers/desktop performance:packaged"
+    "performance:packaged": "pnpm --filter @mailrovers/desktop performance:packaged",
+    "performance:packaged:pending-fts": "pnpm --filter @mailrovers/desktop performance:packaged:pending-fts"
   },
   "devDependencies": {
     "@types/node": "22.15.3",

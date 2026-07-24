@@ -16,8 +16,23 @@ describe('packaged smoke readiness', () => {
   it('settles search indexing before recording a successful smoke result', () => {
     const source = readFileSync(path.join(desktopRoot, 'electron/main.ts'), 'utf8')
 
-    expect(source).toContain('const searchIndexing = backfillSearch(host.store)')
+    expect(source).toContain('const searchIndexing = backfillSearch(host.store, window)')
     expect(source.slice(source.indexOf('await searchIndexing'))).toContain('writeSmokeSuccess')
     expect(source).toContain("let smokeTerminalState: 'pending' | 'passed' | 'failed' = 'pending'")
+  })
+
+  it('instruments pending-fts-backfill overlap measurements in the packaged main process', () => {
+    const source = readFileSync(path.join(desktopRoot, 'electron/main.ts'), 'utf8')
+
+    expect(source).toContain("performanceScenario === 'pending-fts-backfill'")
+    expect(source).toContain("checkpoint('searchIndexingStart')")
+    expect(source).toContain("checkpoint('searchIndexingComplete'")
+    expect(source).toContain('runCoordinatedContentionProbe')
+    expect(source).toContain('window.mailrovers.v1.listConversations')
+    expect(source).toContain('evaluateContentionProbe')
+    expect(source).toContain('attributeIndexingStallMs')
+    expect(source).toContain('peakDuringIndexingMb')
+    expect(source).toContain('sampleEventLoopStallMs')
+    expect(source).toContain("databaseHost === 'main'")
   })
 })

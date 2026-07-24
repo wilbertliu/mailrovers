@@ -28,7 +28,11 @@ pnpm check
 pnpm fixture:seed
 pnpm --filter @mailrovers/desktop perf
 pnpm smoke:packaged
-pnpm --filter @mailrovers/desktop exec tsx perf/smoke-packaged.ts --performance --idle-ms=1000 --mode=main
+# Short complete-index packaged performance (Electron ABI — not host-node tsx)
+cd apps/desktop && ELECTRON_RUN_AS_NODE=1 ../../node_modules/.bin/electron \
+  ../../node_modules/tsx/dist/cli.mjs perf/smoke-packaged.ts --performance --idle-ms=1000 --mode=main
+# Pending FTS startup backfill diagnostic (main host; builds then runs)
+pnpm --filter @mailrovers/desktop performance:packaged:pending-fts
 # Full idle-memory gate (60 seconds)
 pnpm performance:packaged
 ```
@@ -61,6 +65,26 @@ Reference run on the development Mac:
 | Packaged idle working set       |                                             193 MB |
 
 The packaged performance run uses the default main-process database host. The worker host remains covered by the non-performance packaged smoke run. A worker-host performance run reached 264.7 MB and therefore was not selected as the default.
+
+### Pending FTS startup backfill (diagnostic)
+
+Historical complete-index numbers above remain the release baseline. The pending-index scenario is separate: see `docs/m1-benchmark-protocol.md` (`--scenario=pending-fts-backfill`, fixture `pending-fts-100k-bodies-v1`). Record new measurements under that scenario/date/environment rather than replacing the table above.
+
+Sample run (2026-07-24, Apple arm64 development Mac, `--mode=main --idle-ms=0`, artifact `apps/desktop/artifacts/packaged-smoke/2026-07-24T03-31-31.148Z/`):
+
+| Measurement                                     |                                                                        Result |
+| ----------------------------------------------- | ----------------------------------------------------------------------------: |
+| Fixture                                         |           `pending-fts-100k-bodies-v1` (`payloadSizeStats.meanBytes` ≈ 3,610) |
+| Search backfill                                 |                                                         29.82 s (400 batches) |
+| Main event-loop stall while indexing            | **364.4 ms** (informational miss vs 100 ms; main-host batch durations folded) |
+| Foreground IPC `listConversations` during batch |                                             36 ms, **valid overlap**, 50 rows |
+| Peak working set during indexing                |                                                      578.8 MB (informational) |
+| Working set at indexing end                     |                                                      439.2 MB (informational) |
+| First window / inbox usable                     |                                               2.68 s / 2.97 s (informational) |
+
+Event-loop stall, foreground IPC latency during an in-flight backfill batch, first-window/cached-inbox under load, and peak/end working set are informational until a later host/scheduling fix; they are not unconditional smoke failures. Hard gates require valid IPC/batch interval intersection and measurement presence.
+
+Worker-host execution of this scenario is left for chunk 3; the harness already accepts `--mode=worker`.
 
 ## Manual Gmail release gate
 
