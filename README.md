@@ -4,10 +4,17 @@
   <img src="apps/desktop/src/assets/logo.png" alt="MailRovers logo" width="96">
 </p>
 
-[![Platform: macOS](https://img.shields.io/badge/platform-macOS-000000.svg?logo=apple&logoColor=white)](#run-the-desktop-app)
-[![Built with Electron](https://img.shields.io/badge/built%20with-Electron-47848F.svg?logo=electron&logoColor=white)](#how-mailrovers-works)
-[![Local-first](https://img.shields.io/badge/data-local--first-2E7D32.svg)](#privacy-and-security)
-[![License: MIT](https://img.shields.io/badge/license-MIT-2F6F4E.svg)](./LICENSE)
+<p align="center">
+  <a href="#run-the-desktop-app"><img src="https://img.shields.io/badge/platform-macOS-000000.svg?logo=apple&amp;logoColor=white" alt="Platform: macOS"></a>
+  <a href="#how-mailrovers-works"><img src="https://img.shields.io/badge/built%20with-Electron-47848F.svg?logo=electron&amp;logoColor=white" alt="Built with Electron"></a>
+  <a href="#privacy-and-security"><img src="https://img.shields.io/badge/data-local--first-2E7D32.svg" alt="Data: local-first"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-2F6F4E.svg" alt="License: MIT"></a>
+</p>
+
+<p align="center">
+  <img src="docs/images/inbox-light.png" alt="MailRovers inbox in light mode with fictional mail" width="49%">
+  <img src="docs/images/inbox-dark.png" alt="MailRovers inbox in dark mode with fictional mail" width="49%">
+</p>
 
 An open-source, local-first desktop email client for Gmail. MailRovers stores mail and
 application data on your Mac, connects directly to Gmail, and lets you use your own
