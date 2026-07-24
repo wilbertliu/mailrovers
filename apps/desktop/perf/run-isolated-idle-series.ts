@@ -13,12 +13,14 @@ import { execFileSync, spawn } from 'node:child_process'
 import { setTimeout as delay } from 'node:timers/promises'
 import { redactedJson } from '@mailrovers/platform-electron'
 import { sha256FileBytes, writeDecisionProvenance } from './decision-provenance.js'
+import { decodeProcessGroupMarker } from '../shared/packaged-smoke-artifacts.js'
 import {
   assertFreshIsolatedIdleReport,
   extractHarnessReportDirectory,
   isExpectedIdleBudgetOnlyFailure,
   type IsolatedIdleHarnessReport,
 } from './isolated-idle-report.js'
+import { decodePackagedSmokeHarnessReport } from '../shared/packaged-smoke-result.js'
 import { isProcessGroupAbsent } from './process-group-terminate.js'
 
 const ORDER = ['main', 'worker', 'worker', 'main', 'main', 'worker'] as const
@@ -58,23 +60,17 @@ function assertProcessGroupCleanup(input: {
   mode: Mode
   artifactDirectory: string
   appBundle: string
-}): void {
+}): number {
   const markerPath = path.join(input.artifactDirectory, `${input.mode}-process-group.json`)
   if (!existsSync(markerPath))
     throw new Error(`${input.mode}: missing process-group marker at ${markerPath}`)
-  const marker = JSON.parse(readFileSync(markerPath, 'utf8')) as {
-    processGroupId?: number
-    absentAfterTerminate?: boolean
-  }
-  if (!marker.processGroupId || marker.processGroupId <= 0)
-    throw new Error(`${input.mode}: invalid processGroupId in ${markerPath}`)
-  if (marker.absentAfterTerminate !== true)
-    throw new Error(`${input.mode}: process group marker did not record absence`)
+  const marker = decodeProcessGroupMarker(JSON.parse(readFileSync(markerPath, 'utf8')), markerPath)
   if (!isProcessGroupAbsent(marker.processGroupId))
     throw new Error(
       `${input.mode}: process group ${marker.processGroupId} still present after harness exit`,
     )
   assertNoPackagedAppHelperProcesses(input.appBundle, `${input.mode}: post-run cleanup`)
+  return marker.processGroupId
 }
 
 function freeDiskGiB(targetPath: string): number {
@@ -163,7 +159,7 @@ async function runOneHost(input: {
   const reportPath = path.join(reportedDirectory, 'report.json')
   if (!existsSync(reportPath))
     throw new Error(`run ${input.index} (${input.mode}): missing ${reportPath}`)
-  const report = JSON.parse(readFileSync(reportPath, 'utf8')) as IsolatedIdleHarnessReport
+  const report = decodePackagedSmokeHarnessReport(JSON.parse(readFileSync(reportPath, 'utf8')))
   const freshness = assertFreshIsolatedIdleReport({
     report,
     expected: { mode: input.mode, scenario: 'complete-index', idleDelayMs: IDLE_MS },
@@ -177,18 +173,12 @@ async function runOneHost(input: {
   if (!freshness.ok) throw new Error(`run ${input.index} (${input.mode}): ${freshness.reason}`)
   const budgetOk = isExpectedIdleBudgetOnlyFailure({ harnessExitCode, mode: input.mode, report })
   if (!budgetOk.ok) throw new Error(`run ${input.index} (${input.mode}): ${budgetOk.reason}`)
-  assertProcessGroupCleanup({
+  const processGroupId = assertProcessGroupCleanup({
     mode: input.mode,
     artifactDirectory: freshness.artifactDirectory,
     appBundle: input.appBundle,
   })
 
-  const marker = JSON.parse(
-    readFileSync(
-      path.join(freshness.artifactDirectory, `${input.mode}-process-group.json`),
-      'utf8',
-    ),
-  ) as { processGroupId: number }
   const processes = report.results?.[0]?.result?.packagedPerformance?.processes ?? []
   const runMeta = {
     mode: input.mode,
@@ -197,7 +187,7 @@ async function runOneHost(input: {
     invocationCompletedAt: new Date(invocationCompletedAt).toISOString(),
     artifactDirectory: freshness.artifactDirectory,
     harnessExitCode,
-    processGroupId: marker.processGroupId,
+    processGroupId,
     processes,
     packaged: input.packagedProvenance,
     performanceFailures: report.performanceFailures ?? [],
@@ -218,7 +208,7 @@ async function runOneHost(input: {
     artifactDirectory: freshness.artifactDirectory,
     report,
     harnessExitCode,
-    processGroupId: marker.processGroupId,
+    processGroupId,
     processes,
   }
 }

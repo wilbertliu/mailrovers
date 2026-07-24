@@ -1,4 +1,8 @@
 import path from 'node:path'
+import {
+  decodePackagedSmokeReportDirectory,
+  type PackagedSmokeHarnessReport,
+} from '../shared/packaged-smoke-result.js'
 
 export type IsolatedIdleReportExpectation = {
   mode: 'main' | 'worker'
@@ -6,33 +10,7 @@ export type IsolatedIdleReportExpectation = {
   idleDelayMs: 60_000
 }
 
-export type IsolatedIdleHarnessReport = {
-  status?: string
-  startedAt?: string
-  completedAt?: string
-  invocationId?: string
-  directory?: string
-  scenario?: string
-  idleDelayMs?: number
-  performanceRequested?: boolean
-  performanceFailures?: string[]
-  results?: Array<{
-    mode?: string
-    result?: {
-      status?: string
-      startedAt?: string
-      completedAt?: string
-      databaseHost?: string
-      performanceScenario?: string
-      packagedPerformance?: {
-        idleDelayMs?: number
-        capturedAt?: string
-        workingSetMb?: number
-        processes?: Array<{ pid: number; type: string; workingSetKb: number }>
-      }
-    }
-  }>
-}
+export type IsolatedIdleHarnessReport = PackagedSmokeHarnessReport
 
 export function listIdleBudgetFailuresForMode(
   failures: readonly string[] | undefined,
@@ -93,12 +71,11 @@ export function assertFreshIsolatedIdleReport(input: {
   invocationCompletedAt: number
 }): { ok: true; artifactDirectory: string } | { ok: false; reason: string } {
   const directory = input.reportedDirectory || input.report.directory
-  if (!directory) return { ok: false, reason: 'report directory missing' }
   if (path.dirname(directory) !== input.artifactRoot)
     return { ok: false, reason: `report directory is outside ${input.artifactRoot}` }
   if (input.knownDirectoriesBefore.has(directory))
     return { ok: false, reason: `stale report directory reused: ${directory}` }
-  if (input.report.directory && input.report.directory !== directory)
+  if (input.report.directory !== directory)
     return {
       ok: false,
       reason: `stdout directory ${directory} disagrees with report.directory ${input.report.directory}`,
@@ -117,11 +94,8 @@ export function assertFreshIsolatedIdleReport(input: {
     return { ok: false, reason: 'performanceRequested must be true' }
   if (input.report.invocationId !== input.invocationId)
     return { ok: false, reason: 'report invocationId does not match this harness invocation' }
-  if (input.report.status !== 'passed' && input.report.status !== 'failed')
-    return { ok: false, reason: `unexpected report status ${String(input.report.status)}` }
-
-  const reportStartedAt = Date.parse(input.report.startedAt ?? '')
-  const reportCompletedAt = Date.parse(input.report.completedAt ?? '')
+  const reportStartedAt = Date.parse(input.report.startedAt)
+  const reportCompletedAt = Date.parse(input.report.completedAt)
   if (!Number.isFinite(reportStartedAt) || !Number.isFinite(reportCompletedAt))
     return { ok: false, reason: 'report timestamps are missing or invalid' }
   if (reportStartedAt > reportCompletedAt)
@@ -132,10 +106,10 @@ export function assertFreshIsolatedIdleReport(input: {
   )
     return { ok: false, reason: 'report timestamps fall outside this harness invocation' }
 
-  const resultEntry = input.report.results?.find((entry) => entry.mode === input.expected.mode)
-  if (!resultEntry?.result)
+  const resultEntry = input.report.results.find((entry) => entry.mode === input.expected.mode)
+  if (!resultEntry)
     return { ok: false, reason: `missing results entry for mode ${input.expected.mode}` }
-  if (input.report.results && input.report.results.length !== 1)
+  if (input.report.results.length !== 1)
     return {
       ok: false,
       reason: `expected exactly one mode result, got ${input.report.results.length}`,
@@ -170,8 +144,8 @@ export function assertFreshIsolatedIdleReport(input: {
     !Number.isFinite(resultEntry.result.packagedPerformance.workingSetMb)
   )
     return { ok: false, reason: 'workingSetMb missing' }
-  const resultStartedAt = Date.parse(resultEntry.result.startedAt ?? '')
-  const resultCompletedAt = Date.parse(resultEntry.result.completedAt ?? '')
+  const resultStartedAt = Date.parse(resultEntry.result.startedAt)
+  const resultCompletedAt = Date.parse(resultEntry.result.completedAt)
   if (!Number.isFinite(resultStartedAt) || !Number.isFinite(resultCompletedAt))
     return { ok: false, reason: 'result timestamps are missing or invalid' }
   if (resultStartedAt > resultCompletedAt)
@@ -192,9 +166,7 @@ export function extractHarnessReportDirectory(stdout: string): string | undefine
     const line = lines[index]!
     if (!line.startsWith('{')) continue
     try {
-      const parsed = JSON.parse(line) as { directory?: unknown }
-      if (typeof parsed.directory === 'string' && parsed.directory.length > 0)
-        return parsed.directory
+      return decodePackagedSmokeReportDirectory(JSON.parse(line))
     } catch {
       // Keep scanning prior JSON lines (tee may include error text after the report).
     }

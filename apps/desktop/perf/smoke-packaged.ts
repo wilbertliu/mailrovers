@@ -30,69 +30,18 @@ import {
   type PerformanceScenario,
   type SmokeMode,
 } from './smoke-packaged-args.js'
+import {
+  decodePackagedSmokeResult,
+  type CompletedPackagedSmokeSuccess,
+} from '../shared/packaged-smoke-result.js'
+import { decodeCheckpointJsonLines } from '../shared/packaged-smoke-artifacts.js'
 
 type Mode = SmokeMode
-type SmokeResult = {
-  status: string
-  startedAt?: string
-  completedAt?: string
-  databaseHost: string
-  databaseHostSource?: 'default' | 'environment'
-  performanceScenario?: PerformanceScenario
-  stages?: Record<string, number>
-  mainEventLoopStallMs?: number
-  searchBackfillMs?: number
-  duringIndexingQuery?: {
-    latencyMs?: number
-    overlapped?: boolean
-    rows?: number
-    rowsOk?: boolean
-    valid?: boolean
-    request?: { startWall?: number; endWall?: number }
-    batch?: { id?: number; startWall?: number; endWall?: number; durationMs?: number }
-  }
-  searchIndexing?: {
-    peakDuringIndexingMb?: number
-    workingSetAtIndexingEndMb?: number
-    batchCount?: number
-    maxBatchDurationMs?: number
-  }
-  rendererProbe?: {
-    rows?: number
-    processType?: string
-    requireType?: string
-    bridgeKeys?: string[]
-    scroll?: {
-      durationMs?: number
-      frameCount?: number
-      fps?: number
-      p95FrameMs?: number
-      maxFrameMs?: number
-      framesOver20Ms?: number
-    }
-  }
-  safeStorageProbe?: {
-    roundTrip?: boolean
-    ciphertextContainsPlaintext?: boolean
-  }
-  packagedPerformance?: {
-    idleDelayMs?: number
-    workingSetMb?: number
-    peakDuringIndexingMb?: number
-    workingSetAtIndexingEndMb?: number
-    capturedAt?: string
-    processes?: Array<{ pid: number; type: string; workingSetKb: number }>
-  }
-  error?: unknown
-}
+type SmokeResult = CompletedPackagedSmokeSuccess
 
-function readCheckpoints(file: string): Array<{ stage?: string; at?: string }> {
+function readCheckpoints(file: string): Array<{ stage: string; at: string }> {
   if (!existsSync(file)) return []
-  return readFileSync(file, 'utf8')
-    .trim()
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as { stage?: string; at?: string })
+  return decodeCheckpointJsonLines(readFileSync(file, 'utf8'), file)
 }
 
 async function runMode(input: {
@@ -163,10 +112,10 @@ async function runMode(input: {
     }
     if (!existsSync(resultPath))
       throw new Error(`${input.mode} packaged app exceeded the ${totalTimeoutMs} ms total timeout`)
-    const result = JSON.parse(readFileSync(resultPath, 'utf8')) as SmokeResult
+    const result = decodePackagedSmokeResult(JSON.parse(readFileSync(resultPath, 'utf8')))
     if (result.status !== 'passed')
       throw new Error(
-        `${input.mode} packaged app reported failure: ${JSON.stringify(redactLogValue(result.error ?? 'unknown error'))}`,
+        `${input.mode} packaged app reported failure: ${JSON.stringify(redactLogValue(result.error))}`,
       )
     if (result.databaseHost !== input.mode)
       throw new Error(`${input.mode} smoke used unexpected database host ${result.databaseHost}`)
@@ -176,8 +125,7 @@ async function runMode(input: {
       throw new Error(
         `${input.mode} smoke used unexpected database host source ${String(result.databaseHostSource)}`,
       )
-    if (!result.rendererProbe || (result.rendererProbe.rows ?? 0) < 1)
-      throw new Error(`${input.mode} smoke rendered no inbox rows`)
+    if (result.rendererProbe.rows < 1) throw new Error(`${input.mode} smoke rendered no inbox rows`)
     if (
       result.rendererProbe.processType !== 'undefined' ||
       result.rendererProbe.requireType !== 'undefined'
@@ -218,7 +166,7 @@ async function runMode(input: {
     if (JSON.stringify(result.rendererProbe.bridgeKeys) !== JSON.stringify(expectedBridgeKeys))
       throw new Error(`${input.mode} renderer bridge exposed unexpected methods`)
     if (
-      result.safeStorageProbe?.roundTrip !== true ||
+      result.safeStorageProbe.roundTrip !== true ||
       result.safeStorageProbe.ciphertextContainsPlaintext !== false
     )
       throw new Error(`${input.mode} packaged safeStorage probe failed`)

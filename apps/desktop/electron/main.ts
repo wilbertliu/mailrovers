@@ -18,6 +18,12 @@ import {
   evaluateContentionProbe,
   sampleEventLoopStallMs,
 } from '../shared/indexing-measurements.js'
+import {
+  decodePackagedRendererProbe,
+  type PackagedPerformance,
+  type PackagedSmokeResult,
+  type PackagedSmokeSuccess,
+} from '../shared/packaged-smoke-result.js'
 import { composeDesktopApplication } from './composition-root.js'
 import type { DatabaseHost } from './database/database-host.js'
 import { selectDatabaseHost } from './database/database-host-selection.js'
@@ -130,14 +136,14 @@ function writeSmokeFailure(error: unknown): void {
           databaseHostSource: databaseHostSelection.source,
           error: safeError,
           stages,
-        },
+        } satisfies PackagedSmokeResult,
         2,
       ),
     )
   if (smokeResultPath) setImmediate(() => app.exit(1))
 }
 
-function writeSmokeSuccess(result: Record<string, unknown>): boolean {
+function writeSmokeSuccess(result: PackagedSmokeSuccess): boolean {
   if (smokeResultPath === undefined || smokeTerminalState !== 'pending') return false
   smokeTerminalState = 'passed'
   if (eventLoopMonitor !== undefined) clearInterval(eventLoopMonitor)
@@ -446,8 +452,8 @@ async function createWindow(): Promise<void> {
     await presentWindow(app, window)
   }
   checkpoint('beforeProbe')
-  const rendererReadiness: Record<string, unknown> = await window.webContents
-    .executeJavaScript(`new Promise((resolve, reject) => {
+  const rendererReadiness = decodePackagedRendererProbe(
+    await window.webContents.executeJavaScript(`new Promise((resolve, reject) => {
     const deadline = Date.now() + 10000;
     const inspect = () => {
       const inbox = document.querySelector('[aria-label="Inbox"]');
@@ -458,16 +464,18 @@ async function createWindow(): Promise<void> {
       else setTimeout(inspect, 50);
     };
     inspect();
-  })`)
+  })`),
+  )
   checkpoint('inboxUsable')
   lastEventLoopTick = performance.now()
   if (performanceScenario !== 'pending-fts-backfill') maxEventLoopStallMs = 0
-  let rendererProbe: Record<string, unknown> = rendererReadiness
+  let rendererProbe = rendererReadiness
   // Full scroll stays on the complete-index path; pending-FTS keeps runtime bounded and
   // focuses on indexing contention / stall / working-set measurements.
   if (performanceRequested && performanceScenario !== 'pending-fts-backfill') {
-    const scroll: Record<string, unknown> = await window.webContents
-      .executeJavaScript(`new Promise((resolve, reject) => {
+    const scrollProbe = decodePackagedRendererProbe({
+      ...rendererReadiness,
+      scroll: await window.webContents.executeJavaScript(`new Promise((resolve, reject) => {
       const container = document.querySelector('[aria-label="Inbox"]');
       if (!(container instanceof HTMLElement)) { reject(new Error('Inbox scroll container missing')); return; }
       const timestamps = [];
@@ -487,8 +495,9 @@ async function createWindow(): Promise<void> {
         }
       };
       requestAnimationFrame(frame);
-    })`)
-    rendererProbe = { ...rendererReadiness, scroll }
+    })`),
+    })
+    rendererProbe = scrollProbe
     checkpoint('scrollComplete')
   }
 
@@ -503,7 +512,7 @@ async function createWindow(): Promise<void> {
   if (!safeStorageProbe.roundTrip || safeStorageProbe.ciphertextContainsPlaintext)
     throw new Error('safeStorage packaged probe failed')
 
-  let packagedPerformance: unknown
+  let packagedPerformance: PackagedPerformance | undefined
   const idleDelayMs = Number.parseInt(process.env.MAILROVERS_IDLE_DELAY_MS ?? '60000', 10)
   if (performanceRequested) {
     if (!Number.isFinite(idleDelayMs) || idleDelayMs < 0)
@@ -576,7 +585,7 @@ async function createWindow(): Promise<void> {
         : {}),
       safeStorageProbe,
       ...(packagedPerformance ? { packagedPerformance } : {}),
-    })
+    } satisfies PackagedSmokeSuccess)
   )
     app.quit()
 }
