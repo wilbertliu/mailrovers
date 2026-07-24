@@ -14,6 +14,9 @@ import {
   type DatabaseWorkerMessage,
 } from './database-rpc.js'
 import type { DatabaseHost } from './database-host.js'
+import { WorkerDatabaseHostLifecycleController } from './worker-database-host-lifecycle.js'
+
+export type { WorkerDatabaseHostLifecycle } from './worker-database-host-lifecycle.js'
 
 type Pending = {
   method: DatabaseMethod
@@ -35,9 +38,6 @@ type DatabaseCall = <Method extends DatabaseMethod>(
   method: Method,
   input: DatabaseMethodInput<Method>,
 ) => Promise<DatabaseMethodResult<Method>>
-
-/** Host lifecycle from worker creation through terminal close/failure. */
-export type WorkerDatabaseHostLifecycle = 'starting' | 'open' | 'closing' | 'closed' | 'failed'
 
 export type WorkerDatabaseHostOptions = {
   /**
@@ -138,26 +138,12 @@ export async function createWorkerDatabaseHost(
   const pending = new Map<number, Pending>()
   const committedChangeListeners = new Set<CommittedChangeListener>()
   let nextId = 1
-  let lifecycle: WorkerDatabaseHostLifecycle = 'starting'
-  let workerExited = false
-  let workerClosedAck = false
   let terminationPromise: Promise<void> | undefined
-  let closePromise: Promise<void> | undefined
-  let closingFailure: Error | undefined
   let rejectStartup: ((error: Error) => void) | undefined
   let resolveStartup: (() => void) | undefined
-  let startupSettled = false
   let notifyPendingIdle: (() => void) | undefined
   let notifyWorkerClosed: (() => void) | undefined
   const startupDelay = unrefDelay(startupTimeoutMs)
-
-  const isTerminal = () => lifecycle === 'closed' || lifecycle === 'failed'
-  const isAccepting = () => lifecycle === 'open'
-  const isStarting = () => lifecycle === 'starting'
-
-  const cancelStartupTimer = () => {
-    startupDelay.cancel()
-  }
 
   const signalPendingIdle = () => {
     if (pending.size > 0) return
@@ -175,11 +161,13 @@ export async function createWorkerDatabaseHost(
     committedChangeListeners.clear()
   }
 
+  let lifecycle!: WorkerDatabaseHostLifecycleController
+
   /** Shared, always-settling terminate with an unref deadline. Never rejects. */
   const terminateWorker = (): Promise<void> => {
     if (terminationPromise !== undefined) return terminationPromise
     terminationPromise = (async () => {
-      if (workerExited) return
+      if (lifecycle.workerExited) return
       const delay = unrefDelay(terminateTimeoutMs)
       try {
         await Promise.race([
@@ -197,64 +185,30 @@ export async function createWorkerDatabaseHost(
   }
 
   const requestTermination = (): void => {
-    if (workerExited) return
+    if (lifecycle.workerExited) return
     void terminateWorker()
   }
 
-  const rejectCreation = (error: Error) => {
-    if (startupSettled) return
-    startupSettled = true
-    cancelStartupTimer()
-    rejectStartup?.(error)
-  }
-
-  const enterTerminal = (next: 'closed' | 'failed', error?: Error) => {
-    if (isTerminal()) return
-    const wasStarting = isStarting()
-    cancelStartupTimer()
-    lifecycle = next
-    if (error !== undefined) rejectPending(error)
-    stopCommittedChanges()
-    if (wasStarting || !startupSettled) {
-      rejectCreation(error ?? new Error('Database host failed before ready'))
-    }
-    requestTermination()
-  }
-
-  const fail = (error: Error) => {
-    if (isTerminal()) return
-    cancelStartupTimer()
-    if (lifecycle === 'closing') {
-      closingFailure = error
-      lifecycle = 'failed'
-      rejectPending(error)
-      stopCommittedChanges()
-      rejectCreation(error)
-      workerClosedAck = true
+  lifecycle = new WorkerDatabaseHostLifecycleController({
+    cancelStartupTimer: () => startupDelay.cancel(),
+    rejectPending,
+    stopCommittedChanges,
+    resolveStartup: () => {
+      resolveStartup?.()
+      resolveStartup = undefined
+      rejectStartup = undefined
+    },
+    rejectStartup: (error) => {
+      rejectStartup?.(error)
+      rejectStartup = undefined
+      resolveStartup = undefined
+    },
+    requestTermination,
+    notifyWorkerClosed: () => {
       notifyWorkerClosed?.()
       notifyWorkerClosed = undefined
-      requestTermination()
-      return
-    }
-    if (isStarting()) {
-      // Terminal failure before ready: reject creation and terminate once.
-      lifecycle = 'failed'
-      rejectPending(error)
-      stopCommittedChanges()
-      rejectCreation(error)
-      requestTermination()
-      return
-    }
-    enterTerminal('failed', error)
-  }
-
-  const markReady = () => {
-    if (!isStarting() || startupSettled) return
-    startupSettled = true
-    cancelStartupTimer()
-    lifecycle = 'open'
-    resolveStartup?.()
-  }
+    },
+  })
 
   const waitForPendingIdle = (timeoutMs: number): Promise<void> => {
     if (pending.size === 0) return Promise.resolve()
@@ -273,7 +227,13 @@ export async function createWorkerDatabaseHost(
   }
 
   const waitForWorkerClosedAck = (timeoutMs: number): Promise<void> => {
-    if (workerClosedAck || workerExited || closingFailure !== undefined) return Promise.resolve()
+    if (
+      lifecycle.workerClosedAck ||
+      lifecycle.workerExited ||
+      lifecycle.closingFailure !== undefined
+    ) {
+      return Promise.resolve()
+    }
     const delay = unrefDelay(timeoutMs)
     return new Promise<void>((resolve) => {
       notifyWorkerClosed = () => {
@@ -290,7 +250,7 @@ export async function createWorkerDatabaseHost(
 
   const runClose = async (): Promise<void> => {
     try {
-      if (!workerExited) {
+      if (!lifecycle.workerExited) {
         try {
           worker.postMessage({ kind: 'close' })
         } catch {
@@ -300,24 +260,21 @@ export async function createWorkerDatabaseHost(
 
       await waitForPendingIdle(closeDrainTimeoutMs)
       // Reject only requests that never settled during the drain window.
-      if (!isTerminal()) rejectPending(new Error('Database host closed'))
+      if (!lifecycle.isTerminal()) rejectPending(new Error('Database host closed'))
 
       await waitForWorkerClosedAck(closeAckTimeoutMs)
     } finally {
-      if (!isTerminal()) {
-        lifecycle = 'closed'
-        stopCommittedChanges()
-      }
+      lifecycle.dispatch({ type: 'finish-close' })
       await terminateWorker()
     }
-    if (closingFailure !== undefined) throw closingFailure
+    if (lifecycle.closingFailure !== undefined) throw lifecycle.closingFailure
   }
 
   const call = <Method extends DatabaseMethod>(
     method: Method,
     input: DatabaseMethodInput<Method>,
   ): Promise<DatabaseMethodResult<Method>> => {
-    if (!isAccepting()) return Promise.reject(new Error('Database host is closed'))
+    if (!lifecycle.isAccepting()) return Promise.reject(new Error('Database host is closed'))
     if (nextId > Number.MAX_SAFE_INTEGER)
       return Promise.reject(new Error('Database request id space exhausted'))
 
@@ -341,7 +298,7 @@ export async function createWorkerDatabaseHost(
         pending.delete(id)
         signalPendingIdle()
         const failure = asError(error, 'Database worker request failed')
-        fail(failure)
+        lifecycle.dispatch({ type: 'fail', error: failure })
         reject(failure)
       }
     })
@@ -350,17 +307,18 @@ export async function createWorkerDatabaseHost(
   const store = createDatabaseStoreProxy(call)
 
   const handleWorkerMessage = (message: DatabaseWorkerMessage) => {
-    if (isStarting()) {
+    if (lifecycle.isStarting()) {
       if (message.kind === 'ready') {
-        markReady()
+        lifecycle.dispatch({ type: 'ready' })
         return
       }
       // Only ready is valid before open; closed/close-error/results/events fail startup.
-      fail(
-        new Error(
+      lifecycle.dispatch({
+        type: 'fail',
+        error: new Error(
           `Database worker sent ${message.kind} before ready; expected the ready handshake first`,
         ),
-      )
+      })
       return
     }
 
@@ -369,22 +327,20 @@ export async function createWorkerDatabaseHost(
       return
     }
     if (message.kind === 'closed') {
-      workerClosedAck = true
-      notifyWorkerClosed?.()
-      notifyWorkerClosed = undefined
+      lifecycle.dispatch({ type: 'worker-closed-ack' })
       return
     }
     if (message.kind === 'close-error') {
       // Graceful close path observed a failed db.close — terminal failure + bounded terminate.
-      fail(reconstructDatabaseError(message.error))
+      lifecycle.dispatch({ type: 'fail', error: reconstructDatabaseError(message.error) })
       return
     }
     if (message.kind === 'protocol-error') {
-      fail(reconstructDatabaseError(message.error))
+      lifecycle.dispatch({ type: 'fail', error: reconstructDatabaseError(message.error) })
       return
     }
     if (message.kind === 'committed-changes') {
-      if (isTerminal()) return
+      if (lifecycle.isTerminal()) return
       for (const listener of committedChangeListeners) {
         try {
           listener(message.changes)
@@ -398,8 +354,11 @@ export async function createWorkerDatabaseHost(
     const request = pending.get(message.id)
     if (!request || request.method !== message.method) {
       // Late response after drain/reject: ignore so settlement stays exactly once.
-      if (!isAccepting()) return
-      fail(new Error('Database worker response correlation failed'))
+      if (!lifecycle.isAccepting()) return
+      lifecycle.dispatch({
+        type: 'fail',
+        error: new Error('Database worker response correlation failed'),
+      })
       return
     }
     pending.delete(message.id)
@@ -410,7 +369,7 @@ export async function createWorkerDatabaseHost(
       } catch (error) {
         const failure = asError(error, 'Invalid database worker result')
         request.reject(failure)
-        fail(failure)
+        lifecycle.dispatch({ type: 'fail', error: failure })
       }
     } else request.reject(reconstructDatabaseError(message.error))
   }
@@ -419,39 +378,35 @@ export async function createWorkerDatabaseHost(
     rejectStartup = reject
     resolveStartup = resolve
     worker.on('message', (rawMessage: unknown) => {
-      if (isTerminal()) return
+      if (lifecycle.isTerminal()) return
 
       let message: DatabaseWorkerMessage
       try {
         message = parseDatabaseWorkerMessage(rawMessage)
       } catch (error) {
-        fail(asError(error, 'Malformed database worker message'))
+        lifecycle.dispatch({
+          type: 'fail',
+          error: asError(error, 'Malformed database worker message'),
+        })
         return
       }
 
       handleWorkerMessage(message)
     })
-    worker.on('error', (error) => fail(asError(error, 'Database worker failed')))
+    worker.on('error', (error) =>
+      lifecycle.dispatch({ type: 'fail', error: asError(error, 'Database worker failed') }),
+    )
     worker.on('exit', (code) => {
-      workerExited = true
-      if (isTerminal()) return
-      if (lifecycle === 'closing') {
-        // Close owns settlement; unblock drain/ack waits so shutdown cannot hang.
-        workerClosedAck = true
-        notifyWorkerClosed?.()
-        notifyWorkerClosed = undefined
-        rejectPending(new Error('Database host closed'))
-        return
-      }
-      fail(new Error(`Database worker exited with code ${code}`))
+      lifecycle.dispatch({ type: 'worker-exited', code })
     })
     void startupDelay.promise.then(() => {
-      if (startupSettled || isTerminal()) return
-      fail(
-        new Error(
+      if (lifecycle.startupSettled() || lifecycle.isTerminal()) return
+      lifecycle.dispatch({
+        type: 'fail',
+        error: new Error(
           `Database worker did not become ready within ${startupTimeoutMs}ms; check worker entry and database path`,
         ),
-      )
+      })
     })
   })
 
@@ -460,18 +415,10 @@ export async function createWorkerDatabaseHost(
   return {
     store,
     subscribeCommittedChanges(listener) {
-      if (!isAccepting()) return () => undefined
+      if (!lifecycle.isAccepting()) return () => undefined
       committedChangeListeners.add(listener)
       return () => committedChangeListeners.delete(listener)
     },
-    close: () => {
-      // Once close is initiated, every call shares that promise identity/outcome
-      // (including close-error rejection after lifecycle is already failed).
-      if (closePromise !== undefined) return closePromise
-      if (isTerminal()) return terminationPromise ?? Promise.resolve()
-      lifecycle = 'closing'
-      closePromise = runClose()
-      return closePromise
-    },
+    close: () => lifecycle.beginClose(runClose, () => terminationPromise ?? Promise.resolve()),
   }
 }

@@ -406,6 +406,36 @@ describe('worker database host lifecycle', () => {
     await expect(second).rejects.toThrow('worker crashed')
     await expect(host.store.listMailboxes()).rejects.toThrow('Database host is closed')
   })
+
+  it('exit while closing drains pending without failing close', async () => {
+    const worker = new FakeWorker()
+    worker.autoAckClose = false
+    const host = await startHost(worker, { closeDrainTimeoutMs: 50, closeAckTimeoutMs: 50 })
+    const pending = host.store.listMailboxes()
+
+    const closePromise = host.close()
+    worker.emitExit(0)
+
+    await expect(pending).rejects.toThrow('Database host closed')
+    await expect(closePromise).resolves.toBeUndefined()
+    expect(worker.terminateCalls).toBe(0)
+    await expect(host.store.listMailboxes()).rejects.toThrow('Database host is closed')
+  })
+
+  it('repeated close after worker exit shares one promise without terminate', async () => {
+    const worker = new FakeWorker()
+    const host = await startHost(worker)
+    const pending = host.store.listMailboxes()
+
+    worker.emitExit(0)
+    await expect(pending).rejects.toThrow(/exited with code 0/)
+
+    const firstClose = host.close()
+    const secondClose = host.close()
+    expect(secondClose).toBe(firstClose)
+    await expect(Promise.all([firstClose, secondClose])).resolves.toEqual([undefined, undefined])
+    expect(worker.terminateCalls).toBe(0)
+  })
 })
 
 describe('worker database host startup', () => {
