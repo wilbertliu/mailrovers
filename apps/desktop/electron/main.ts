@@ -29,6 +29,7 @@ import { allowedExternalUrl } from './external-links.js'
 import { DesktopEventBus } from './ipc/desktop-event-bus.js'
 import { registerMailApplication } from './ipc/register-mail-application.js'
 import { isAllowedRendererUrl } from './ipc/authorization.js'
+import { shutdownBeforeExit } from './shutdown-lifecycle.js'
 import { acquireSingleInstance, presentWindow } from './single-instance.js'
 import { attachStartupSplashOverlay } from './startup-splash-overlay.js'
 
@@ -606,11 +607,16 @@ if (hasSingleInstanceLock) {
     syncScheduler?.dispose()
     unregisterIpc?.()
     unregisterIpc = undefined
-    void Promise.all([
-      syncEngine?.shutdown(),
-      commandDispatcher?.shutdown(),
-      shutdownNormalization?.(),
-      host?.close(),
-    ]).finally(() => app.exit())
+    void shutdownBeforeExit({
+      shutdownServices: [
+        () => syncEngine?.shutdown(),
+        () => commandDispatcher?.shutdown(),
+        () => shutdownNormalization?.(),
+      ],
+      closeDatabase: () => host?.close(),
+      exit: () => app.exit(),
+    }).catch((error: unknown) =>
+      logger.error('desktop-shutdown-failed', { code: 'INTERNAL_ERROR', error }),
+    )
   })
 }

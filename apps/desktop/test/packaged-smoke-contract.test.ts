@@ -21,6 +21,22 @@ describe('packaged smoke readiness', () => {
     expect(source).toContain("let smokeTerminalState: 'pending' | 'passed' | 'failed' = 'pending'")
   })
 
+  it('settles service shutdown before closing the database host', () => {
+    const source = readFileSync(path.join(desktopRoot, 'electron/main.ts'), 'utf8')
+    const serviceShutdown = source.indexOf('shutdownServices: [')
+    const databaseClose = source.indexOf('closeDatabase: () => host?.close()', serviceShutdown)
+    const exit = source.indexOf('exit: () => app.exit()', databaseClose)
+
+    expect(serviceShutdown).toBeGreaterThan(-1)
+    expect(databaseClose).toBeGreaterThan(serviceShutdown)
+    expect(exit).toBeGreaterThan(databaseClose)
+    expect(source.slice(serviceShutdown, databaseClose)).toContain('syncEngine?.shutdown()')
+    expect(source.slice(serviceShutdown, databaseClose)).toContain('commandDispatcher?.shutdown()')
+    expect(source.slice(serviceShutdown, databaseClose)).toContain('shutdownNormalization?.()')
+    expect(source.slice(serviceShutdown, databaseClose)).not.toContain('host?.close()')
+    expect(source).toContain("logger.error('desktop-shutdown-failed'")
+  })
+
   it('instruments pending-fts-backfill overlap measurements in the packaged main process', () => {
     const source = readFileSync(path.join(desktopRoot, 'electron/main.ts'), 'utf8')
 
