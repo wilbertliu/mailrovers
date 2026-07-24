@@ -8,7 +8,7 @@ import {
 } from 'node:fs'
 import path from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { migrate, openDatabase } from '@mailrovers/mail-store-sqlite'
 import { redactedJson, redactLogValue, writeRedactedJsonLine } from '@mailrovers/platform-electron'
 import { seedMailboxFixture, seedPendingFtsMailboxFixture } from '@mailrovers/test-support'
@@ -19,6 +19,8 @@ import {
   PERFORMANCE_BUDGETS,
 } from './budgets.js'
 import { packagedAppEnvironment } from './packaged-app-environment.js'
+import { writeCleanupFailureDiagnostic } from './cleanup-diagnostic.js'
+import { ProcessGroupTerminationError, terminateProcessGroup } from './process-group-terminate.js'
 import { measureQueryPerformance, type QueryPerformanceReport } from './query.js'
 import {
   packagedRunTimeouts,
@@ -32,6 +34,8 @@ import {
 type Mode = SmokeMode
 type SmokeResult = {
   status: string
+  startedAt?: string
+  completedAt?: string
   databaseHost: string
   performanceScenario?: PerformanceScenario
   stages?: Record<string, number>
@@ -81,23 +85,6 @@ type SmokeResult = {
   error?: unknown
 }
 
-function terminate(child: ChildProcess): void {
-  if (child.exitCode !== null || !child.pid) return
-  try {
-    process.kill(-child.pid, 'SIGTERM')
-  } catch {
-    child.kill('SIGTERM')
-  }
-  setTimeout(() => {
-    if (child.exitCode === null && child.pid) {
-      try {
-        process.kill(-child.pid, 'SIGKILL')
-      } catch {
-        child.kill('SIGKILL')
-      }
-    }
-  }, 2_000).unref()
-}
 function readCheckpoints(file: string): Array<{ stage?: string; at?: string }> {
   if (!existsSync(file)) return []
   return readFileSync(file, 'utf8')
@@ -116,6 +103,7 @@ async function runMode(input: {
   scenario: PerformanceScenario
   idleDelayMs: number
 }): Promise<SmokeResult> {
+  const startedAt = new Date().toISOString()
   const resultPath = path.join(input.directory, `${input.mode}-result.json`)
   const checkpointPath = path.join(input.directory, `${input.mode}-checkpoints.jsonl`)
   const stdoutPath = path.join(input.directory, `${input.mode}-stdout.log`)
@@ -140,14 +128,17 @@ async function runMode(input: {
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
+  const processGroupId = child.pid
   child.stdout?.on('data', (data: Buffer) => appendFileSync(stdoutPath, data))
   child.stderr?.on('data', (data: Buffer) => appendFileSync(stderrPath, data))
 
-  const startedAt = Date.now()
-  let lastProgressAt = startedAt
+  const runStartedAt = Date.now()
+  let lastProgressAt = runStartedAt
   let checkpointCount = 0
+  let completed: SmokeResult | undefined
+  let runFailure: Error | undefined
   try {
-    while (Date.now() - startedAt < totalTimeoutMs) {
+    while (Date.now() - runStartedAt < totalTimeoutMs) {
       if (existsSync(resultPath)) break
       const checkpoints = readCheckpoints(checkpointPath)
       if (checkpoints.length > checkpointCount) {
@@ -219,7 +210,7 @@ async function runMode(input: {
       result.safeStorageProbe.ciphertextContainsPlaintext !== false
     )
       throw new Error(`${input.mode} packaged safeStorage probe failed`)
-    return result
+    completed = { ...result, startedAt, completedAt: new Date().toISOString() }
   } catch (error) {
     const checkpoints = readCheckpoints(checkpointPath)
     const detail = {
@@ -231,13 +222,46 @@ async function runMode(input: {
       stderr: existsSync(stderrPath) ? readFileSync(stderrPath, 'utf8') : '',
     }
     writeFileSync(path.join(input.directory, `${input.mode}-failure.json`), redactedJson(detail, 2))
-    throw new Error(redactedJson(detail), { cause: redactLogValue(error) })
-  } finally {
-    terminate(child)
+    runFailure = new Error(redactedJson(detail), { cause: redactLogValue(error) })
   }
+  try {
+    const termination = await terminateProcessGroup(
+      child,
+      processGroupId !== undefined ? { pgid: processGroupId } : undefined,
+    )
+    writeFileSync(
+      path.join(input.directory, `${input.mode}-process-group.json`),
+      redactedJson(
+        {
+          processGroupId: termination.pgid,
+          absentAfterTerminate: true,
+          leader: termination.leader,
+        },
+        2,
+      ),
+    )
+  } catch (error) {
+    const diagnostic =
+      error instanceof ProcessGroupTerminationError
+        ? error.diagnostic
+        : {
+            childPid: child.pid,
+            processGroupId,
+            message: error instanceof Error ? error.message : String(error),
+          }
+    writeCleanupFailureDiagnostic(
+      path.join(input.directory, `${input.mode}-cleanup-failure.json`),
+      diagnostic,
+    )
+    throw error
+  }
+  if (runFailure !== undefined) throw runFailure
+  if (completed === undefined) throw new Error(`${input.mode} packaged app produced no result`)
+  return completed
 }
 
 async function main(): Promise<void> {
+  const startedAt = new Date().toISOString()
   const args = parseSmokePackagedArgs(process.argv.slice(2))
   const architecture = process.arch === 'arm64' ? 'arm64' : 'x64'
   const appBundle =
@@ -334,6 +358,9 @@ async function main(): Promise<void> {
   }
   const report = {
     status: performanceFailures.length === 0 ? 'passed' : 'failed',
+    startedAt,
+    completedAt: new Date().toISOString(),
+    invocationId: process.env.MAILROVERS_PERFORMANCE_INVOCATION_ID,
     appBundle,
     directory,
     fixture,

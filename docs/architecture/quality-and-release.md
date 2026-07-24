@@ -48,6 +48,6 @@ Before a public release, run the controlled-account checks in [Gmail release ver
 | Prompt injection changes application behavior | Give AI no tools, delimit email as untrusted data, and require explicit send confirmation.                  |
 | Memory exceeds budget                         | Measure packaged builds and keep the default database host below the 300 MiB hard limit.                    |
 
-The main-process database host remains the default because it has lower idle memory than the worker host in packaged profiling. `MAILROVERS_DATABASE_HOST=worker` remains a diagnostics and parity-testing option. A default switch requires a fresh same-harness comparison that meets the idle-memory budget.
+The main-process database host remains the default. `MAILROVERS_DATABASE_HOST=worker` is available for diagnostics and parity testing. Change that default only after a same-package, integrity-validated comparison reliably meets the idle-memory hard limit and explains observed variance; see [performance verification](../performance-verification.md).
 
 The exact update publisher, Windows installer format, Linux distribution support, and contributor-agreement policy remain open decisions. Any choice must preserve the interfaces and constraints in this architecture.

@@ -7,5 +7,13 @@
     "moduleResolution": "Bundler",
     "types": ["node"]
   },
-  "include": ["perf/**/*.ts", "shared/**/*.ts"]
+  "include": [
+    "perf/**/*.ts",
+    "shared/**/*.ts",
+    "electron/database/database-rpc.ts",
+    "electron/database/database-sync-codecs.ts",
+    "electron/database/database-semantic-codecs.ts",
+    "electron/database/worker-database-host.ts",
+    "electron/database/database-host.ts"
+  ]
 }

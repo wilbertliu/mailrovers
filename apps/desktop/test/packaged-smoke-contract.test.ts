@@ -35,4 +35,15 @@ describe('packaged smoke readiness', () => {
     expect(source).toContain('sampleEventLoopStallMs')
     expect(source).toContain("databaseHost === 'main'")
   })
+
+  it('awaits process-group termination before the next packaged host can start', () => {
+    const source = readFileSync(path.join(desktopRoot, 'perf/smoke-packaged.ts'), 'utf8')
+    expect(source).toContain("from './process-group-terminate.js'")
+    expect(source).toContain('terminateProcessGroup')
+    expect(source).toContain('await terminateProcessGroup(')
+    expect(source).toContain('ProcessGroupTerminationError')
+    expect(source).toContain('cleanup-failure.json')
+    expect(source).not.toMatch(/function terminate\(/)
+    expect(source).not.toContain('.unref()')
+  })
 })
