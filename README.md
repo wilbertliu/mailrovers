@@ -1,5 +1,9 @@
 # MailRovers
 
+<p align="center">
+  <img src="apps/desktop/src/assets/logo.png" alt="MailRovers logo" width="96">
+</p>
+
 [![Platform: macOS](https://img.shields.io/badge/platform-macOS-000000.svg?logo=apple&logoColor=white)](#run-the-desktop-app)
 [![Built with Electron](https://img.shields.io/badge/built%20with-Electron-47848F.svg?logo=electron&logoColor=white)](#how-mailrovers-works)
 [![Local-first](https://img.shields.io/badge/data-local--first-2E7D32.svg)](#privacy-and-security)
