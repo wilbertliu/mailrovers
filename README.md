@@ -175,12 +175,11 @@ app. Database scripts and Vitest use Electron's Node runtime so they share the s
 native ABI. Keep the Electron version in `native:rebuild` aligned with the desktop
 dependency when upgrading Electron.
 
-For a short packaged performance check, use the Electron ABI runner, not host-node
+For the packaged performance release gate, use the Electron ABI runner, not host-node
 `tsx`:
 
 ```sh
-cd apps/desktop && ELECTRON_RUN_AS_NODE=1 ../../node_modules/.bin/electron \
-  ../../node_modules/tsx/dist/cli.mjs perf/smoke-packaged.ts --performance --idle-ms=1000 --mode=main
+pnpm performance:packaged
 ```
 
 Run the pending FTS startup backfill diagnostic with:
@@ -189,9 +188,10 @@ Run the pending FTS startup backfill diagnostic with:
 pnpm --filter @mailrovers/desktop performance:packaged:pending-fts
 ```
 
-`pnpm performance:packaged` runs the full 60-second idle-memory gate. The default
-database host is the Electron main process. Set `MAILROVERS_DATABASE_HOST=worker` only
-for diagnostics, parity testing, or event-loop profiling.
+`pnpm performance:packaged` runs the full 60-second idle-memory release gate with no
+database-host override, so it verifies the worker default. Use
+`pnpm performance:packaged:main` only for the main-host rollback diagnostic. Only
+`worker` and `main` are accepted; an invalid value stops startup with an actionable error.
 
 </details>
 

@@ -13,6 +13,7 @@ export type SmokePackagedArgs = {
   scenario: PerformanceScenario
   idleDelayMs: number
   mode: SmokeMode | undefined
+  defaultHost: boolean
   appArgument: string | undefined
 }
 
@@ -40,12 +41,16 @@ export function parseSmokePackagedArgs(argumentsList: readonly string[]): SmokeP
     ?.slice('--mode='.length)
   if (requestedMode !== undefined && requestedMode !== 'main' && requestedMode !== 'worker')
     throw new Error('Invalid --mode value')
+  const defaultHost = argumentsList.includes('--default-host')
+  if (defaultHost && requestedMode !== undefined)
+    throw new Error('Cannot combine --default-host with --mode')
   const appArgument = argumentsList.find((argument) => !argument.startsWith('--'))
   return {
     performanceRequested,
     scenario,
     idleDelayMs,
     mode: requestedMode,
+    defaultHost,
     appArgument,
   }
 }

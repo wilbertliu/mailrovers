@@ -5,10 +5,27 @@ Use a packaged production build on the reference Mac. Keep the redacted artifact
 1. Run `pnpm fixture:seed` to create the deterministic 100,000-message database.
 2. Run `pnpm --filter @mailrovers/desktop perf` for 1,000 warm indexed reads. Record the fixture manifest plus p50, p95, and maximum latency.
 3. Run `pnpm package:mac`, then verify the app with `codesign --verify --deep --strict apps/desktop/out/MailRovers-darwin-$(uname -m)/MailRovers.app`.
-4. Run `pnpm smoke:packaged`. It checks both database hosts, native SQLite and preload loading, renderer Node isolation, the allowlisted bridge, and startup stages.
-5. Run `pnpm --filter @mailrovers/desktop perf:isolated-idle-series` for an isolated, six-sample idle RSS comparison.
+4. Run `pnpm performance:packaged`. This is the release gate and starts without a host override, verifying the worker default.
+5. Run `pnpm smoke:packaged`. It checks both explicitly selected database hosts, native SQLite and preload loading, renderer Node isolation, the allowlisted bridge, and startup stages.
+6. Run `pnpm smoke:packaged:default-host`. It starts without `MAILROVERS_DATABASE_HOST` and verifies that the worker default was selected.
+7. Run `pnpm --filter @mailrovers/desktop perf:isolated-idle-series` for an isolated, six-sample idle RSS comparison.
 
-The 250 MiB idle RSS target is the preferred operating target. The 300 MiB limit is a hard release limit; a sample at or above it is a performance failure. RSS is host- and machine-sensitive, so interpret it alongside Electron version, OS, architecture, package hashes, and per-process working sets.
+The 250 MiB idle RSS target is the preferred operating target. Samples from 250 MiB through just below 1,024 MiB are advisory. The 1,024 MiB (1 GiB) limit is a hard release limit; a sample at or above it is a performance failure. RSS is host- and machine-sensitive, so interpret it alongside Electron version, OS, architecture, package hashes, and per-process working sets.
+
+## Database-host configuration
+
+`MAILROVERS_DATABASE_HOST` is optional. When it is unset or empty, MailRovers runs the whole SQLite store in the worker host. Set it to `main` only as a temporary rollback or for an explicit host comparison; set it to `worker` to make the default explicit. Any other nonempty value stops startup before database work begins.
+
+`pnpm performance:packaged` is the release gate and uses the unset-host default. `pnpm performance:packaged:main` is the explicit main-host rollback diagnostic. The isolated idle series remains the host-comparison command.
+
+| Variable                                | Required                                      | Use                                                                             |
+| --------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------- |
+| `MAILROVERS_DATABASE_HOST`              | No                                            | `worker` by default; `main` is the rollback setting.                            |
+| `MAILROVERS_DB_PATH`                    | No                                            | Custom database path for local development and deterministic smoke fixtures.    |
+| `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID`     | Only for Connect Gmail                        | Gmail Desktop OAuth client ID.                                                  |
+| `MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET` | Only when Google's token exchange requires it | Desktop OAuth value described in the [OAuth setup guide](gmail-oauth-setup.md). |
+
+Performance fixtures require none of these variables. Do not commit OAuth values, refresh tokens, AI keys, or production database paths. Keep credentials out of shell history and performance artifacts; reports are redacted but secret management remains the operator's responsibility.
 
 ## Isolated idle RSS series
 

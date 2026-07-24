@@ -16,7 +16,9 @@
     "fixture:seed": "pnpm --filter @mailrovers/desktop fixture:seed",
     "package:mac": "pnpm --filter @mailrovers/desktop package:mac",
     "smoke:packaged": "pnpm --filter @mailrovers/desktop smoke:packaged",
+    "smoke:packaged:default-host": "pnpm --filter @mailrovers/desktop smoke:packaged:default-host",
     "performance:packaged": "pnpm --filter @mailrovers/desktop performance:packaged",
+    "performance:packaged:main": "pnpm --filter @mailrovers/desktop performance:packaged:main",
     "performance:packaged:pending-fts": "pnpm --filter @mailrovers/desktop performance:packaged:pending-fts"
   },
   "devDependencies": {

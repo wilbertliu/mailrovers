@@ -21,6 +21,7 @@ import {
 } from '../shared/indexing-measurements.js'
 import { composeDesktopApplication } from './composition-root.js'
 import type { DatabaseHost } from './database/database-host.js'
+import { selectDatabaseHost } from './database/database-host-selection.js'
 import { createMainDatabaseHost } from './database/main-database-host.js'
 import { createWorkerDatabaseHost } from './database/worker-database-host.js'
 import { allowedExternalUrl } from './external-links.js'
@@ -55,7 +56,8 @@ const hasSingleInstanceLock = acquireSingleInstance(app, () => mainWindow)
 const stages: Record<string, number> = { mainEntry: performance.now() }
 const smokeResultPath = process.env.MAILROVERS_SMOKE_RESULT_PATH
 const checkpointPath = process.env.MAILROVERS_SMOKE_CHECKPOINT_PATH
-const databaseHost = process.env.MAILROVERS_DATABASE_HOST === 'worker' ? 'worker' : 'main'
+const databaseHostSelection = selectDatabaseHost(process.env.MAILROVERS_DATABASE_HOST)
+const databaseHost = databaseHostSelection.host
 const performanceScenario: PerformanceScenario =
   process.env.MAILROVERS_PERFORMANCE_SCENARIO === 'pending-fts-backfill'
     ? 'pending-fts-backfill'
@@ -92,6 +94,10 @@ let unsubscribeScheduler: (() => void) | undefined
 let shuttingDown = false
 let smokeTerminalState: 'pending' | 'passed' | 'failed' = 'pending'
 const logger = createStructuredLogger({ component: 'desktop-main' })
+logger.info('database-host-selected', {
+  databaseHost,
+  detail: `source=${databaseHostSelection.source}`,
+})
 
 function checkpoint(stage: string, detail?: string): void {
   stages[stage] = performance.now()
@@ -115,7 +121,16 @@ function writeSmokeFailure(error: unknown): void {
   if (smokeResultPath)
     writeFileSync(
       smokeResultPath,
-      redactedJson({ status: 'failed', databaseHost, error: safeError, stages }, 2),
+      redactedJson(
+        {
+          status: 'failed',
+          databaseHost,
+          databaseHostSource: databaseHostSelection.source,
+          error: safeError,
+          stages,
+        },
+        2,
+      ),
     )
   if (smokeResultPath) setImmediate(() => app.exit(1))
 }
@@ -538,6 +553,7 @@ async function createWindow(): Promise<void> {
     writeSmokeSuccess({
       status: 'passed',
       databaseHost,
+      databaseHostSource: databaseHostSelection.source,
       performanceScenario,
       stages,
       rendererProbe,

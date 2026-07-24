@@ -15,7 +15,9 @@
     "perf": "ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/query.ts",
     "package:mac": "electron-forge package --platform=darwin && codesign --force --deep --sign - out/MailRovers-darwin-$(uname -m)/MailRovers.app",
     "smoke:packaged": "ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/smoke-packaged.ts",
-    "performance:packaged": "pnpm build && ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/smoke-packaged.ts --performance --idle-ms=60000 --mode=main",
+    "smoke:packaged:default-host": "ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/smoke-packaged.ts --default-host",
+    "performance:packaged": "pnpm build && ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/smoke-packaged.ts --performance --idle-ms=60000 --default-host",
+    "performance:packaged:main": "pnpm build && ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/smoke-packaged.ts --performance --idle-ms=60000 --mode=main",
     "performance:packaged:pending-fts": "pnpm build && ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/smoke-packaged.ts --scenario=pending-fts-backfill --idle-ms=0 --mode=main",
     "perf:worker-rpc-clone": "ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/worker-rpc-clone-probe.ts",
     "perf:isolated-idle-series": "ELECTRON_RUN_AS_NODE=1 electron ../../node_modules/tsx/dist/cli.mjs perf/run-isolated-idle-series.ts"

@@ -18,7 +18,7 @@ const baseReport: IsolatedIdleHarnessReport = {
   scenario: 'complete-index',
   idleDelayMs: 60_000,
   performanceRequested: true,
-  performanceFailures: ['main idle RSS 410.34 MiB reaches the 300 MiB hard limit'],
+  performanceFailures: ['main idle RSS 1024.00 MiB reaches the 1024 MiB hard limit'],
   results: [
     {
       mode: 'main',
@@ -31,7 +31,7 @@ const baseReport: IsolatedIdleHarnessReport = {
         packagedPerformance: {
           idleDelayMs: 60_000,
           capturedAt: 'afterIdle',
-          workingSetMb: 410.34,
+          workingSetMb: 1_024,
         },
       },
     },
@@ -120,7 +120,7 @@ describe('isolated idle report validation', () => {
         report: {
           ...baseReport,
           performanceFailures: [
-            'main idle RSS 410.34 MiB reaches the 300 MiB hard limit',
+            'main idle RSS 1024.00 MiB reaches the 1024 MiB hard limit',
             'main first window 2000 ms exceeds the 1000 ms target',
           ],
         },

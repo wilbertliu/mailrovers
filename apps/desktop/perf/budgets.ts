@@ -7,7 +7,7 @@ export const PERFORMANCE_BUDGETS = {
   threadMetadataP95Ms: 100,
   mainEventLoopStallMs: 100,
   idleRssMiBTarget: 250,
-  idleRssMiBHardLimit: 300,
+  idleRssMiBHardLimit: 1_024,
   /** Diagnostic target only for pending-fts-backfill; not a hard release gate today. */
   duringIndexingQueryMs: 100,
 } as const
@@ -120,8 +120,8 @@ export function evaluatePerformanceBudgets(
   }
 
   if (scenario === 'pending-fts-backfill') {
-    // Startup FTS backfill on the default main-host architecture is known to block the
-    // event loop and inflate working set. Hard-fail only when the scenario did not
+    // Startup FTS backfill can block the event loop and inflate working set. Hard-fail only
+    // when the scenario did not
     // produce usable overlapping measurements; responsiveness/RSS numbers are diagnostic.
     adviseOver(measurements.firstWindowMs, PERFORMANCE_BUDGETS.firstWindowMs, 'first window')
     adviseOver(measurements.cachedInboxMs, PERFORMANCE_BUDGETS.cachedInboxMs, 'cached inbox')

@@ -37,6 +37,7 @@ type SmokeResult = {
   startedAt?: string
   completedAt?: string
   databaseHost: string
+  databaseHostSource?: 'default' | 'environment'
   performanceScenario?: PerformanceScenario
   stages?: Record<string, number>
   mainEventLoopStallMs?: number
@@ -96,6 +97,7 @@ function readCheckpoints(file: string): Array<{ stage?: string; at?: string }> {
 
 async function runMode(input: {
   mode: Mode
+  databaseHostEnvironment?: Mode | undefined
   executable: string
   database: string
   directory: string
@@ -113,12 +115,16 @@ async function runMode(input: {
     scenario: input.scenario,
     idleDelayMs: input.idleDelayMs,
   })
+  const { MAILROVERS_DATABASE_HOST: _databaseHost, ...packagedEnvironment } =
+    packagedAppEnvironment(process.env)
   const child = spawn(input.executable, [], {
     detached: true,
     env: {
-      ...packagedAppEnvironment(process.env),
+      ...packagedEnvironment,
       MAILROVERS_DB_PATH: input.database,
-      MAILROVERS_DATABASE_HOST: input.mode,
+      ...(input.databaseHostEnvironment === undefined
+        ? {}
+        : { MAILROVERS_DATABASE_HOST: input.databaseHostEnvironment }),
       MAILROVERS_SMOKE_RESULT_PATH: resultPath,
       MAILROVERS_SMOKE_CHECKPOINT_PATH: checkpointPath,
       ELECTRON_ENABLE_LOGGING: '1',
@@ -164,6 +170,12 @@ async function runMode(input: {
       )
     if (result.databaseHost !== input.mode)
       throw new Error(`${input.mode} smoke used unexpected database host ${result.databaseHost}`)
+    const expectedHostSource =
+      input.databaseHostEnvironment === undefined ? 'default' : 'environment'
+    if (result.databaseHostSource !== expectedHostSource)
+      throw new Error(
+        `${input.mode} smoke used unexpected database host source ${String(result.databaseHostSource)}`,
+      )
     if (!result.rendererProbe || (result.rendererProbe.rows ?? 0) < 1)
       throw new Error(`${input.mode} smoke rendered no inbox rows`)
     if (
@@ -289,15 +301,23 @@ async function main(): Promise<void> {
       ? await measureQueryPerformance(fixtureDatabase)
       : undefined
 
-  const modes: Mode[] = args.mode ? [args.mode] : ['main', 'worker']
+  const runs: Array<{ mode: Mode; databaseHostEnvironment?: Mode }> = args.defaultHost
+    ? [{ mode: 'worker' }]
+    : args.mode
+      ? [{ mode: args.mode, databaseHostEnvironment: args.mode }]
+      : [
+          { mode: 'main', databaseHostEnvironment: 'main' },
+          { mode: 'worker', databaseHostEnvironment: 'worker' },
+        ]
   const results: Array<{ mode: Mode; result: SmokeResult }> = []
-  for (const mode of modes) {
+  for (const { mode, databaseHostEnvironment } of runs) {
     const database = path.join(directory, `${mode}.sqlite`)
     copyFileSync(fixtureDatabase, database)
     results.push({
       mode,
       result: await runMode({
         mode,
+        databaseHostEnvironment,
         executable,
         database,
         directory,

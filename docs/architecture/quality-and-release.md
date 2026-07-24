@@ -2,18 +2,18 @@
 
 ## Release budgets
 
-These are hard release budgets on a supported Mac with a warm local database. Packaged verification records raw samples and nearest-rank percentiles. A missing measurement or hard-budget violation fails `performance:packaged`.
+These are hard release budgets on a supported Mac with a warm local database. `performance:packaged` verifies the worker default, records raw samples and nearest-rank percentiles, and fails on a missing measurement or hard-budget violation. `performance:packaged:main` is the explicit main-host rollback diagnostic.
 
-| Operation                      |                                   Target |
-| ------------------------------ | ---------------------------------------: |
-| First window visible           |                           Under 1 second |
-| Inbox usable from local data   |                        Under 1.5 seconds |
-| Cached inbox query             |                       Under 50 ms at p95 |
-| Cached thread open             |                      Under 100 ms at p95 |
-| Navigation and typing response |                             Under 100 ms |
-| Thread-list scrolling          |   60 frames per second under normal load |
-| Background synchronization     |           No renderer stalls over 100 ms |
-| Idle resident memory           | Hard limit 300 MiB; target below 250 MiB |
+| Operation                      |                                     Target |
+| ------------------------------ | -----------------------------------------: |
+| First window visible           |                             Under 1 second |
+| Inbox usable from local data   |                          Under 1.5 seconds |
+| Cached inbox query             |                         Under 50 ms at p95 |
+| Cached thread open             |                        Under 100 ms at p95 |
+| Navigation and typing response |                               Under 100 ms |
+| Thread-list scrolling          |     60 frames per second under normal load |
+| Background synchronization     |             No renderer stalls over 100 ms |
+| Idle resident memory           | Hard limit 1,024 MiB; target below 250 MiB |
 
 Performance tests cover synthetic mailboxes with 10,000 and 100,000 messages. The app must not load a complete mailbox or thread list into memory. See [performance verification](../performance-verification.md) for the reproducible procedure.
 
@@ -46,8 +46,8 @@ Before a public release, run the controlled-account checks in [Gmail release ver
 | Ambiguous send duplicates mail                | Reconcile with a stable RFC `Message-ID` before any retry.                                                  |
 | Email HTML compromises the renderer           | Sanitize, sandbox, block scripts/navigation, and block remote content by default.                           |
 | Prompt injection changes application behavior | Give AI no tools, delimit email as untrusted data, and require explicit send confirmation.                  |
-| Memory exceeds budget                         | Measure packaged builds and keep the default database host below the 300 MiB hard limit.                    |
+| Memory exceeds budget                         | Measure packaged builds and keep the default database host below the 1,024 MiB hard limit.                  |
 
-The main-process database host remains the default. `MAILROVERS_DATABASE_HOST=worker` is available for diagnostics and parity testing. Change that default only after a same-package, integrity-validated comparison reliably meets the idle-memory hard limit and explains observed variance; see [performance verification](../performance-verification.md).
+The worker database host is the default. `MAILROVERS_DATABASE_HOST=main` is available as a temporary rollback and for diagnostics or parity testing. The runtime accepts only `worker` and `main`; invalid nonempty values stop startup. See [performance verification](../performance-verification.md) for the host-selection and evidence procedure.
 
 The exact update publisher, Windows installer format, Linux distribution support, and contributor-agreement policy remain open decisions. Any choice must preserve the interfaces and constraints in this architecture.

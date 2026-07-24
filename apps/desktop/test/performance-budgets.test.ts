@@ -7,6 +7,11 @@ import {
 } from '../perf/budgets.js'
 
 describe('packaged performance budgets', () => {
+  it('sets the idle RSS target to 250 MiB and hard limit to 1,024 MiB', () => {
+    expect(PERFORMANCE_BUDGETS.idleRssMiBTarget).toBe(250)
+    expect(PERFORMANCE_BUDGETS.idleRssMiBHardLimit).toBe(1_024)
+  })
+
   it('calculates deterministic nearest-rank percentiles without mutating samples', () => {
     const samples = [9, 1, 8, 2, 7, 3, 6, 4, 5, 10]
     expect(percentile(samples, 0.5)).toBe(5)
@@ -53,32 +58,49 @@ describe('packaged performance budgets', () => {
     expect(result.hardFailures).toEqual([expect.stringContaining('main event-loop stall')])
   })
 
-  it('reports idle RSS between 250 and 300 MiB as a nonblocking target miss', () => {
-    const result = evaluatePerformanceBudgets({
-      firstWindowMs: 1,
-      cachedInboxMs: 1,
-      queryP95Ms: 1,
-      threadMetadataP95Ms: 1,
-      mainEventLoopStallMs: 1,
-      idleRssMiB: PERFORMANCE_BUDGETS.idleRssMiBTarget + 1,
-    })
-
-    expect(result.hardFailures).toEqual([])
-    expect(result.advisories).toEqual([expect.stringContaining('idle RSS')])
-  })
-
-  it('fails when idle RSS reaches the 300 MiB hard limit', () => {
-    const result = evaluatePerformanceBudgets({
-      firstWindowMs: 1,
-      cachedInboxMs: 1,
-      queryP95Ms: 1,
-      threadMetadataP95Ms: 1,
-      mainEventLoopStallMs: 1,
+  it.each([
+    {
+      label: 'below the target',
+      idleRssMiB: PERFORMANCE_BUDGETS.idleRssMiBTarget - 0.01,
+      hardFailures: 0,
+      advisories: 0,
+    },
+    {
+      label: 'at the target',
+      idleRssMiB: PERFORMANCE_BUDGETS.idleRssMiBTarget,
+      hardFailures: 0,
+      advisories: 1,
+    },
+    {
+      label: 'just below the hard limit',
+      idleRssMiB: PERFORMANCE_BUDGETS.idleRssMiBHardLimit - 0.01,
+      hardFailures: 0,
+      advisories: 1,
+    },
+    {
+      label: 'at the hard limit',
       idleRssMiB: PERFORMANCE_BUDGETS.idleRssMiBHardLimit,
+      hardFailures: 1,
+      advisories: 0,
+    },
+    {
+      label: 'above the hard limit',
+      idleRssMiB: PERFORMANCE_BUDGETS.idleRssMiBHardLimit + 0.01,
+      hardFailures: 1,
+      advisories: 0,
+    },
+  ])('classifies idle RSS $label', ({ idleRssMiB, hardFailures, advisories }) => {
+    const result = evaluatePerformanceBudgets({
+      firstWindowMs: 1,
+      cachedInboxMs: 1,
+      queryP95Ms: 1,
+      threadMetadataP95Ms: 1,
+      mainEventLoopStallMs: 1,
+      idleRssMiB,
     })
 
-    expect(result.hardFailures).toEqual([expect.stringContaining('idle RSS')])
-    expect(result.advisories).toEqual([])
+    expect(result.hardFailures).toHaveLength(hardFailures)
+    expect(result.advisories).toHaveLength(advisories)
   })
 
   it('fails when idle RSS is not measured', () => {
@@ -88,6 +110,19 @@ describe('packaged performance budgets', () => {
       queryP95Ms: 1,
       threadMetadataP95Ms: 1,
       mainEventLoopStallMs: 1,
+    })
+
+    expect(result.hardFailures).toEqual([expect.stringContaining('idle RSS was not measured')])
+  })
+
+  it('fails when idle RSS is NaN', () => {
+    const result = evaluatePerformanceBudgets({
+      firstWindowMs: 1,
+      cachedInboxMs: 1,
+      queryP95Ms: 1,
+      threadMetadataP95Ms: 1,
+      mainEventLoopStallMs: 1,
+      idleRssMiB: Number.NaN,
     })
 
     expect(result.hardFailures).toEqual([expect.stringContaining('idle RSS was not measured')])

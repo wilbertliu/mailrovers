@@ -21,6 +21,7 @@ describe('parseSmokePackagedArgs', () => {
       scenario: 'complete-index',
       idleDelayMs: 60_000,
       mode: 'main',
+      defaultHost: false,
       appArgument: undefined,
     })
     expect(shouldPrecompleteSearchIndex('complete-index')).toBe(true)
@@ -35,6 +36,7 @@ describe('parseSmokePackagedArgs', () => {
       scenario: 'pending-fts-backfill',
       idleDelayMs: 0,
       mode: 'worker',
+      defaultHost: false,
       appArgument: undefined,
     })
     expect(shouldPrecompleteSearchIndex('pending-fts-backfill')).toBe(false)
@@ -45,6 +47,16 @@ describe('parseSmokePackagedArgs', () => {
     expect(() => parseSmokePackagedArgs(['--scenario=warm-cache'])).toThrow(/Invalid --scenario/)
     expect(() => parseSmokePackagedArgs(['--mode=sidecar'])).toThrow(/Invalid --mode/)
     expect(() => parseSmokePackagedArgs(['--idle-ms=-1'])).toThrow(/Invalid --idle-ms/)
+  })
+
+  it('runs the host default only when requested without an explicit mode', () => {
+    expect(parseSmokePackagedArgs(['--default-host'])).toMatchObject({
+      mode: undefined,
+      defaultHost: true,
+    })
+    expect(() => parseSmokePackagedArgs(['--default-host', '--mode=main'])).toThrow(
+      'Cannot combine --default-host with --mode',
+    )
   })
 })
 
