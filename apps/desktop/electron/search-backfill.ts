@@ -22,11 +22,7 @@ type BackfillSearchOptions = {
 
 export async function backfillSearch(
   store: Pick<MailStore, 'listMailboxes' | 'backfillSearchIndex'>,
-  {
-    shouldStop,
-    probe,
-    yieldToEventLoop = () => delay(0),
-  }: BackfillSearchOptions,
+  { shouldStop, probe, yieldToEventLoop = () => delay(0) }: BackfillSearchOptions,
 ): Promise<void> {
   probe?.start()
   let batches = 0
@@ -42,9 +38,7 @@ export async function backfillSearch(
             limit: SEARCH_BACKFILL_BATCH_LIMIT,
             updatedAt: utcTimestamp(new Date().toISOString()),
           })
-        complete = probe
-          ? await probe.runBatch({ batchId, execute })
-          : await execute()
+        complete = probe ? await probe.runBatch({ batchId, execute }) : await execute()
         batches += 1
         if (!complete) await yieldToEventLoop()
       }

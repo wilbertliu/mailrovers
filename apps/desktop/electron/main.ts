@@ -571,7 +571,7 @@ async function createWindow(): Promise<void> {
         performanceScenario === 'pending-fts-backfill'
           ? indexingEventLoopStallMs
           : maxEventLoopStallMs,
-      searchBackfillMs,
+      ...(searchBackfillMs === undefined ? {} : { searchBackfillMs }),
       ...(duringIndexingQuery ? { duringIndexingQuery } : {}),
       ...(searchIndexingMetrics
         ? {

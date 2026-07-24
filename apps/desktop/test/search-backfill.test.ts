@@ -1,11 +1,27 @@
+import type { MailStore } from '@mailrovers/mail-application'
+import { GMAIL_CAPABILITIES, type MailboxSummary } from '@mailrovers/mail-contracts'
+import { mailboxId } from '@mailrovers/mail-domain'
 import { describe, expect, it, vi } from 'vitest'
 import type { SearchBackfillProbe } from '../electron/search-backfill.js'
 import { backfillSearch } from '../electron/search-backfill.js'
 
+const mailbox = {
+  id: mailboxId('mailbox-1'),
+  provider: 'gmail',
+  emailAddress: 'mailbox-1@example.test',
+  displayName: 'Mailbox 1',
+  syncState: 'ready',
+  connectionState: 'connected',
+  capabilities: GMAIL_CAPABILITIES,
+  importedMessageCount: 0,
+} satisfies MailboxSummary
+
 function createStore(results: boolean[]) {
   return {
-    listMailboxes: vi.fn().mockResolvedValue([{ id: 'mailbox-1' }]),
-    backfillSearchIndex: vi.fn().mockImplementation(async () => results.shift() ?? true),
+    listMailboxes: vi.fn<MailStore['listMailboxes']>(async () => [mailbox]),
+    backfillSearchIndex: vi.fn<MailStore['backfillSearchIndex']>(
+      async () => results.shift() ?? true,
+    ),
   }
 }
 
@@ -13,9 +29,9 @@ describe('search backfill measurement', () => {
   it('does not invoke measurement hooks during a normal production backfill', async () => {
     const store = createStore([false, true])
     const measurement = {
-      start: vi.fn(),
-      runBatch: vi.fn(),
-      complete: vi.fn(),
+      start: vi.fn<SearchBackfillProbe['start']>(),
+      runBatch: vi.fn<SearchBackfillProbe['runBatch']>(),
+      complete: vi.fn<SearchBackfillProbe['complete']>(),
     } satisfies SearchBackfillProbe
 
     await backfillSearch(store, {
@@ -33,12 +49,12 @@ describe('search backfill measurement', () => {
     const store = createStore([false, true])
     const observedBatchIds: number[] = []
     const measurement: SearchBackfillProbe = {
-      start: vi.fn(),
-      runBatch: vi.fn(async ({ batchId, execute }) => {
+      start: vi.fn<SearchBackfillProbe['start']>(),
+      runBatch: vi.fn<SearchBackfillProbe['runBatch']>(async ({ batchId, execute }) => {
         observedBatchIds.push(batchId)
         return execute()
       }),
-      complete: vi.fn(),
+      complete: vi.fn<SearchBackfillProbe['complete']>(),
     }
 
     await backfillSearch(store, {
