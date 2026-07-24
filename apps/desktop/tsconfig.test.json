@@ -9,5 +9,12 @@
     "paths": { "@/*": ["./src/*"] },
     "types": ["node", "vitest/globals"]
   },
-  "include": ["test/**/*.ts", "electron/**/*.ts", "src/**/*.ts", "src/**/*.tsx", "perf/**/*.ts", "shared/**/*.ts"]
+  "include": [
+    "test/**/*.ts",
+    "electron/**/*.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "perf/**/*.ts",
+    "shared/**/*.ts"
+  ]
 }
