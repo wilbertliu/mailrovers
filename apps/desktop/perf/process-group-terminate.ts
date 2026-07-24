@@ -51,6 +51,10 @@ export type ProcessGroupTerminatorDeps = {
 
 export type ProcessGroupKill = (pid: number, signal: NodeJS.Signals | 0) => void
 
+function hasErrorCode(error: unknown, code: string): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === code
+}
+
 /**
  * Tests a complete process group with `kill(-pgid, 0)`.
  *
@@ -66,8 +70,7 @@ export function isProcessGroupAlive(
     kill(-pgid, 0)
     return true
   } catch (error) {
-    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ESRCH')
-      return false
+    if (hasErrorCode(error, 'ESRCH')) return false
     throw error
   }
 }
@@ -285,10 +288,12 @@ export async function terminateProcessGroup(
       diagnostic,
     )
   }
-  const signal = (signalName: NodeJS.Signals, phase: string): void => {
+  const signal = (signalName: NodeJS.Signals, phase: string): boolean => {
     try {
       deps.signalGroup(pgid, signalName)
+      return false
     } catch (error) {
+      if (hasErrorCode(error, 'ESRCH')) return true
       const diagnostic = diagnosticFor({
         child,
         pgid,
@@ -307,11 +312,11 @@ export async function terminateProcessGroup(
   }
 
   if (!probe('after-natural-shutdown')) return { pgid, leader }
-  signal('SIGTERM', 'sigterm')
+  if (signal('SIGTERM', 'sigterm')) return { pgid, leader }
   const graceDeadline = deps.now() + graceMs
   while (probe('term-poll') && deps.now() < graceDeadline) await deps.wait(pollMs)
   if (!probe('after-sigterm')) return { pgid, leader }
-  signal('SIGKILL', 'sigkill')
+  if (signal('SIGKILL', 'sigkill')) return { pgid, leader }
   const killDeadline = deps.now() + escalationMs
   while (probe('kill-poll') && deps.now() < killDeadline) await deps.wait(pollMs)
   if (probe('after-sigkill')) return failStillPresent('after-sigkill')

@@ -128,6 +128,86 @@ describe('terminateProcessGroup', () => {
     expect(signals).toEqual(['SIGTERM', 'SIGKILL'])
   })
 
+  it('treats ESRCH while delivering SIGTERM as successful group absence', async () => {
+    const signals: NodeJS.Signals[] = []
+    let probes = 0
+    const child = { pid: 7001, exitCode: null, signalCode: null } as ChildProcess
+
+    await expect(
+      terminateProcessGroup(child, {
+        deps: createProcessGroupTerminatorDeps({
+          waitForLeaderExit: async () => timedOutLeader,
+          signalGroup: (_pgid, signal) => {
+            signals.push(signal)
+            const error = new Error('no such process') as NodeJS.ErrnoException
+            error.code = 'ESRCH'
+            throw error
+          },
+          isProcessGroupAlive: () => {
+            probes += 1
+            return true
+          },
+        }),
+      }),
+    ).resolves.toMatchObject({ pgid: 7001, leader: timedOutLeader })
+
+    expect(signals).toEqual(['SIGTERM'])
+    expect(probes).toBe(1)
+  })
+
+  it('treats ESRCH while delivering SIGKILL as successful group absence', async () => {
+    const signals: NodeJS.Signals[] = []
+    const child = { pid: 7002, exitCode: null, signalCode: null } as ChildProcess
+
+    await expect(
+      terminateProcessGroup(child, {
+        graceMs: 0,
+        deps: createProcessGroupTerminatorDeps({
+          waitForLeaderExit: async () => timedOutLeader,
+          signalGroup: (_pgid, signal) => {
+            signals.push(signal)
+            if (signal === 'SIGKILL') {
+              const error = new Error('no such process') as NodeJS.ErrnoException
+              error.code = 'ESRCH'
+              throw error
+            }
+          },
+          isProcessGroupAlive: () => true,
+        }),
+      }),
+    ).resolves.toMatchObject({ pgid: 7002, leader: timedOutLeader })
+
+    expect(signals).toEqual(['SIGTERM', 'SIGKILL'])
+  })
+
+  it('captures non-ESRCH signal errors instead of treating the group as absent', async () => {
+    const child = { pid: 7003, exitCode: null, signalCode: null } as ChildProcess
+    const eperm = new Error('operation not permitted') as NodeJS.ErrnoException
+    eperm.code = 'EPERM'
+
+    await expect(
+      terminateProcessGroup(child, {
+        deps: createProcessGroupTerminatorDeps({
+          waitForLeaderExit: async () => timedOutLeader,
+          signalGroup: () => {
+            throw eperm
+          },
+          isProcessGroupAlive: () => true,
+          snapshotProcessGroup: () => ['7003 1 7003 user MailRovers'],
+        }),
+      }),
+    ).rejects.toMatchObject({
+      name: ProcessGroupTerminationError.name,
+      diagnostic: {
+        childPid: 7003,
+        processGroupId: 7003,
+        leader: timedOutLeader,
+        probe: { phase: 'sigterm', errno: 'EPERM' },
+        processSnapshot: ['7003 1 7003 user MailRovers'],
+      },
+    })
+  })
+
   it('captures EPERM diagnostics instead of treating the group as absent', async () => {
     const child = { pid: 9001, exitCode: 0, signalCode: null } as ChildProcess
     const eperm = new Error('operation not permitted') as NodeJS.ErrnoException
