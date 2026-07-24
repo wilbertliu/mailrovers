@@ -114,6 +114,9 @@ provider origin.
 ## Make a contribution
 
 The credential-free UI workbench is the shortest route to a first contribution.
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, engineering boundaries, focused
+checks, and pull-request expectations. All participation follows the
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
 Good starting areas include:
 
@@ -124,7 +127,12 @@ Good starting areas include:
 - Improve keyboard navigation, focus behavior, or accessible labels.
 
 Keep the change focused. Explain what changed and how you verified it in the pull
-request.
+request. Open a
+[change proposal](https://github.com/wilbertliu/mailrovers/issues/new?template=change-proposal.yml)
+before changing user behavior, architecture, stored data, or provider contracts.
+
+Report vulnerabilities through [`SECURITY.md`](SECURITY.md). Do not put security details
+in an issue or pull request.
 
 ### Check your work
 
@@ -244,6 +252,9 @@ Before that release:
 | [`docs/architecture.md`](docs/architecture.md)           | System design, security, and engineering decisions |
 | [`docs/m3-verification.md`](docs/m3-verification.md)     | Mail workflows and performance verification        |
 | [`docs/m4-verification.md`](docs/m4-verification.md)     | AI behavior and provider verification              |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                     | Setup, checks, and pull-request expectations       |
+| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)               | Community standards and reporting                  |
+| [`SECURITY.md`](SECURITY.md)                             | Supported versions and vulnerability reporting     |
 
 ## License
 

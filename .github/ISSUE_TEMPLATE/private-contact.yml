@@ -1,0 +1,20 @@
+name: Private contact request
+description: Ask for a private channel for a security or conduct report
+title: '[Private contact request]'
+labels: []
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include vulnerability details, incident details, names, credentials, email contents, or personal data in this issue.
+
+        Submit this request as-is. A maintainer will arrange a private reporting channel.
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have not included sensitive details in this issue.
+          required: true

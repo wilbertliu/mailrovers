@@ -1,0 +1,88 @@
+name: Bug report
+description: Report a reproducible problem in MailRovers
+title: '[Bug] '
+labels: []
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve MailRovers. Search existing issues first.
+
+        Do not include credentials, email contents, personal data, or vulnerability details. Use the [security policy](https://github.com/wilbertliu/mailrovers/security/policy) for security reports.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Where did the problem occur?
+      options:
+        - Startup or installation
+        - Gmail connection or sync
+        - Mailbox, conversation, or search
+        - Compose, draft, or send
+        - AI summary, reply, or provider setup
+        - Storybook or contributor tooling
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected instead.
+      placeholder: |
+        Actual:
+        Expected:
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Give the shortest sequence that reproduces the problem.
+      placeholder: |
+        1. Open…
+        2. Select…
+        3. Observe…
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Paste the commit SHA or branch name you tested.
+      placeholder: main at abc1234
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include macOS, Mac architecture, Node.js, and pnpm versions when relevant.
+      placeholder: macOS 15.5, Apple Silicon, Node.js 22.14.0, pnpm 10.12.1
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or screenshots
+      description: Add only what helps explain the problem. Redact email, tokens, file paths, and personal data.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Final checks
+      options:
+        - label: I searched existing issues for this problem.
+          required: true
+        - label: I removed credentials, email contents, and personal data.
+          required: true
+        - label: This report does not describe a security vulnerability.
+          required: true

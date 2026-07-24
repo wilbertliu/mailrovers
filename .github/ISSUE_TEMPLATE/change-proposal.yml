@@ -1,0 +1,77 @@
+name: Change proposal
+description: Propose a user-facing, architectural, or provider change
+title: '[Proposal] '
+labels: []
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form before a large change. Small fixes and documentation corrections can go straight to a focused pull request.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Who has this problem, and what can they not do today?
+      placeholder: A MailRovers user or contributor needs to…
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe observable behavior, not an implementation.
+      placeholder: After this change…
+    validations:
+      required: true
+
+  - type: textarea
+    id: approach
+    attributes:
+      label: Proposed approach
+      description: Explain the smallest change that could produce the outcome.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Main area
+      options:
+        - Desktop UI
+        - Mail domain or application behavior
+        - Gmail provider or synchronization
+        - SQLite storage or search
+        - AI runtime or provider behavior
+        - Security or privacy
+        - Contributor tooling or documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: effects
+    attributes:
+      label: Risks and effects
+      description: Note any stored-data, credential, provider, performance, migration, or compatibility effects.
+      placeholder: No known effects, or…
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: List a simpler option you considered, or explain why none applies.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Final checks
+      options:
+        - label: I searched existing issues and proposals.
+          required: true
+        - label: I have not included credentials, email contents, or personal data.
+          required: true
