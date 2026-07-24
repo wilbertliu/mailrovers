@@ -1,5 +1,4 @@
-import type { CommandDispatcher, MailStore, SyncEngine } from '@mailrovers/mail-application'
-import { utcTimestamp } from '@mailrovers/mail-domain'
+import type { CommandDispatcher, SyncEngine } from '@mailrovers/mail-application'
 import { SyncScheduler } from '@mailrovers/mail-sync'
 import {
   createStructuredLogger,
@@ -18,7 +17,6 @@ import {
   attributeIndexingStallMs,
   evaluateContentionProbe,
   sampleEventLoopStallMs,
-  SEARCH_BACKFILL_BATCH_LIMIT,
 } from '../shared/indexing-measurements.js'
 import { composeDesktopApplication } from './composition-root.js'
 import type { DatabaseHost } from './database/database-host.js'
@@ -31,6 +29,7 @@ import { registerMailApplication } from './ipc/register-mail-application.js'
 import { isAllowedRendererUrl } from './ipc/authorization.js'
 import { shutdownBeforeExit } from './shutdown-lifecycle.js'
 import { acquireSingleInstance, presentWindow } from './single-instance.js'
+import { backfillSearch, type SearchBackfillProbe } from './search-backfill.js'
 import { attachStartupSplashOverlay } from './startup-splash-overlay.js'
 
 type PerformanceScenario = 'complete-index' | 'pending-fts-backfill'
@@ -58,6 +57,7 @@ const hasSingleInstanceLock = acquireSingleInstance(app, () => mainWindow)
 const stages: Record<string, number> = { mainEntry: performance.now() }
 const smokeResultPath = process.env.MAILROVERS_SMOKE_RESULT_PATH
 const checkpointPath = process.env.MAILROVERS_SMOKE_CHECKPOINT_PATH
+const performanceRequested = process.env.MAILROVERS_PERFORMANCE === '1'
 const databaseHostSelection = selectDatabaseHost(process.env.MAILROVERS_DATABASE_HOST)
 const databaseHost = databaseHostSelection.host
 const performanceScenario: PerformanceScenario =
@@ -243,10 +243,8 @@ function captureWorkingSet(idleDelayMs: number): {
   return { idleDelayMs, workingSetMb, processes }
 }
 
-async function backfillSearch(store: MailStore, window?: BrowserWindow): Promise<void> {
+function createSearchBackfillProbe(window: BrowserWindow): SearchBackfillProbe {
   const startedAt = performance.now()
-  searchIndexingActive = true
-  indexingEventLoopStallMs = 0
   const batchDurationsMs: number[] = []
   let peakDuringIndexingMb = 0
   let contentionProbe: ContentionProbeResult | undefined
@@ -255,76 +253,74 @@ async function backfillSearch(store: MailStore, window?: BrowserWindow): Promise
     peakDuringIndexingMb = Math.max(peakDuringIndexingMb, workingSetMb)
     return workingSetMb
   }
-  checkpoint('searchIndexingStart')
-  let batches = 0
-  try {
-    const mailboxes = await store.listMailboxes()
-    for (const mailbox of mailboxes) {
-      let complete = false
-      while (!complete && !shuttingDown) {
-        const batchId = batches + 1
-        const runBatch = async () => {
-          const startedAtBatch = performance.now()
-          const startedWall = Date.now()
-          complete = await store.backfillSearchIndex({
-            mailboxId: mailbox.id,
-            // Shared with perf/watchdog so batch sizing cannot drift.
-            limit: SEARCH_BACKFILL_BATCH_LIMIT,
-            updatedAt: utcTimestamp(new Date().toISOString()),
-          })
-          const endedAtBatch = performance.now()
-          const endedWall = Date.now()
-          const durationMs = endedAtBatch - startedAtBatch
-          batchDurationsMs.push(durationMs)
-          // Main host: batch wall time is synchronous SQLite on this thread.
-          // Worker host: wall time is mostly awaiting the worker — do not fold it in.
-          if (databaseHost === 'main')
-            indexingEventLoopStallMs = Math.max(indexingEventLoopStallMs, durationMs)
-          sampleWorkingSetMb()
-          checkpoint(
-            'searchIndexingProgress',
-            JSON.stringify({ batchId, durationMs: Math.round(durationMs), complete }),
-          )
-          return { batchId, startedWall, endedWall, durationMs }
-        }
-        if (
-          performanceScenario === 'pending-fts-backfill' &&
-          window !== undefined &&
-          contentionProbe === undefined &&
-          batches === 1
+  return {
+    start: () => {
+      searchIndexingActive = true
+      indexingEventLoopStallMs = 0
+      checkpoint('searchIndexingStart')
+    },
+    runBatch: async ({ batchId, execute }) => {
+      const runMeasuredBatch = async () => {
+        const startedAtBatch = performance.now()
+        const startedWall = Date.now()
+        const complete = await execute()
+        const endedAtBatch = performance.now()
+        const endedWall = Date.now()
+        const durationMs = endedAtBatch - startedAtBatch
+        batchDurationsMs.push(durationMs)
+        // Main host: batch wall time is synchronous SQLite on this thread.
+        // Worker host: wall time is mostly awaiting the worker — do not fold it in.
+        if (databaseHost === 'main')
+          indexingEventLoopStallMs = Math.max(indexingEventLoopStallMs, durationMs)
+        sampleWorkingSetMb()
+        checkpoint(
+          'searchIndexingProgress',
+          JSON.stringify({ batchId, durationMs: Math.round(durationMs), complete }),
         )
-          contentionProbe = await runCoordinatedContentionProbe(window, runBatch)
-        else await runBatch()
-        batches += 1
-        if (!complete) await delay(0)
+        return { batchId, startedWall, endedWall, durationMs, complete }
       }
-    }
-  } finally {
-    // Final monitor flush while indexing is still marked active so a last real stall
-    // is not omitted when the interval callback would have fired after active=false.
-    const flush = sampleEventLoopStallMs({
-      nowMs: performance.now(),
-      lastTickMs: lastEventLoopTick,
-      intervalMs: 10,
-      previousMaxMs: indexingEventLoopStallMs,
-    })
-    indexingEventLoopStallMs = flush.maxMs
-    lastEventLoopTick = flush.nextTickMs
-    indexingEventLoopStallMs = attributeIndexingStallMs({
-      databaseHost,
-      intervalMonitorMaxMs: indexingEventLoopStallMs,
-      batchDurationsMs,
-    })
-    const workingSetAtIndexingEndMb = sampleWorkingSetMb()
-    searchBackfillMs = performance.now() - startedAt
-    searchIndexingMetrics = {
-      peakDuringIndexingMb,
-      workingSetAtIndexingEndMb,
-      batchDurationsMs,
-      ...(contentionProbe ? { contentionProbe } : {}),
-    }
-    searchIndexingActive = false
-    checkpoint('searchIndexingComplete', String(Math.round(searchBackfillMs)))
+      if (
+        performanceScenario === 'pending-fts-backfill' &&
+        contentionProbe === undefined &&
+        batchId === 2
+      ) {
+        let complete = false
+        contentionProbe = await runCoordinatedContentionProbe(window, async () => {
+          const result = await runMeasuredBatch()
+          complete = result.complete
+          return result
+        })
+        return complete
+      }
+      return (await runMeasuredBatch()).complete
+    },
+    complete: () => {
+      // Final monitor flush while indexing is still marked active so a last real stall
+      // is not omitted when the interval callback would have fired after active=false.
+      const flush = sampleEventLoopStallMs({
+        nowMs: performance.now(),
+        lastTickMs: lastEventLoopTick,
+        intervalMs: 10,
+        previousMaxMs: indexingEventLoopStallMs,
+      })
+      indexingEventLoopStallMs = flush.maxMs
+      lastEventLoopTick = flush.nextTickMs
+      indexingEventLoopStallMs = attributeIndexingStallMs({
+        databaseHost,
+        intervalMonitorMaxMs: indexingEventLoopStallMs,
+        batchDurationsMs,
+      })
+      const workingSetAtIndexingEndMb = sampleWorkingSetMb()
+      searchBackfillMs = performance.now() - startedAt
+      searchIndexingMetrics = {
+        peakDuringIndexingMb,
+        workingSetAtIndexingEndMb,
+        batchDurationsMs,
+        ...(contentionProbe ? { contentionProbe } : {}),
+      }
+      searchIndexingActive = false
+      checkpoint('searchIndexingComplete', String(Math.round(searchBackfillMs)))
+    },
   }
 }
 
@@ -422,7 +418,10 @@ async function createWindow(): Promise<void> {
   else await window.loadFile(packagedRendererPath)
   checkpoint('windowLoaded')
   startupSplash.dismissWhenUiReady()
-  const searchIndexing = backfillSearch(host.store, window)
+  const searchIndexing = backfillSearch(host.store, {
+    shouldStop: () => shuttingDown,
+    ...(performanceRequested ? { probe: createSearchBackfillProbe(window) } : {}),
+  })
   void searchIndexing.catch((error: unknown) =>
     logger.error('search-indexing-failed', { code: 'INTERNAL_ERROR', error }),
   )
@@ -443,7 +442,6 @@ async function createWindow(): Promise<void> {
   })
 
   if (!smokeResultPath) return
-  const performanceRequested = process.env.MAILROVERS_PERFORMANCE === '1'
   if (performanceRequested) {
     await presentWindow(app, window)
   }

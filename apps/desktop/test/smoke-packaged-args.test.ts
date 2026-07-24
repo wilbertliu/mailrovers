@@ -163,12 +163,12 @@ describe('indexing measurement helpers', () => {
     expect(PENDING_FTS_EXPECTED_BATCHES).toBe(
       Math.ceil(PENDING_FTS_MESSAGE_COUNT / SEARCH_BACKFILL_BATCH_LIMIT),
     )
-    const mainSource = readFileSync(
-      fileURLToPath(new URL('../electron/main.ts', import.meta.url)),
+    const backfillSource = readFileSync(
+      fileURLToPath(new URL('../electron/search-backfill.ts', import.meta.url)),
       'utf8',
     )
-    expect(mainSource).toMatch(/SEARCH_BACKFILL_BATCH_LIMIT/)
-    expect(mainSource).toMatch(/limit:\s*SEARCH_BACKFILL_BATCH_LIMIT/)
-    expect(mainSource).not.toMatch(/limit:\s*250\b/)
+    expect(backfillSource).toMatch(/SEARCH_BACKFILL_BATCH_LIMIT/)
+    expect(backfillSource).toMatch(/limit:\s*SEARCH_BACKFILL_BATCH_LIMIT/)
+    expect(backfillSource).not.toMatch(/limit:\s*250\b/)
   })
 })
