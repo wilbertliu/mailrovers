@@ -23,6 +23,12 @@ import {
 } from './worker-rpc-clone-payload.js'
 
 export type WorkerRpcCloneProbeSample = {
+  messageIndexRange: {
+    startInclusive: number
+    endExclusive: number
+  }
+  payloadSizeStats: ReturnType<typeof summarizeWorkerRpcCloneProbePayload>
+  envelopeJsonBytes: number
   validateDecodeMs: number
   structuredCloneMs: number
   workerHostRoundTripMs: number
@@ -35,8 +41,6 @@ export type WorkerRpcCloneBatchReport = {
   label: WorkerRpcCloneBatchLabel
   messageCount: number
   rationale: string
-  payload: ReturnType<typeof summarizeWorkerRpcCloneProbePayload>
-  envelopeJsonBytes: number
   warmups: number
   measuredRepetitions: number
   samples: WorkerRpcCloneProbeSample[]
@@ -129,8 +133,8 @@ function measureEventLoopStallDuring(
 
 type ProbeHost = Awaited<ReturnType<typeof createWorkerDatabaseHost>>
 
-async function measureBatch(input: {
-  host: ProbeHost
+export async function measureWorkerRpcCloneBatch(input: {
+  host: { store: Pick<ProbeHost['store'], 'applyImportBatch'> }
   label: WorkerRpcCloneBatchLabel
   messageCount: number
   rationale: string
@@ -165,6 +169,12 @@ async function measureBatch(input: {
 
     if (i >= input.warmups)
       samples.push({
+        messageIndexRange: {
+          startInclusive: startIndex,
+          endExclusive: startIndex + input.messageCount,
+        },
+        payloadSizeStats: summarizeWorkerRpcCloneProbePayload(decoded.batch.messages),
+        envelopeJsonBytes: estimateStructuredCloneEnvelopeBytes(envelope),
         validateDecodeMs,
         structuredCloneMs,
         workerHostRoundTripMs: durationMs,
@@ -174,23 +184,12 @@ async function measureBatch(input: {
     await delay(10)
   }
 
-  const envelopeForSize = {
-    id: 1,
-    method: 'applyImportBatch' as const,
-    input: decodeDatabaseInput(
-      'applyImportBatch',
-      buildApplyImportBatchCloneProbeInput({ messageCount: input.messageCount }),
-    ),
-  }
-
   return {
     nextStartIndex: startIndex,
     report: {
       label: input.label,
       messageCount: input.messageCount,
       rationale: input.rationale,
-      payload: summarizeWorkerRpcCloneProbePayload(input.messageCount),
-      envelopeJsonBytes: estimateStructuredCloneEnvelopeBytes(envelopeForSize),
       warmups: input.warmups,
       measuredRepetitions: input.repetitions,
       samples,
@@ -242,7 +241,7 @@ export async function runWorkerRpcCloneProbe(options?: {
     }
 
     let startIndex = 0
-    const production = await measureBatch({
+    const production = await measureWorkerRpcCloneBatch({
       host,
       label: 'production-25',
       messageCount: WORKER_RPC_CLONE_PRODUCTION_BATCH,
@@ -256,7 +255,7 @@ export async function runWorkerRpcCloneProbe(options?: {
     batches.push(production.report)
     startIndex = production.nextStartIndex
 
-    const stress = await measureBatch({
+    const stress = await measureWorkerRpcCloneBatch({
       host,
       label: 'stress-250',
       messageCount: WORKER_RPC_CLONE_STRESS_BATCH,
@@ -290,6 +289,7 @@ export async function runWorkerRpcCloneProbe(options?: {
         'createWorkerDatabaseHost + built database.worker.js applyImportBatch round-trip',
         'main-thread event-loop stall while posting/awaiting the worker RPC (interval monitor)',
         'production-shape 25-message and stress 250-message batches with MIME + attachment metadata',
+        'per-measured-sample payload statistics, message-index range, and envelope JSON bytes',
         'median/p95/max after untimed warmups',
       ],
       doesNotMeasure: [

@@ -13,11 +13,7 @@ import {
   type UtcTimestamp,
 } from '@mailrovers/mail-domain'
 import type { SyncLeaseFence } from '@mailrovers/mail-application'
-import {
-  buildPendingFtsTextBody,
-  pendingFtsBodySizeBytes,
-  summarizePendingFtsPayloadSizeStats,
-} from '@mailrovers/test-support'
+import { buildPendingFtsTextBody, pendingFtsBodySizeBytes } from '@mailrovers/test-support'
 import { SEARCH_BACKFILL_BATCH_LIMIT } from '../shared/indexing-measurements.js'
 import type { DatabaseMethodInput } from '../electron/database/database-rpc.js'
 
@@ -40,8 +36,7 @@ export type WorkerRpcCloneProbePayloadStats = {
   meanTextBytes: number
   minTextBytes: number
   maxTextBytes: number
-  tierCounts: { sizeBytes: number; count: number }[]
-  messagesWithAttachments: number
+  messagesWithFileMetadata: number
   messagesWithMimeMetadata: number
 }
 
@@ -179,23 +174,30 @@ export function buildApplyImportBatchCloneProbeInput(options?: {
 }
 
 export function summarizeWorkerRpcCloneProbePayload(
-  messageCount: number,
+  messages: readonly NormalizedMessage[] | undefined,
 ): WorkerRpcCloneProbePayloadStats {
-  const stats = summarizePendingFtsPayloadSizeStats(messageCount)
-  let messagesWithAttachments = 0
+  if (messages === undefined || messages.length === 0)
+    throw new Error('messages must be a non-empty array')
+  let textPayloadBytes = 0
+  let minTextBytes = Number.POSITIVE_INFINITY
+  let maxTextBytes = 0
+  let messagesWithFileMetadata = 0
   let messagesWithMimeMetadata = 0
-  for (let i = 0; i < messageCount; i += 1) {
-    if (i % 4 === 0) messagesWithAttachments += 1
-    messagesWithMimeMetadata += 1
+  for (const message of messages) {
+    const textBytes = Buffer.byteLength(message.textBody ?? '', 'utf8')
+    textPayloadBytes += textBytes
+    minTextBytes = Math.min(minTextBytes, textBytes)
+    maxTextBytes = Math.max(maxTextBytes, textBytes)
+    if (message.attachments.length > 0) messagesWithFileMetadata += 1
+    if (message.mime !== undefined) messagesWithMimeMetadata += 1
   }
   return {
-    messageCount: stats.messages,
-    textPayloadBytes: stats.totalBytes,
-    meanTextBytes: stats.meanBytes,
-    minTextBytes: stats.minBytes,
-    maxTextBytes: stats.maxBytes,
-    tierCounts: stats.tierCounts,
-    messagesWithAttachments,
+    messageCount: messages.length,
+    textPayloadBytes,
+    meanTextBytes: textPayloadBytes / messages.length,
+    minTextBytes,
+    maxTextBytes,
+    messagesWithFileMetadata,
     messagesWithMimeMetadata,
   }
 }
