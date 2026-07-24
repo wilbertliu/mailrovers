@@ -103,6 +103,7 @@ export class SqliteSearch {
       )
       .all(input.mailboxId, current, input.limit)
     this.db.transaction(() => {
+      // Pure FTS writes only — search_index_state is updated once below.
       for (const value of messages) indexMessage(this.db, String(row(value).id))
       const last = messages.at(-1)
       const lastRowid = last === undefined ? current : Number(row(last).rowid)

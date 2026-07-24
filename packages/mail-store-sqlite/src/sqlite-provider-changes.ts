@@ -5,7 +5,7 @@ import {
   type DraftMergeOptions,
 } from './draft-reconciliation.js'
 import type { SqliteDatabase } from './open-database.js'
-import { indexMessage } from './sqlite-search-index.js'
+import { indexMessage, reconcileSearchIndexProgress } from './sqlite-search-index.js'
 import { row, placeholderLabelId } from './sqlite-row-helpers.js'
 
 export function applyChanges(
@@ -67,6 +67,8 @@ export function applyChanges(
     FROM attachments WHERE message_id=? ORDER BY provider_attachment_id,id`)
   const existingConversation = db.prepare('SELECT 1 FROM conversations WHERE id=? AND mailbox_id=?')
 
+  let searchTouched = false
+  let reconcileAt: string | undefined
   for (const message of batch.messages ?? []) {
     const previousValue = existingMessage.get(mailbox, message.providerMessageId)
     const previous = previousValue === undefined ? undefined : row(previousValue)
@@ -153,6 +155,9 @@ export function applyChanges(
       )
     }
     indexMessage(db, message.id)
+    searchTouched = true
+    reconcileAt =
+      reconcileAt === undefined || message.updatedAt > reconcileAt ? message.updatedAt : reconcileAt
     affectedConversations.add(message.conversationId)
     /*
      * Labels are intentionally excluded from the source key: selected AI
@@ -163,7 +168,7 @@ export function applyChanges(
   }
 
   const findMessage = db.prepare(
-    'SELECT rowid,id,conversation_id FROM messages WHERE mailbox_id=? AND provider_message_id=?',
+    'SELECT rowid,id,conversation_id,updated_at FROM messages WHERE mailbox_id=? AND provider_message_id=?',
   )
   for (const providerMessageId of batch.deletedProviderMessageIds ?? []) {
     const found = findMessage.get(mailbox, providerMessageId)
@@ -177,7 +182,12 @@ export function applyChanges(
     deleteMessageLabels.run(id)
     db.prepare('DELETE FROM mail_fts WHERE rowid=?').run(message.rowid)
     db.prepare('DELETE FROM messages WHERE id=?').run(id)
+    searchTouched = true
+    const deletedAt = String(message.updated_at)
+    reconcileAt = reconcileAt === undefined || deletedAt > reconcileAt ? deletedAt : reconcileAt
   }
+  if (searchTouched && reconcileAt !== undefined)
+    reconcileSearchIndexProgress(db, mailbox, reconcileAt)
 
   for (const draft of batch.drafts ?? []) mergeProviderDraft(db, draft, draftOptions)
 
