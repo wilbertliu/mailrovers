@@ -407,3 +407,111 @@ describe('worker database host lifecycle', () => {
     await expect(host.store.listMailboxes()).rejects.toThrow('Database host is closed')
   })
 })
+
+describe('worker database host startup', () => {
+  it('rejects silent workers after the startup timeout and terminates once', async () => {
+    const worker = new FakeWorker()
+    worker.terminateMode = 'hang'
+    await expect(
+      createWorkerDatabaseHost('test.sqlite', () => worker, {
+        startupTimeoutMs: 20,
+        terminateTimeoutMs: 15,
+      }),
+    ).rejects.toThrow(/did not become ready within 20ms/)
+    expect(worker.terminateCalls).toBe(1)
+    // Late ready after terminal failure must not re-open or re-terminate.
+    worker.emitMessage({ kind: 'ready' })
+    expect(worker.terminateCalls).toBe(1)
+  })
+
+  it('fails when closed arrives before ready', async () => {
+    const worker = new FakeWorker()
+    const hostPromise = createWorkerDatabaseHost('test.sqlite', () => worker, {
+      startupTimeoutMs: 200,
+    })
+    worker.emitMessage({ kind: 'closed' })
+    await expect(hostPromise).rejects.toThrow(/sent closed before ready/)
+    expect(worker.terminateCalls).toBe(1)
+  })
+
+  it('fails on unexpected protocol messages before ready', async () => {
+    const worker = new FakeWorker()
+    const hostPromise = createWorkerDatabaseHost('test.sqlite', () => worker, {
+      startupTimeoutMs: 200,
+    })
+    worker.emitMessage({
+      kind: 'committed-changes',
+      changes: { mailboxId: mailboxId('mailbox'), search: true },
+    })
+    await expect(hostPromise).rejects.toThrow(/sent committed-changes before ready/)
+    expect(worker.terminateCalls).toBe(1)
+  })
+
+  it('fails on worker error during startup', async () => {
+    const worker = new FakeWorker()
+    const hostPromise = createWorkerDatabaseHost('test.sqlite', () => worker, {
+      startupTimeoutMs: 200,
+    })
+    worker.emitError(new Error('boot failed'))
+    await expect(hostPromise).rejects.toThrow('boot failed')
+    expect(worker.terminateCalls).toBe(1)
+  })
+
+  it('fails on worker exit during startup', async () => {
+    const worker = new FakeWorker()
+    const hostPromise = createWorkerDatabaseHost('test.sqlite', () => worker, {
+      startupTimeoutMs: 200,
+    })
+    worker.emitExit(7)
+    await expect(hostPromise).rejects.toThrow(/exited with code 7/)
+    expect(worker.terminateCalls).toBe(0)
+  })
+
+  it('accepts ready just before the startup timeout', async () => {
+    const worker = new FakeWorker()
+    const hostPromise = createWorkerDatabaseHost('test.sqlite', () => worker, {
+      startupTimeoutMs: 40,
+    })
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    worker.emitMessage({ kind: 'ready' })
+    const host = await hostPromise
+    const pending = host.store.listMailboxes()
+    worker.emitMessage({ kind: 'result', id: 1, method: 'listMailboxes', result: [mailbox] })
+    await expect(pending).resolves.toEqual([mailbox])
+    await host.close()
+  })
+
+  it('cancels the startup timer after ready so a later timeout cannot fail the host', async () => {
+    const worker = new FakeWorker()
+    const host = await startHost(worker, { startupTimeoutMs: 30 })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const pending = host.store.listMailboxes()
+    worker.emitMessage({ kind: 'result', id: 1, method: 'listMailboxes', result: [mailbox] })
+    await expect(pending).resolves.toEqual([mailbox])
+    await host.close()
+    expect(worker.terminateCalls).toBe(1)
+  })
+
+  it('startup failure with rejecting terminate does not unhandled-reject', async () => {
+    const worker = new FakeWorker()
+    worker.terminateMode = 'reject'
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason)
+    }
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      await expect(
+        createWorkerDatabaseHost('test.sqlite', () => worker, {
+          startupTimeoutMs: 20,
+          terminateTimeoutMs: 15,
+        }),
+      ).rejects.toThrow(/did not become ready/)
+      await new Promise((resolve) => setImmediate(resolve))
+      expect(unhandled).toEqual([])
+      expect(worker.terminateCalls).toBe(1)
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
+  })
+})

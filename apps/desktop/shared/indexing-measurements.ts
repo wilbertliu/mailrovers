@@ -1,9 +1,14 @@
 export type PerformanceScenario = 'complete-index' | 'pending-fts-backfill'
 export type DatabaseHostKind = 'main' | 'worker'
 
-/** Matches desktop `backfillSearch` batch size. */
+/**
+ * Shared FTS backfill batch size for runtime (`backfillSearch`) and performance
+ * harnesses. 250 keeps worker-host foreground query contention under the 100 ms
+ * responsiveness target while amortizing SQLite FTS transaction overhead.
+ */
 export const SEARCH_BACKFILL_BATCH_LIMIT = 250
 export const PENDING_FTS_MESSAGE_COUNT = 100_000
+/** Watchdog batch count derived from the shared runtime/perf batch limit. */
 export const PENDING_FTS_EXPECTED_BATCHES = Math.ceil(
   PENDING_FTS_MESSAGE_COUNT / SEARCH_BACKFILL_BATCH_LIMIT,
 )

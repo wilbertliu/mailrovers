@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   attributeIndexingStallMs,
@@ -5,8 +7,10 @@ import {
   intervalsOverlap,
   packagedRunTimeouts,
   PENDING_FTS_EXPECTED_BATCHES,
+  PENDING_FTS_MESSAGE_COUNT,
   PENDING_FTS_WATCHDOG_MAX_BATCH_MS,
   sampleEventLoopStallMs,
+  SEARCH_BACKFILL_BATCH_LIMIT,
 } from '../shared/indexing-measurements.js'
 import {
   parseSmokePackagedArgs,
@@ -152,5 +156,19 @@ describe('indexing measurement helpers', () => {
       PENDING_FTS_EXPECTED_BATCHES * PENDING_FTS_WATCHDOG_MAX_BATCH_MS + 120_000,
     )
     expect(documented.totalTimeoutMs).toBeGreaterThan(600_000)
+  })
+
+  it('keeps runtime backfill batch size on the shared constant so watchdog counts cannot drift', () => {
+    expect(SEARCH_BACKFILL_BATCH_LIMIT).toBe(250)
+    expect(PENDING_FTS_EXPECTED_BATCHES).toBe(
+      Math.ceil(PENDING_FTS_MESSAGE_COUNT / SEARCH_BACKFILL_BATCH_LIMIT),
+    )
+    const mainSource = readFileSync(
+      fileURLToPath(new URL('../electron/main.ts', import.meta.url)),
+      'utf8',
+    )
+    expect(mainSource).toMatch(/SEARCH_BACKFILL_BATCH_LIMIT/)
+    expect(mainSource).toMatch(/limit:\s*SEARCH_BACKFILL_BATCH_LIMIT/)
+    expect(mainSource).not.toMatch(/limit:\s*250\b/)
   })
 })

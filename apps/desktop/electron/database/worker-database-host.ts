@@ -36,10 +36,15 @@ type DatabaseCall = <Method extends DatabaseMethod>(
   input: DatabaseMethodInput<Method>,
 ) => Promise<DatabaseMethodResult<Method>>
 
-/** Host lifecycle after successful worker startup. */
-export type WorkerDatabaseHostLifecycle = 'open' | 'closing' | 'closed' | 'failed'
+/** Host lifecycle from worker creation through terminal close/failure. */
+export type WorkerDatabaseHostLifecycle = 'starting' | 'open' | 'closing' | 'closed' | 'failed'
 
 export type WorkerDatabaseHostOptions = {
+  /**
+   * Max wait for the worker ready message. Default 300_000 (5 minutes).
+   * Inject a small value in tests; production needs room for open/migrate work.
+   */
+  startupTimeoutMs?: number
   /** Max wait for already-dispatched RPCs during close. Default 5_000. */
   closeDrainTimeoutMs?: number
   /** Max wait for worker-side close acknowledgment. Default 1_000. */
@@ -48,6 +53,13 @@ export type WorkerDatabaseHostOptions = {
   terminateTimeoutMs?: number
 }
 
+/**
+ * Deadlock ceiling for worker ready, not a normal-startup budget.
+ * Ready is posted only after openDatabase + migrate (integrity checks,
+ * optional VACUUM INTO backups, and data backfills), which can take minutes
+ * on large or slow local databases during upgrades.
+ */
+const DEFAULT_STARTUP_TIMEOUT_MS = 300_000
 const DEFAULT_CLOSE_DRAIN_TIMEOUT_MS = 5_000
 const DEFAULT_CLOSE_ACK_TIMEOUT_MS = 1_000
 const DEFAULT_TERMINATE_TIMEOUT_MS = 2_000
@@ -118,6 +130,7 @@ export async function createWorkerDatabaseHost(
   workerFactory: DatabaseWorkerFactory = createDatabaseWorker,
   options: WorkerDatabaseHostOptions = {},
 ): Promise<DatabaseHost> {
+  const startupTimeoutMs = options.startupTimeoutMs ?? DEFAULT_STARTUP_TIMEOUT_MS
   const closeDrainTimeoutMs = options.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS
   const closeAckTimeoutMs = options.closeAckTimeoutMs ?? DEFAULT_CLOSE_ACK_TIMEOUT_MS
   const terminateTimeoutMs = options.terminateTimeoutMs ?? DEFAULT_TERMINATE_TIMEOUT_MS
@@ -125,19 +138,26 @@ export async function createWorkerDatabaseHost(
   const pending = new Map<number, Pending>()
   const committedChangeListeners = new Set<CommittedChangeListener>()
   let nextId = 1
-  let lifecycle: WorkerDatabaseHostLifecycle = 'open'
+  let lifecycle: WorkerDatabaseHostLifecycle = 'starting'
   let workerExited = false
   let workerClosedAck = false
   let terminationPromise: Promise<void> | undefined
   let closePromise: Promise<void> | undefined
   let closingFailure: Error | undefined
   let rejectStartup: ((error: Error) => void) | undefined
-  let started = false
+  let resolveStartup: (() => void) | undefined
+  let startupSettled = false
   let notifyPendingIdle: (() => void) | undefined
   let notifyWorkerClosed: (() => void) | undefined
+  const startupDelay = unrefDelay(startupTimeoutMs)
 
   const isTerminal = () => lifecycle === 'closed' || lifecycle === 'failed'
   const isAccepting = () => lifecycle === 'open'
+  const isStarting = () => lifecycle === 'starting'
+
+  const cancelStartupTimer = () => {
+    startupDelay.cancel()
+  }
 
   const signalPendingIdle = () => {
     if (pending.size > 0) return
@@ -181,30 +201,59 @@ export async function createWorkerDatabaseHost(
     void terminateWorker()
   }
 
+  const rejectCreation = (error: Error) => {
+    if (startupSettled) return
+    startupSettled = true
+    cancelStartupTimer()
+    rejectStartup?.(error)
+  }
+
   const enterTerminal = (next: 'closed' | 'failed', error?: Error) => {
     if (isTerminal()) return
+    const wasStarting = isStarting()
+    cancelStartupTimer()
     lifecycle = next
     if (error !== undefined) rejectPending(error)
     stopCommittedChanges()
-    if (!started) rejectStartup?.(error ?? new Error('Database host failed before ready'))
+    if (wasStarting || !startupSettled) {
+      rejectCreation(error ?? new Error('Database host failed before ready'))
+    }
     requestTermination()
   }
 
   const fail = (error: Error) => {
     if (isTerminal()) return
+    cancelStartupTimer()
     if (lifecycle === 'closing') {
       closingFailure = error
       lifecycle = 'failed'
       rejectPending(error)
       stopCommittedChanges()
-      if (!started) rejectStartup?.(error)
+      rejectCreation(error)
       workerClosedAck = true
       notifyWorkerClosed?.()
       notifyWorkerClosed = undefined
       requestTermination()
       return
     }
+    if (isStarting()) {
+      // Terminal failure before ready: reject creation and terminate once.
+      lifecycle = 'failed'
+      rejectPending(error)
+      stopCommittedChanges()
+      rejectCreation(error)
+      requestTermination()
+      return
+    }
     enterTerminal('failed', error)
+  }
+
+  const markReady = () => {
+    if (!isStarting() || startupSettled) return
+    startupSettled = true
+    cancelStartupTimer()
+    lifecycle = 'open'
+    resolveStartup?.()
   }
 
   const waitForPendingIdle = (timeoutMs: number): Promise<void> => {
@@ -301,10 +350,22 @@ export async function createWorkerDatabaseHost(
   const store = createDatabaseStoreProxy(call)
 
   const handleWorkerMessage = (message: DatabaseWorkerMessage) => {
+    if (isStarting()) {
+      if (message.kind === 'ready') {
+        markReady()
+        return
+      }
+      // Only ready is valid before open; closed/close-error/results/events fail startup.
+      fail(
+        new Error(
+          `Database worker sent ${message.kind} before ready; expected the ready handshake first`,
+        ),
+      )
+      return
+    }
+
     if (message.kind === 'ready') {
-      if (started) return
-      started = true
-      resolveStartup()
+      // Duplicate ready after open is ignored; never re-enter starting.
       return
     }
     if (message.kind === 'closed') {
@@ -354,7 +415,6 @@ export async function createWorkerDatabaseHost(
     } else request.reject(reconstructDatabaseError(message.error))
   }
 
-  let resolveStartup!: () => void
   const startup = new Promise<void>((resolve, reject) => {
     rejectStartup = reject
     resolveStartup = resolve
@@ -384,6 +444,14 @@ export async function createWorkerDatabaseHost(
         return
       }
       fail(new Error(`Database worker exited with code ${code}`))
+    })
+    void startupDelay.promise.then(() => {
+      if (startupSettled || isTerminal()) return
+      fail(
+        new Error(
+          `Database worker did not become ready within ${startupTimeoutMs}ms; check worker entry and database path`,
+        ),
+      )
     })
   })
 

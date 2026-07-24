@@ -18,6 +18,7 @@ import {
   attributeIndexingStallMs,
   evaluateContentionProbe,
   sampleEventLoopStallMs,
+  SEARCH_BACKFILL_BATCH_LIMIT,
 } from '../shared/indexing-measurements.js'
 import { composeDesktopApplication } from './composition-root.js'
 import type { DatabaseHost } from './database/database-host.js'
@@ -266,7 +267,8 @@ async function backfillSearch(store: MailStore, window?: BrowserWindow): Promise
           const startedWall = Date.now()
           complete = await store.backfillSearchIndex({
             mailboxId: mailbox.id,
-            limit: 250,
+            // Shared with perf/watchdog so batch sizing cannot drift.
+            limit: SEARCH_BACKFILL_BATCH_LIMIT,
             updatedAt: utcTimestamp(new Date().toISOString()),
           })
           const endedAtBatch = performance.now()
