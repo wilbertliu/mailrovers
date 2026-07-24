@@ -322,6 +322,79 @@ describe('search_index_state watermark', () => {
     expect(legacyHit.items).toHaveLength(1)
   })
 
+  it('emits one search-only completion event after pure FTS backfill batches', async () => {
+    await importMessages(
+      store,
+      mailbox,
+      [
+        buildMessage(mailbox, 'a'),
+        buildMessage(mailbox, 'b', later),
+        buildMessage(mailbox, 'c', latest),
+      ],
+      latest,
+    )
+    clearFtsAsLegacy(database)
+
+    const committed: Array<{ mailboxId?: string; conversations?: true; search?: true }> = []
+    store.subscribeCommittedChanges((changes) =>
+      committed.push({
+        ...(changes.mailboxId === undefined ? {} : { mailboxId: changes.mailboxId }),
+        ...(changes.conversations ? { conversations: true } : {}),
+        ...(changes.search ? { search: true } : {}),
+      }),
+    )
+
+    const first = await store.backfillSearchIndex({
+      mailboxId: mailbox.id,
+      limit: 1,
+      updatedAt: later,
+    })
+    expect(first).toBe(false)
+    expect(searchState(database).state).toBe('indexing')
+    expect(committed).toEqual([])
+    const midSearch = await store.searchMail({
+      requestId: operationId('search-mid-backfill'),
+      mailboxId: mailbox.id,
+      query: 'token-a',
+    })
+    expect(midSearch.indexing).toBe(true)
+    expect(midSearch.items).toHaveLength(1)
+
+    const second = await store.backfillSearchIndex({
+      mailboxId: mailbox.id,
+      limit: 1,
+      updatedAt: later,
+    })
+    expect(second).toBe(false)
+    expect(committed).toEqual([])
+
+    const third = await store.backfillSearchIndex({
+      mailboxId: mailbox.id,
+      limit: 1,
+      updatedAt: later,
+    })
+    expect(third).toBe(true)
+    expect(searchState(database).state).toBe('complete')
+    expect(committed).toEqual([{ mailboxId: mailbox.id, search: true }])
+    expect(committed.some((event) => event.conversations === true)).toBe(false)
+
+    const doneSearch = await store.searchMail({
+      requestId: operationId('search-after-backfill'),
+      mailboxId: mailbox.id,
+      query: 'token-c',
+    })
+    expect(doneSearch.indexing).toBe(false)
+    expect(doneSearch.items).toHaveLength(1)
+
+    const alreadyComplete = await store.backfillSearchIndex({
+      mailboxId: mailbox.id,
+      limit: 1,
+      updatedAt: later,
+    })
+    expect(alreadyComplete).toBe(true)
+    expect(committed).toEqual([{ mailboxId: mailbox.id, search: true }])
+  })
+
   it('resets watermark on resetInitialImport and rebuilds progress on re-import', async () => {
     await importMessages(store, mailbox, [buildMessage(mailbox, 'original')], timestamp)
     expect(searchState(database).state).toBe('complete')

@@ -106,8 +106,10 @@ class SqliteMailStoreImpl {
       getDraft: drafts.getDraft.bind(drafts),
       listDrafts: drafts.listDrafts.bind(drafts),
       enqueueSendDraft: drafts.enqueueSendDraft.bind(drafts),
-      beginDraftReconciliation: draftReconciliation.beginDraftReconciliation.bind(draftReconciliation),
-      stageDraftReconciliation: draftReconciliation.stageDraftReconciliation.bind(draftReconciliation),
+      beginDraftReconciliation:
+        draftReconciliation.beginDraftReconciliation.bind(draftReconciliation),
+      stageDraftReconciliation:
+        draftReconciliation.stageDraftReconciliation.bind(draftReconciliation),
       completeDraftReconciliation:
         draftReconciliation.completeDraftReconciliation.bind(draftReconciliation),
     } satisfies MailStore

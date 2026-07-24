@@ -94,6 +94,248 @@ export class DatabaseProtocolError extends Error {
   }
 }
 
+/** Bounded, structured-clone-safe error shape for the worker boundary. */
+export type DatabaseErrorCauseEnvelope = {
+  name: string
+  message: string
+  code?: string
+}
+
+export type DatabaseErrorEnvelope = {
+  name: string
+  message: string
+  code?: string
+  cause?: DatabaseErrorCauseEnvelope
+}
+
+const ERROR_MESSAGE_MAX_LENGTH = 500
+const ERROR_NAME_MAX_LENGTH = 128
+const ERROR_CODE_MAX_LENGTH = 128
+const ERROR_CAUSE_MAX_DEPTH = 1
+const SAFE_ERROR_CODE = /^[A-Za-z0-9_.:-]+$/
+const SAFE_ERROR_NAME = /^[A-Za-z][A-Za-z0-9._-]*$/
+const SECRET_IN_TEXT =
+  /(?:bearer\s+\S+|(?:api[-_]?key|access[-_]?token|refresh[-_]?token|client[-_]?secret|password|passwd|token)\s*[:=]\s*\S+)/gi
+const EMAIL_ADDRESS = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi
+const RAW_ROW_JSON =
+  /\{[^{}]{0,2000}(?:"?(?:password|access_token|refresh_token|rowid|mailbox_id|encrypted|token)"?\s*:)[^{}]{0,2000}\}/gi
+const ALLOWED_ERROR_NAMES = new Set([
+  'Error',
+  'TypeError',
+  'RangeError',
+  'SyntaxError',
+  'DatabaseProtocolError',
+])
+
+function truncateText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value
+  return value.slice(0, maxLength)
+}
+
+function safeRead(read: () => unknown): unknown {
+  try {
+    return read()
+  } catch {
+    return undefined
+  }
+}
+
+function stripControlCharacters(value: string): string {
+  let result = ''
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0
+    const isControl =
+      code <= 0x08 ||
+      code === 0x0b ||
+      code === 0x0c ||
+      (code >= 0x0e && code <= 0x1f) ||
+      code === 0x7f
+    if (!isControl) result += character
+  }
+  return result
+}
+
+function sanitizeErrorText(value: string): string {
+  const withoutControls = stripControlCharacters(value)
+  const scrubbed = withoutControls
+    .replace(SECRET_IN_TEXT, '[REDACTED]')
+    .replace(EMAIL_ADDRESS, '[REDACTED]')
+    .replace(RAW_ROW_JSON, '[REDACTED]')
+  const normalized = scrubbed.length === 0 ? 'Database worker failed' : scrubbed
+  return truncateText(normalized, ERROR_MESSAGE_MAX_LENGTH)
+}
+
+function normalizeErrorName(value: unknown): string {
+  const raw = safeRead(() => value)
+  if (typeof raw !== 'string' || raw.length === 0) return 'Error'
+  const cleaned = stripControlCharacters(raw)
+  if (!SAFE_ERROR_NAME.test(cleaned) || cleaned.length > ERROR_NAME_MAX_LENGTH) return 'Error'
+  if (ALLOWED_ERROR_NAMES.has(cleaned)) return cleaned
+  // Preserve simple coded-style names such as custom operational Error subclasses.
+  if (/^[A-Za-z][A-Za-z0-9]{0,63}(?:Error)?$/.test(cleaned)) return cleaned
+  return 'Error'
+}
+
+function readSafeErrorCode(value: unknown): string | undefined {
+  const raw = safeRead(() => value)
+  if (typeof raw !== 'string') return undefined
+  if (raw.length === 0 || raw.length > ERROR_CODE_MAX_LENGTH) return undefined
+  if (!SAFE_ERROR_CODE.test(raw)) return undefined
+  return raw
+}
+
+function isObjectLike(value: unknown): value is object {
+  const type = typeof value
+  return (type === 'object' && value !== null) || type === 'function'
+}
+
+/**
+ * Serialize without `instanceof` / prototype walks. Hostile Proxies with throwing
+ * getPrototypeOf/get traps must still produce a bounded envelope and never throw.
+ */
+function serializeErrorLevel(
+  error: unknown,
+  depth: number,
+  seen: WeakSet<object>,
+): DatabaseErrorEnvelope | undefined {
+  if (error === undefined || error === null) return undefined
+
+  if (typeof error === 'string') {
+    return {
+      name: 'Error',
+      message: error.length > 0 ? sanitizeErrorText(error) : 'Database worker failed',
+    }
+  }
+  if (typeof error !== 'object' && typeof error !== 'function') {
+    return { name: 'Error', message: 'Database worker failed' }
+  }
+
+  const object: object = error
+  try {
+    if (seen.has(object)) return { name: 'Error', message: 'Database worker failed' }
+    seen.add(object)
+  } catch {
+    return { name: 'Error', message: 'Database worker failed' }
+  }
+
+  const name = normalizeErrorName(safeRead(() => Reflect.get(object, 'name')))
+  const messageRaw = safeRead(() => Reflect.get(object, 'message'))
+  const message =
+    typeof messageRaw === 'string' && messageRaw.length > 0
+      ? sanitizeErrorText(messageRaw)
+      : 'Database worker failed'
+  const envelope: DatabaseErrorEnvelope = { name, message }
+  const code = readSafeErrorCode(safeRead(() => Reflect.get(object, 'code')))
+  if (code !== undefined) envelope.code = code
+
+  if (depth < ERROR_CAUSE_MAX_DEPTH) {
+    const causeValue = safeRead(() => Reflect.get(object, 'cause'))
+    if (causeValue !== undefined && causeValue !== null) {
+      const cause = serializeErrorLevel(causeValue, depth + 1, seen)
+      if (cause !== undefined) {
+        envelope.cause = {
+          name: cause.name,
+          message: cause.message,
+          ...(cause.code === undefined ? {} : { code: cause.code }),
+        }
+      }
+    }
+  }
+  return envelope
+}
+
+const FALLBACK_ERROR_ENVELOPE: DatabaseErrorEnvelope = {
+  name: 'Error',
+  message: 'Database worker failed',
+}
+
+/** Serialize any thrown value into a bounded envelope (no secrets, no stack, no raw rows). Never throws. */
+export function serializeDatabaseError(error: unknown): DatabaseErrorEnvelope {
+  try {
+    return serializeErrorLevel(error, 0, new WeakSet<object>()) ?? FALLBACK_ERROR_ENVELOPE
+  } catch {
+    return { ...FALLBACK_ERROR_ENVELOPE }
+  }
+}
+
+/** True when a thrown value is a DatabaseProtocolError (name only; no instanceof). */
+export function isDatabaseProtocolErrorValue(error: unknown): boolean {
+  if (!isObjectLike(error)) return false
+  return normalizeErrorName(safeRead(() => Reflect.get(error, 'name'))) === 'DatabaseProtocolError'
+}
+
+/** Worker operation catch → protocol-error or correlated error; never throws. */
+export function workerOperationFailureMessage(
+  error: unknown,
+  request: { id: number; method: DatabaseMethod },
+):
+  | { kind: 'protocol-error'; error: DatabaseErrorEnvelope }
+  | { kind: 'error'; id: number; method: DatabaseMethod; error: DatabaseErrorEnvelope } {
+  const envelope = serializeDatabaseError(error)
+  if (isDatabaseProtocolErrorValue(error) || envelope.name === 'DatabaseProtocolError') {
+    return { kind: 'protocol-error', error: envelope }
+  }
+  return { kind: 'error', id: request.id, method: request.method, error: envelope }
+}
+
+/** Worker close catch → close-error; never throws. */
+export function workerCloseFailureMessage(error: unknown): {
+  kind: 'close-error'
+  error: DatabaseErrorEnvelope
+} {
+  return { kind: 'close-error', error: serializeDatabaseError(error) }
+}
+
+/** Rebuild an Error from a validated envelope (name, message, optional code/cause). */
+export function reconstructDatabaseError(envelope: DatabaseErrorEnvelope): Error {
+  const error = new Error(envelope.message)
+  error.name = envelope.name
+  if (envelope.code !== undefined) Object.assign(error, { code: envelope.code })
+  if (envelope.cause !== undefined) {
+    const cause = new Error(envelope.cause.message)
+    cause.name = envelope.cause.name
+    if (envelope.cause.code !== undefined) Object.assign(cause, { code: envelope.cause.code })
+    error.cause = cause
+  }
+  return error
+}
+
+function parseDatabaseErrorEnvelope(value: unknown, label: string): DatabaseErrorEnvelope {
+  if (!isRecord(value) || !hasOnlyKeys(value, ['name', 'message', 'code', 'cause']))
+    throw new Error(`Invalid ${label}`)
+  if (typeof value.name !== 'string' || typeof value.message !== 'string')
+    throw new Error(`Invalid ${label}`)
+  const envelope: DatabaseErrorEnvelope = {
+    name: normalizeErrorName(value.name),
+    message: sanitizeErrorText(value.message),
+  }
+  if (Object.hasOwn(value, 'code')) {
+    const code = readSafeErrorCode(value.code)
+    if (code === undefined) throw new Error(`Invalid ${label} code`)
+    envelope.code = code
+  }
+  if (Object.hasOwn(value, 'cause')) {
+    if (
+      !isRecord(value.cause) ||
+      !hasOnlyKeys(value.cause, ['name', 'message', 'code']) ||
+      typeof value.cause.name !== 'string' ||
+      typeof value.cause.message !== 'string'
+    )
+      throw new Error(`Invalid ${label} cause`)
+    const cause: DatabaseErrorCauseEnvelope = {
+      name: normalizeErrorName(value.cause.name),
+      message: sanitizeErrorText(value.cause.message),
+    }
+    if (Object.hasOwn(value.cause, 'code')) {
+      const code = readSafeErrorCode(value.cause.code)
+      if (code === undefined) throw new Error(`Invalid ${label} cause code`)
+      cause.code = code
+    }
+    envelope.cause = cause
+  }
+  return envelope
+}
+
 type MethodArguments<Method extends DatabaseMethod> = Method extends DatabaseMethod
   ? MailStore[Method] extends (...args: infer Arguments) => unknown
     ? Arguments
@@ -368,14 +610,26 @@ export type DatabaseRequest = {
 }[DatabaseMethod]
 
 type DatabaseResultMessage = { kind: 'result'; id: number; method: DatabaseMethod; result: unknown }
-type DatabaseErrorMessage = { kind: 'error'; id: number; method: DatabaseMethod; message: string }
+type DatabaseErrorMessage = {
+  kind: 'error'
+  id: number
+  method: DatabaseMethod
+  error: DatabaseErrorEnvelope
+}
 export type DatabaseWorkerMessage =
   | { kind: 'ready' }
   | { kind: 'committed-changes'; changes: CommittedChanges }
   | DatabaseResultMessage
   | DatabaseErrorMessage
-  | { kind: 'protocol-error'; message: string }
+  | { kind: 'protocol-error'; error: DatabaseErrorEnvelope }
+  | { kind: 'closed' }
+  | { kind: 'close-error'; error: DatabaseErrorEnvelope }
+export type DatabaseHostControlMessage = { kind: 'close' }
 export type CommittedChanges = CommittedChangeSet
+
+export function isDatabaseHostControlMessage(value: unknown): value is DatabaseHostControlMessage {
+  return isRecord(value) && hasOnlyKeys(value, ['kind']) && value.kind === 'close'
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null) return false
@@ -445,7 +699,15 @@ export function parseDatabaseRequest(value: unknown): DatabaseRequest {
 function parseCommittedChanges(value: unknown): CommittedChanges {
   if (
     !isRecord(value) ||
-    !hasOnlyKeys(value, ['mailboxId', 'mailboxes', 'conversations', 'labels', 'drafts', 'outbox'])
+    !hasOnlyKeys(value, [
+      'mailboxId',
+      'mailboxes',
+      'conversations',
+      'labels',
+      'drafts',
+      'outbox',
+      'search',
+    ])
   )
     throw new Error('Invalid committed changes envelope')
   const changes: CommittedChanges = {}
@@ -453,7 +715,14 @@ function parseCommittedChanges(value: unknown): CommittedChanges {
     if (typeof value.mailboxId !== 'string') throw new Error('Invalid committed changes mailbox id')
     changes.mailboxId = mailboxId(value.mailboxId)
   }
-  for (const key of ['mailboxes', 'conversations', 'labels', 'drafts', 'outbox'] as const) {
+  for (const key of [
+    'mailboxes',
+    'conversations',
+    'labels',
+    'drafts',
+    'outbox',
+    'search',
+  ] as const) {
     if (Object.hasOwn(value, key) && value[key] !== true)
       throw new Error('Invalid committed changes flag')
     if (value[key] === true) changes[key] = true
@@ -490,26 +759,37 @@ export function parseDatabaseWorkerMessage(value: unknown): DatabaseWorkerMessag
       }
     case 'error':
       if (
-        !hasOnlyKeys(value, ['kind', 'id', 'method', 'message']) ||
+        !hasOnlyKeys(value, ['kind', 'id', 'method', 'error']) ||
         !Object.hasOwn(value, 'id') ||
-        !Object.hasOwn(value, 'method')
+        !Object.hasOwn(value, 'method') ||
+        !Object.hasOwn(value, 'error')
       )
         throw new Error('Invalid database error message')
-      if (
-        !isPositiveSafeInteger(value.id) ||
-        !isDatabaseMethod(value.method) ||
-        typeof value.message !== 'string'
-      )
+      if (!isPositiveSafeInteger(value.id) || !isDatabaseMethod(value.method))
         throw new Error('Invalid database error message')
-      return { kind: 'error', id: value.id, method: value.method, message: value.message }
+      return {
+        kind: 'error',
+        id: value.id,
+        method: value.method,
+        error: parseDatabaseErrorEnvelope(value.error, 'database error envelope'),
+      }
     case 'protocol-error':
-      if (
-        !hasOnlyKeys(value, ['kind', 'message']) ||
-        !Object.hasOwn(value, 'message') ||
-        typeof value.message !== 'string'
-      )
+      if (!hasOnlyKeys(value, ['kind', 'error']) || !Object.hasOwn(value, 'error'))
         throw new Error('Invalid database protocol error')
-      return { kind: 'protocol-error', message: value.message }
+      return {
+        kind: 'protocol-error',
+        error: parseDatabaseErrorEnvelope(value.error, 'database protocol error envelope'),
+      }
+    case 'closed':
+      if (!hasOnlyKeys(value, ['kind'])) throw new Error('Invalid database worker closed message')
+      return { kind: 'closed' }
+    case 'close-error':
+      if (!hasOnlyKeys(value, ['kind', 'error']) || !Object.hasOwn(value, 'error'))
+        throw new Error('Invalid database close error')
+      return {
+        kind: 'close-error',
+        error: parseDatabaseErrorEnvelope(value.error, 'database close error envelope'),
+      }
     default:
       throw new Error('Unknown database worker message')
   }

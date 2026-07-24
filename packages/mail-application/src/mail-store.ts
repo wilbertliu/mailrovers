@@ -115,6 +115,8 @@ export type CommittedChangeSet = {
   labels?: true | undefined
   drafts?: true | undefined
   outbox?: true | undefined
+  /** Search index state or FTS completeness changed without conversation row mutations. */
+  search?: true | undefined
 }
 
 export type CommittedChangeListener = (changes: CommittedChangeSet) => void
@@ -436,7 +438,10 @@ export type MailSyncEngineStore = MailboxSyncStore &
 
 /** Application facade: query + connection lifecycle + outbox enqueue + drafts + AI. */
 export type MailApplicationStore = ConversationQueryStore &
-  Pick<MailboxSyncStore, 'listMailboxes' | 'getMailbox' | 'saveConnectedMailbox' | 'removeMailbox'> &
+  Pick<
+    MailboxSyncStore,
+    'listMailboxes' | 'getMailbox' | 'saveConnectedMailbox' | 'removeMailbox'
+  > &
   Pick<
     OutboxStore,
     | 'enqueueCommand'

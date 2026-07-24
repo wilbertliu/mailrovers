@@ -76,9 +76,11 @@ describe('mailbox IPC contracts', () => {
         kind: 'mail-changed',
         requestId: 'mailrovers:committed-changes',
         mailboxId: 'mailbox-1',
-        changes: { conversations: true, drafts: true, outbox: true },
+        changes: { conversations: true, drafts: true, outbox: true, search: true },
       }),
-    ).toMatchObject({ changes: { conversations: true, drafts: true, outbox: true } })
+    ).toMatchObject({
+      changes: { conversations: true, drafts: true, outbox: true, search: true },
+    })
     for (const leaked of ['subject', 'body', 'address', 'providerMessageId'])
       expect(() =>
         desktopEventSchema.parse({

@@ -33,6 +33,8 @@ export function subscribeDesktopChangeInvalidation({
       void queryClient.invalidateQueries({ queryKey: ['conversation', ...mailboxKey] })
       void queryClient.invalidateQueries({ queryKey: ['search', ...mailboxKey] })
     }
+    if (event.changes.search && !event.changes.conversations)
+      void queryClient.invalidateQueries({ queryKey: ['search', ...mailboxKey] })
     if (event.changes.labels)
       void queryClient.invalidateQueries({ queryKey: ['labels', ...mailboxKey] })
     if (event.changes.drafts)

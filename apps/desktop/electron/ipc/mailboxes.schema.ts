@@ -113,6 +113,7 @@ const committedChangesSchema = z
     labels: z.literal(true).optional(),
     drafts: z.literal(true).optional(),
     outbox: z.literal(true).optional(),
+    search: z.literal(true).optional(),
   })
   .strict()
   .refine((changes) => Object.keys(changes).length > 0)

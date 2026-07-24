@@ -170,6 +170,7 @@ export function composeDesktopApplication(input: {
         ...(changes.labels ? { labels: true } : {}),
         ...(changes.drafts ? { drafts: true } : {}),
         ...(changes.outbox ? { outbox: true } : {}),
+        ...(changes.search ? { search: true } : {}),
       },
     }),
   )

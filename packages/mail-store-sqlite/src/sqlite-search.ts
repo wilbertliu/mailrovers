@@ -94,14 +94,16 @@ export class SqliteSearch {
     updatedAt: ReturnType<typeof utcTimestamp>
   }): Promise<boolean> {
     const currentValue = this.db
-      .prepare('SELECT last_message_rowid FROM search_index_state WHERE mailbox_id=?')
+      .prepare('SELECT last_message_rowid,state FROM search_index_state WHERE mailbox_id=?')
       .get(input.mailboxId)
     const current = currentValue === undefined ? 0 : Number(row(currentValue).last_message_rowid)
+    const previousState = currentValue === undefined ? 'pending' : String(row(currentValue).state)
     const messages = this.db
       .prepare(
         'SELECT rowid,id FROM messages WHERE mailbox_id=? AND rowid>? ORDER BY rowid LIMIT ?',
       )
       .all(input.mailboxId, current, input.limit)
+    let complete = false
     this.db.transaction(() => {
       // Pure FTS writes only — search_index_state is updated once below.
       for (const value of messages) indexMessage(this.db, String(row(value).id))
@@ -111,20 +113,16 @@ export class SqliteSearch {
         this.db
           .prepare('SELECT 1 FROM messages WHERE mailbox_id=? AND rowid>? LIMIT 1')
           .get(input.mailboxId, lastRowid) !== undefined
+      complete = !hasMore
       this.db
         .prepare(`INSERT INTO search_index_state(mailbox_id,last_message_rowid,state,updated_at)
         VALUES (?,?,?,?) ON CONFLICT(mailbox_id) DO UPDATE SET
         last_message_rowid=excluded.last_message_rowid,state=excluded.state,updated_at=excluded.updated_at`)
-        .run(input.mailboxId, lastRowid, hasMore ? 'indexing' : 'complete', input.updatedAt)
+        .run(input.mailboxId, lastRowid, complete ? 'complete' : 'indexing', input.updatedAt)
     })()
-    if (messages.length > 0)
-      this.publishCommitted({ mailboxId: input.mailboxId, conversations: true })
-    const last = messages.at(-1)
-    if (last === undefined) return true
-    return (
-      this.db
-        .prepare('SELECT 1 FROM messages WHERE mailbox_id=? AND rowid>? LIMIT 1')
-        .get(input.mailboxId, Number(row(last).rowid)) === undefined
-    )
+    // Intermediate pure-FTS batches stay silent. Emit search-only once when indexing completes.
+    if (complete && previousState !== 'complete')
+      this.publishCommitted({ mailboxId: input.mailboxId, search: true })
+    return complete
   }
 }

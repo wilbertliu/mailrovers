@@ -167,6 +167,7 @@ export type CommittedChangesEvent = {
     labels?: true | undefined
     drafts?: true | undefined
     outbox?: true | undefined
+    search?: true | undefined
   }
 }
 

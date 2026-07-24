@@ -68,6 +68,35 @@ describe('desktop change invalidation', () => {
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['labels', id] })
   })
 
+  it('invalidates only search queries for search-only completion events', () => {
+    const queryClient = new QueryClient()
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries')
+    let publish: (event: CommittedChangesEvent | EventRecoveryRequired) => void = () => undefined
+
+    subscribeDesktopChangeInvalidation({
+      queryClient,
+      changes: {
+        subscribe(callback) {
+          publish = callback
+          return () => undefined
+        },
+      },
+    })
+
+    const id = mailboxId('mailbox-search')
+    publish({
+      kind: 'mail-changed',
+      requestId: operationId('committed-changes-search'),
+      mailboxId: id,
+      changes: { search: true },
+    })
+
+    expect(invalidateQueries).toHaveBeenCalledTimes(1)
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['search', id] })
+    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ['conversations', id] })
+    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ['conversation', id] })
+  })
+
   it('invalidates the whole cache after an event overflow', () => {
     const queryClient = new QueryClient()
     const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries')

@@ -1,6 +1,6 @@
 import type { MailboxSummary } from '@mailrovers/mail-contracts'
 import { mailboxId, utcTimestamp } from '@mailrovers/mail-domain'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   createWorkerDatabaseHost,
   type DatabaseWorkerLike,
@@ -32,9 +32,11 @@ const mailbox = {
 class FakeWorker implements DatabaseWorkerLike {
   readonly messages: unknown[] = []
   terminateCalls = 0
+  terminateMode: 'resolve' | 'reject' | 'hang' = 'resolve'
   private messageListeners: ((message: unknown) => void)[] = []
   private errorListeners: ((error: unknown) => void)[] = []
   private exitListeners: ((code: number) => void)[] = []
+  autoAckClose = true
 
   on(event: 'message', listener: (message: unknown) => void): this
   on(event: 'error', listener: (error: unknown) => void): this
@@ -51,10 +53,20 @@ class FakeWorker implements DatabaseWorkerLike {
 
   postMessage(message: unknown): void {
     this.messages.push(message)
+    if (
+      this.autoAckClose &&
+      typeof message === 'object' &&
+      message !== null &&
+      'kind' in message &&
+      message.kind === 'close'
+    )
+      queueMicrotask(() => this.emitMessage({ kind: 'closed' }))
   }
 
   terminate(): Promise<number> {
     this.terminateCalls += 1
+    if (this.terminateMode === 'hang') return new Promise(() => undefined)
+    if (this.terminateMode === 'reject') return Promise.reject(new Error('terminate failed'))
     return Promise.resolve(0)
   }
 
@@ -73,10 +85,17 @@ class FakeWorker implements DatabaseWorkerLike {
 
 async function startHost(
   worker: FakeWorker,
+  options?: Parameters<typeof createWorkerDatabaseHost>[2],
 ): Promise<Awaited<ReturnType<typeof createWorkerDatabaseHost>>> {
-  const hostPromise = createWorkerDatabaseHost('test.sqlite', () => worker)
+  const hostPromise = createWorkerDatabaseHost('test.sqlite', () => worker, options)
   worker.emitMessage({ kind: 'ready' })
   return hostPromise
+}
+
+function isCloseControl(message: unknown): boolean {
+  return (
+    typeof message === 'object' && message !== null && 'kind' in message && message.kind === 'close'
+  )
 }
 
 describe('worker database host lifecycle', () => {
@@ -117,7 +136,10 @@ describe('worker database host lifecycle', () => {
     [
       'protocol error',
       (worker: FakeWorker) =>
-        worker.emitMessage({ kind: 'protocol-error', message: 'bad request' }),
+        worker.emitMessage({
+          kind: 'protocol-error',
+          error: { name: 'Error', message: 'bad request' },
+        }),
       1,
     ],
     ['worker error', (worker: FakeWorker) => worker.emitError(new Error('worker failed')), 1],
@@ -142,7 +164,10 @@ describe('worker database host lifecycle', () => {
     const host = await startHost(worker)
     const pending = host.store.listMailboxes()
 
-    worker.emitMessage({ kind: 'protocol-error', message: 'bad request' })
+    worker.emitMessage({
+      kind: 'protocol-error',
+      error: { name: 'Error', message: 'bad request' },
+    })
 
     await expect(pending).rejects.toThrow('bad request')
     const firstClose = host.close()
@@ -153,17 +178,232 @@ describe('worker database host lifecycle', () => {
     expect(worker.terminateCalls).toBe(1)
   })
 
-  it('rejects pending calls on close and terminates once', async () => {
+  it('drains in-flight RPCs on close before terminate', async () => {
     const worker = new FakeWorker()
     const host = await startHost(worker)
     const pending = host.store.listMailboxes()
+
+    const closePromise = host.close()
+    expect(worker.messages.at(-1)).toEqual({ kind: 'close' })
+
+    worker.emitMessage({ kind: 'result', id: 1, method: 'listMailboxes', result: [mailbox] })
+    await expect(pending).resolves.toEqual([mailbox])
+    await closePromise
+    expect(worker.terminateCalls).toBe(1)
+  })
+
+  it('rejects new calls while closing and settles pending once on timeout', async () => {
+    const worker = new FakeWorker()
+    worker.autoAckClose = false
+    const host = await startHost(worker, { closeDrainTimeoutMs: 20, closeAckTimeoutMs: 10 })
+    const pending = host.store.listMailboxes()
+    let settleCount = 0
+    void pending.then(
+      () => {
+        settleCount += 1
+      },
+      () => {
+        settleCount += 1
+      },
+    )
+
+    const closePromise = host.close()
+    await expect(host.store.listMailboxes()).rejects.toThrow('Database host is closed')
+
+    await expect(pending).rejects.toThrow('Database host closed')
+    await closePromise
+    expect(settleCount).toBe(1)
+    expect(worker.terminateCalls).toBe(1)
+
+    // Late response must not double-settle or re-fail the host after terminal close.
+    worker.emitMessage({ kind: 'result', id: 1, method: 'listMailboxes', result: [mailbox] })
+    await expect(host.store.listMailboxes()).rejects.toThrow('Database host is closed')
+    expect(settleCount).toBe(1)
+  })
+
+  it('close is idempotent and shares one termination', async () => {
+    const worker = new FakeWorker()
+    const host = await startHost(worker)
 
     const firstClose = host.close()
     const secondClose = host.close()
 
     expect(secondClose).toBe(firstClose)
-    await expect(pending).rejects.toThrow('Database host closed')
     await expect(Promise.all([firstClose, secondClose])).resolves.toEqual([undefined, undefined])
     expect(worker.terminateCalls).toBe(1)
+  })
+
+  it('settles close when terminate never resolves', async () => {
+    const worker = new FakeWorker()
+    worker.terminateMode = 'hang'
+    const host = await startHost(worker, { terminateTimeoutMs: 20, closeAckTimeoutMs: 10 })
+
+    await expect(host.close()).resolves.toBeUndefined()
+    expect(worker.terminateCalls).toBe(1)
+    await expect(host.close()).resolves.toBeUndefined()
+    expect(worker.terminateCalls).toBe(1)
+  })
+
+  it('settles close when terminate rejects without unhandled rejection', async () => {
+    const worker = new FakeWorker()
+    worker.terminateMode = 'reject'
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => {
+      unhandled.push(reason)
+    }
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      const host = await startHost(worker)
+      await expect(host.close()).resolves.toBeUndefined()
+      await new Promise((resolve) => setImmediate(resolve))
+      expect(unhandled).toEqual([])
+      expect(worker.terminateCalls).toBe(1)
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
+  })
+
+  it('protocol failure then close shares bounded terminate without double settlement', async () => {
+    const worker = new FakeWorker()
+    worker.terminateMode = 'hang'
+    const host = await startHost(worker, { terminateTimeoutMs: 20 })
+    const pending = host.store.listMailboxes()
+    let settleCount = 0
+    void pending.then(
+      () => {
+        settleCount += 1
+      },
+      () => {
+        settleCount += 1
+      },
+    )
+
+    worker.emitMessage({
+      kind: 'protocol-error',
+      error: { name: 'Error', message: 'bad request' },
+    })
+    await expect(pending).rejects.toThrow('bad request')
+    expect(settleCount).toBe(1)
+
+    await expect(host.close()).resolves.toBeUndefined()
+    expect(worker.terminateCalls).toBe(1)
+    expect(settleCount).toBe(1)
+  })
+
+  it('crash then close keeps primary failure and settles once', async () => {
+    const worker = new FakeWorker()
+    worker.terminateMode = 'reject'
+    const host = await startHost(worker)
+    const pending = host.store.listMailboxes()
+
+    worker.emitError(new Error('worker crashed'))
+    await expect(pending).rejects.toThrow('worker crashed')
+    await expect(host.close()).resolves.toBeUndefined()
+    expect(worker.terminateCalls).toBe(1)
+  })
+
+  it('close-error fails host; repeated close shares the same rejection', async () => {
+    const worker = new FakeWorker()
+    worker.autoAckClose = false
+    const host = await startHost(worker, { closeAckTimeoutMs: 50, terminateTimeoutMs: 20 })
+
+    const firstClose = host.close()
+    const secondClose = host.close()
+    expect(secondClose).toBe(firstClose)
+    expect(worker.messages.filter((message) => isCloseControl(message))).toHaveLength(1)
+
+    worker.emitMessage({
+      kind: 'close-error',
+      error: { name: 'Error', message: 'SQLITE_BUSY', code: 'SQLITE_BUSY' },
+    })
+
+    const thirdClose = host.close()
+    expect(thirdClose).toBe(firstClose)
+
+    await expect(firstClose).rejects.toMatchObject({
+      message: 'SQLITE_BUSY',
+      code: 'SQLITE_BUSY',
+    })
+    await expect(secondClose).rejects.toMatchObject({
+      message: 'SQLITE_BUSY',
+      code: 'SQLITE_BUSY',
+    })
+    await expect(thirdClose).rejects.toMatchObject({
+      message: 'SQLITE_BUSY',
+      code: 'SQLITE_BUSY',
+    })
+    await expect(host.store.listMailboxes()).rejects.toThrow('Database host is closed')
+    expect(worker.terminateCalls).toBe(1)
+    expect(worker.messages.filter((message) => isCloseControl(message))).toHaveLength(1)
+  })
+
+  it('stops committed-change listeners after terminal failure', async () => {
+    const worker = new FakeWorker()
+    const host = await startHost(worker)
+    const listener = vi.fn<() => void>()
+    host.subscribeCommittedChanges(listener)
+
+    worker.emitMessage({
+      kind: 'protocol-error',
+      error: { name: 'Error', message: 'bad request' },
+    })
+    await expect(host.store.listMailboxes()).rejects.toThrow('Database host is closed')
+
+    worker.emitMessage({
+      kind: 'committed-changes',
+      changes: { mailboxId: mailboxId('mailbox'), conversations: true },
+    })
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('preserves coded worker errors across the boundary', async () => {
+    const worker = new FakeWorker()
+    const host = await startHost(worker)
+    const pending = host.store.listMailboxes()
+
+    worker.emitMessage({
+      kind: 'error',
+      id: 1,
+      method: 'listMailboxes',
+      error: {
+        name: 'Error',
+        message: 'DRAFT_VERSION_CONFLICT',
+        code: 'DRAFT_VERSION_CONFLICT',
+        cause: { name: 'Error', message: 'inner', code: 'INNER' },
+      },
+    })
+
+    const rejection = await pending.then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(rejection).toMatchObject({
+      name: 'Error',
+      message: 'DRAFT_VERSION_CONFLICT',
+      code: 'DRAFT_VERSION_CONFLICT',
+    })
+    expect(rejection).toEqual(
+      expect.objectContaining({
+        cause: expect.objectContaining({
+          name: 'Error',
+          message: 'inner',
+          code: 'INNER',
+        }),
+      }),
+    )
+    await host.close()
+  })
+
+  it('fans out one rejection to every pending request on crash', async () => {
+    const worker = new FakeWorker()
+    const host = await startHost(worker)
+    const first = host.store.listMailboxes()
+    const second = host.store.getMailbox(mailboxId('mailbox'))
+
+    worker.emitError(new Error('worker crashed'))
+
+    await expect(first).rejects.toThrow('worker crashed')
+    await expect(second).rejects.toThrow('worker crashed')
+    await expect(host.store.listMailboxes()).rejects.toThrow('Database host is closed')
   })
 })
