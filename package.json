@@ -1,6 +1,7 @@
 {
   "name": "mailrovers",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "postinstall": "pnpm --filter @mailrovers/desktop native:rebuild",
     "build": "pnpm -r build",

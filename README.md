@@ -1,5 +1,10 @@
 # MailRovers
 
+[![Platform: macOS](https://img.shields.io/badge/platform-macOS-000000.svg?logo=apple&logoColor=white)](#development)
+[![Built with Electron](https://img.shields.io/badge/built%20with-Electron-47848F.svg?logo=electron&logoColor=white)](#how-it-works)
+[![Local-first](https://img.shields.io/badge/data-local--first-2E7D32.svg)](#privacy-and-security)
+[![License: MIT](https://img.shields.io/badge/license-MIT-2F6F4E.svg)](./LICENSE)
+
 ## UI development
 
 Run the renderer-state workbench with:
