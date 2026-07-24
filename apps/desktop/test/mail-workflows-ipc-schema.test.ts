@@ -13,7 +13,7 @@ import {
 
 const base = { requestId: 'request-1', mailboxId: 'gmail:account' }
 
-describe('M3 IPC schemas', () => {
+describe('mail-workflows IPC schemas', () => {
   it('accepts bounded task-shaped inputs', () => {
     expect(listLabelsInputSchema.parse(base)).toEqual(base)
     expect(getConversationInputSchema.parse({ ...base, conversationId: 'conversation-1' })).toEqual(

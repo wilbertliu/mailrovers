@@ -68,16 +68,16 @@ Prefer **ARIA roles and accessible names** (same as `apps/desktop/src/App.*.stor
 
 Stable handles:
 
-| Target               | Handle                                                                             |
-| -------------------- | ---------------------------------------------------------------------------------- |
-| Inbox list           | `[aria-label="Inbox"]`                                                             |
-| Conversations region | `[aria-label="Conversations"]`                                                     |
-| Search               | `role=textbox` name `Search mail`                                                  |
-| Conversation row     | `role=button` name matching subject (fixture: `/Launch checklist and final copy/`) |
-| Compose              | `role=button` / `region` `New message` or `Reply`                                  |
-| Workspace nav        | `[aria-label="Workspace"]`, Inbox / Spam / Trash / Drafts, `[aria-label="Labels"]` |
-| AI settings          | `role=button` / heading `AI provider`                                              |
-| Commands             | `Mark read`, `Archive`, `Star`, `Add label`                                        |
+| Target               | Handle                                                                                    |
+| -------------------- | ----------------------------------------------------------------------------------------- |
+| Inbox list           | `[aria-label="Inbox"]`                                                                    |
+| Conversations region | `[aria-label="Conversations"]`                                                            |
+| Search               | `role=textbox` name `Search mail`                                                         |
+| Conversation row     | `role=button` name matching subject (fixture: `/Launch checklist and final copy/`)        |
+| Compose              | `role=button` / `region` `New message` or `Reply`                                         |
+| Workspace nav        | `[aria-label="Workspace"]`, Inbox / Spam / Trash / Drafts, `[aria-label="Labels"]`        |
+| AI settings          | `role=button` / heading `AI provider`                                                     |
+| Commands             | `Mark read`, `Archive`, `Star`, `Add label`                                               |
 | Connect              | `Connect Gmail`, `Waiting for Google…`, toast `Gmail connected`, button `Importing email` |
 
 Fixture subjects and copy live in `apps/desktop/src/storybook/storybook-fixtures.ts`. Catalog: `docs/storybook.md`.
@@ -102,7 +102,7 @@ input.form.requestSubmit()
 
 Success: `role=heading` name `Search`, region `Search results`, fixture result text about the launch checklist.
 
-For full Electron + Gmail + AI provider gates, see `docs/m2-verification.md`, `docs/m3-verification.md`, `docs/m4-verification.md` — those are manual/human gates, not this skill's default path.
+For full Electron, Gmail, and AI provider gates, see `docs/gmail-release-verification.md` and `docs/ai-provider-verification.md`. Those are manual gates, not this skill's default path.
 
 ## Evidence
 

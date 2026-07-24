@@ -92,7 +92,7 @@ export async function measureQueryPerformance(
 
 async function main(): Promise<void> {
   const report = await measureQueryPerformance(
-    join(process.cwd(), 'artifacts', 'm1-fixture.sqlite'),
+    join(process.cwd(), 'artifacts', 'benchmark-fixture.sqlite'),
   )
   writeRedactedJsonLine(report)
 }

@@ -34,4 +34,4 @@ http://127.0.0.1:6006/iframe.html?id=flows-composer--ai-reply-ready&viewMode=sto
 
 ## Not proven here
 
-Real HTTPS calls to OpenAI, encrypted API key round-trip, or streaming against a live model. Manual matrix: `docs/m4-verification.md`.
+Real HTTPS calls to OpenAI, encrypted API key round-trip, or streaming against a live model. Manual matrix: `docs/ai-provider-verification.md`.

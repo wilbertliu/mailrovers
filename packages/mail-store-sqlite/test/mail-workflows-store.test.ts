@@ -24,10 +24,10 @@ import { acquireTestSyncFence } from './sync-fence.js'
 
 const timestamp = utcTimestamp('2026-07-13T12:00:00.000Z')
 const mailbox: Mailbox = {
-  id: mailboxId('gmail:m3'),
+  id: mailboxId('gmail:mail-workflows'),
   workspaceId: workspaceId('workspace-personal'),
   provider: 'gmail',
-  providerAccountId: 'm3',
+  providerAccountId: 'mail-workflows',
   emailAddress: 'owner@example.test',
   displayName: 'Owner',
   syncState: 'ready',
@@ -44,12 +44,12 @@ const checkpoint: SyncCheckpoint = {
 }
 
 function message(): NormalizedMessage {
-  const id = messageId('gmail:m3:message:one')
+  const id = messageId('gmail:mail-workflows:message:one')
   return {
     id,
     workspaceId: mailbox.workspaceId,
     mailboxId: mailbox.id,
-    conversationId: conversationId('gmail:m3:conversation:one'),
+    conversationId: conversationId('gmail:mail-workflows:conversation:one'),
     providerThreadId: 'thread-one',
     providerMessageId: 'message-one',
     sender: { name: 'Ada Lovelace', address: 'ada@example.test' },
@@ -63,7 +63,7 @@ function message(): NormalizedMessage {
     providerLabelIds: ['INBOX', 'UNREAD'],
     attachments: [
       {
-        id: attachmentId('gmail:m3:attachment:one'),
+        id: attachmentId('gmail:mail-workflows:attachment:one'),
         messageId: id,
         filename: 'engine-diagram.pdf',
         mediaType: 'application/pdf',
@@ -79,7 +79,9 @@ let database: ReturnType<typeof openDatabase>
 let store: SqliteMailStore
 
 beforeEach(async () => {
-  database = openDatabase(join(mkdtempSync(join(tmpdir(), 'mailrovers-m3-')), 'mail.sqlite'))
+  database = openDatabase(
+    join(mkdtempSync(join(tmpdir(), 'mailrovers-mail-workflows-')), 'mail.sqlite'),
+  )
   migrate(database)
   store = new SqliteMailStore(database)
   await store.saveConnectedMailbox({
@@ -99,7 +101,7 @@ beforeEach(async () => {
 
 afterEach(() => database.close())
 
-describe('SQLite M3 store', () => {
+describe('SQLite mail-workflows store', () => {
   it('lists labels and loads complete conversations', async () => {
     const labels = await store.listLabels(mailbox.id)
     expect(labels.map((label) => label.providerLabelId)).toEqual(['INBOX', 'UNREAD'])

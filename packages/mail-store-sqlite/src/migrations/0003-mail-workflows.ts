@@ -4,7 +4,7 @@ ALTER TABLE sync_checkpoints ADD COLUMN full_reconciliation_generation TEXT;
 ALTER TABLE sync_checkpoints ADD COLUMN full_reconciliation_page_token TEXT;
 ALTER TABLE sync_checkpoints ADD COLUMN sync_failure_count INTEGER NOT NULL DEFAULT 0;
 
-ALTER TABLE drafts RENAME TO drafts_m2;
+ALTER TABLE drafts RENAME TO drafts_legacy;
 CREATE TABLE drafts (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id),
@@ -36,8 +36,8 @@ INSERT INTO drafts (
 )
 SELECT id,workspace_id,mailbox_id,conversation_id,provider_draft_id,provider_message_id,
   '<' || id || '@mailrovers.local>',to_json,cc_json,bcc_json,subject,text_body,html_body,
-  version,'synced',created_at,updated_at FROM drafts_m2;
-DROP TABLE drafts_m2;
+  version,'synced',created_at,updated_at FROM drafts_legacy;
+DROP TABLE drafts_legacy;
 CREATE INDEX drafts_mailbox_updated ON drafts(mailbox_id, updated_at DESC, id DESC);
 
 CREATE TABLE command_outbox (

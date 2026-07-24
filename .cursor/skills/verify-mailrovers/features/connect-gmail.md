@@ -28,4 +28,4 @@ Related: `flows-mailbox-gate--waiting-for-google`, `flows-mailbox-gate--google-c
 
 ## Not proven here
 
-Real Google OAuth, loopback callback, token storage in `safeStorage`, or network import. Requires Electron + `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID` and a human Google account (`docs/m2-verification.md`).
+Real Google OAuth, loopback callback, token storage in `safeStorage`, or network import. Requires Electron, `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID`, and a human Google account (`docs/gmail-release-verification.md`).

@@ -20,10 +20,10 @@ import { acquireTestSyncFence } from './sync-fence.js'
 
 const timestamp = utcTimestamp('2026-07-13T12:00:00.000Z')
 const mailbox: Mailbox = {
-  id: mailboxId('gmail:m4'),
+  id: mailboxId('gmail:ai'),
   workspaceId: workspaceId('workspace-personal'),
   provider: 'gmail',
-  providerAccountId: 'm4',
+  providerAccountId: 'ai',
   emailAddress: 'owner@example.test',
   displayName: 'Owner',
   syncState: 'ready',
@@ -38,11 +38,11 @@ const checkpoint: SyncCheckpoint = {
   importedDraftCount: 0,
   updatedAt: timestamp,
 }
-const conversation = conversationId('gmail:m4:conversation:one')
+const conversation = conversationId('gmail:ai:conversation:one')
 
 function normalizedMessage(): NormalizedMessage {
   return {
-    id: messageId('gmail:m4:message:one'),
+    id: messageId('gmail:ai:message:one'),
     workspaceId: mailbox.workspaceId,
     mailboxId: mailbox.id,
     conversationId: conversation,
@@ -50,7 +50,7 @@ function normalizedMessage(): NormalizedMessage {
     providerMessageId: 'message-one',
     sender: { address: 'sender@example.test' },
     recipients: { to: [{ address: mailbox.emailAddress }], cc: [], bcc: [] },
-    subject: 'Milestone four',
+    subject: 'AI test subject',
     receivedAt: timestamp,
     snippet: 'AI context',
     textBody: 'Selected conversation text.',
@@ -67,7 +67,7 @@ let database: ReturnType<typeof openDatabase>
 let store: SqliteMailStore
 
 beforeEach(async () => {
-  database = openDatabase(join(mkdtempSync(join(tmpdir(), 'mailrovers-m4-')), 'mail.sqlite'))
+  database = openDatabase(join(mkdtempSync(join(tmpdir(), 'mailrovers-ai-')), 'mail.sqlite'))
   migrate(database)
   store = new SqliteMailStore(database)
   await store.saveConnectedMailbox({
@@ -86,7 +86,7 @@ beforeEach(async () => {
 
 afterEach(() => database.close())
 
-describe('SQLite M4 store', () => {
+describe('SQLite AI store', () => {
   it('stores public AI settings separately from encrypted key bytes', async () => {
     await store.saveAiConfiguration({
       mailboxId: mailbox.id,
@@ -167,7 +167,7 @@ describe('SQLite M4 store', () => {
         to: [{ address: 'sender@example.test' }],
         cc: [],
         bcc: [],
-        subject: 'Re: Milestone four',
+        subject: 'Re: AI test subject',
         textBody: '',
       },
       id: draftId('draft-one'),
@@ -199,7 +199,7 @@ describe('SQLite M4 store', () => {
         to: [{ address: 'sender@example.test' }],
         cc: [],
         bcc: [],
-        subject: 'Re: Milestone four',
+        subject: 'Re: AI test subject',
         textBody: 'Changed locally.',
       },
       id: draft.id,

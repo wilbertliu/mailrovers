@@ -9,8 +9,8 @@ import {
 /**
  * Pending-FTS startup scenario fixture.
  *
- * Complete-index / M1 defaults stay on tiny `Deterministic message N` bodies
- * (`m1-100k-v1`). This profile keeps the same 100,000-message cardinality but
+ * Complete-index defaults stay on tiny `Deterministic message N` bodies
+ * (`benchmark-100k-v1`). This profile keeps the same 100,000-message cardinality but
  * fills `text_body` with a deterministic Gmail-like size mix so FTS backfill
  * actually contends with foreground IPC — without checking multi-hundred-MB
  * DBs into git (artifacts only).

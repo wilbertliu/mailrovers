@@ -15,7 +15,7 @@ import {
 let db: ReturnType<typeof openDatabase> | undefined
 afterEach(() => db?.close())
 
-describe('M1 fixture', () => {
+describe('benchmark fixture', () => {
   it('reports counts scoped to the fixture mailbox', () => {
     const now = '2026-01-01T00:00:00.000Z'
     db = openDatabase(join(mkdtempSync(join(tmpdir(), 'mailrovers-fixture-')), 'mail.sqlite'))
@@ -80,7 +80,7 @@ describe('M1 fixture', () => {
     expect(manifest).toEqual({
       messages: 100_000,
       conversations: 20_000,
-      fixtureVersion: 'm1-100k-v1',
+      fixtureVersion: 'benchmark-100k-v1',
     })
     expect(
       (db.prepare('SELECT count(*) AS count FROM messages').get() as { count: number }).count,

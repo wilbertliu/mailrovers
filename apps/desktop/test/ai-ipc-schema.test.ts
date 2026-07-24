@@ -9,7 +9,7 @@ import {
 
 const base = { requestId: 'request-one', mailboxId: 'gmail:account' }
 
-describe('M4 AI IPC schemas', () => {
+describe('AI IPC schemas', () => {
   it('accepts task-shaped AI inputs and bounds instructions', () => {
     expect(
       summarizeConversationInputSchema.parse({

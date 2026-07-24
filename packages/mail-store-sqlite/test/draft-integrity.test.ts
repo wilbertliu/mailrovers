@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { migrate, openDatabase } from '../src/index.js'
-import { migration0001 } from '../src/migrations/0001-m1.js'
-import { migration0002 } from '../src/migrations/0002-m2.js'
-import { migration0003 } from '../src/migrations/0003-m3.js'
-import { migration0004 } from '../src/migrations/0004-m4.js'
+import { migration0001 } from '../src/migrations/0001-initial-schema.js'
+import { migration0002 } from '../src/migrations/0002-gmail-import.js'
+import { migration0003 } from '../src/migrations/0003-mail-workflows.js'
+import { migration0004 } from '../src/migrations/0004-ai-artifacts.js'
 
 let database: ReturnType<typeof openDatabase> | undefined
 afterEach(() => {

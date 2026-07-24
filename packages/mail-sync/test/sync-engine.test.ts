@@ -96,9 +96,13 @@ class FakeProvider implements MailProvider {
       return
     }
     if (input.pageToken === undefined) {
-      yield { changes: { messages: [message('m1', 't1')] }, processedCount: 1, pageComplete: false }
       yield {
-        changes: { messages: [message('m2', 't2')] },
+        changes: { messages: [message('message-1', 'thread-1')] },
+        processedCount: 1,
+        pageComplete: false,
+      }
+      yield {
+        changes: { messages: [message('message-2', 'thread-2')] },
         processedCount: 1,
         pageComplete: true,
         nextPageToken: 'message-page-2',
@@ -116,7 +120,7 @@ class FakeProvider implements MailProvider {
         )
       })
     yield {
-      changes: { messages: [message('m3', 't3')] },
+      changes: { messages: [message('message-3', 'thread-3')] },
       processedCount: 1,
       pageComplete: true,
       totalEstimate: 3,

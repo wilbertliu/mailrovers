@@ -11,14 +11,14 @@ and verification — not the client type.
 
 ## What MailRovers requests
 
-| Item | Value |
-| --- | --- |
-| Client type | Desktop app |
-| Environment variables | `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID` (required), `MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET` (required when Google’s token endpoint rejects the exchange with `client_secret is missing`) |
-| Client secret | Google still issues one for Desktop clients. It is **not** confidential in a distributed desktop app, but many Google OAuth clients still require it on the token endpoint even with PKCE. Set the env var from Cloud Console when Connect Gmail fails that way. |
-| Scopes | `openid`, `email`, `https://www.googleapis.com/auth/gmail.modify` |
-| Callback | `http://127.0.0.1:<ephemeral-port>/oauth/callback` |
-| Token storage | Refresh token encrypted with Electron `safeStorage`, then SQLite |
+| Item                  | Value                                                                                                                                                                                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Client type           | Desktop app                                                                                                                                                                                                                                                      |
+| Environment variables | `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID` (required), `MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET` (required when Google’s token endpoint rejects the exchange with `client_secret is missing`)                                                                             |
+| Client secret         | Google still issues one for Desktop clients. It is **not** confidential in a distributed desktop app, but many Google OAuth clients still require it on the token endpoint even with PKCE. Set the env var from Cloud Console when Connect Gmail fails that way. |
+| Scopes                | `openid`, `email`, `https://www.googleapis.com/auth/gmail.modify`                                                                                                                                                                                                |
+| Callback              | `http://127.0.0.1:<ephemeral-port>/oauth/callback`                                                                                                                                                                                                               |
+| Token storage         | Refresh token encrypted with Electron `safeStorage`, then SQLite                                                                                                                                                                                                 |
 
 The main process reads `MAILROVERS_GOOGLE_OAUTH_CLIENT_ID` at startup. Without it,
 local mail still opens, but **Connect Gmail** fails with a configuration error.
@@ -32,10 +32,10 @@ register that redirect URI when creating a Desktop app client.
 
 Keep **separate** Google Cloud projects:
 
-| Environment | Example project | Consent status | Who can connect |
-| --- | --- | --- | --- |
-| Development | `mailrovers-dev` | Testing | Allowlisted test users only |
-| Production | `mailrovers-prod` | Published + verified | Anyone, after Google approves |
+| Environment | Example project   | Consent status       | Who can connect               |
+| ----------- | ----------------- | -------------------- | ----------------------------- |
+| Development | `mailrovers-dev`  | Testing              | Allowlisted test users only   |
+| Production  | `mailrovers-prod` | Published + verified | Anyone, after Google approves |
 
 Do not ship the development client ID in a public release build.
 
@@ -91,7 +91,7 @@ matches the Desktop client in Cloud Console.
 - Unverified external apps are subject to Google’s testing-user cap (commonly
   about 100 users).
 
-Packaged OAuth smoke steps live in [`m2-verification.md`](m2-verification.md).
+Packaged OAuth smoke steps live in [`gmail-release-verification.md`](gmail-release-verification.md).
 
 ---
 
@@ -204,21 +204,20 @@ but token exchange often still requires sending it:
 5. Confirm import/progress starts and the workspace becomes usable from local data.
 6. Confirm refresh tokens never appear in renderer IPC, logs, or plaintext SQLite.
 
-Full packaged OAuth checklist: [`m2-verification.md`](m2-verification.md).
+Full packaged OAuth checklist: [`gmail-release-verification.md`](gmail-release-verification.md).
 
 ## Common mistakes
 
-| Mistake | Correct approach |
-| --- | --- |
-| Creating a Web application client | Use **Desktop app** |
-| Setting only the client ID when Google requires the Desktop client secret | Also set `MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET` |
-| Using the prod client for local experiments (or vice versa) | Separate projects and client IDs |
-| Skipping test users while consent is Testing | Add every account under Test users |
-| Requesting `https://mail.google.com/` | Keep `gmail.modify` unless permanent delete is required |
-| Shipping before homepage / privacy / verification | Complete branding + scope verification first |
+| Mistake                                                                   | Correct approach                                        |
+| ------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Creating a Web application client                                         | Use **Desktop app**                                     |
+| Setting only the client ID when Google requires the Desktop client secret | Also set `MAILROVERS_GOOGLE_OAUTH_CLIENT_SECRET`        |
+| Using the prod client for local experiments (or vice versa)               | Separate projects and client IDs                        |
+| Skipping test users while consent is Testing                              | Add every account under Test users                      |
+| Requesting `https://mail.google.com/`                                     | Keep `gmail.modify` unless permanent delete is required |
+| Shipping before homepage / privacy / verification                         | Complete branding + scope verification first            |
 
 ## Related docs
 
-- Architecture OAuth model: [`architecture.md`](architecture.md) §12.1
-- Milestone 2 OAuth verification protocol: [`m2-verification.md`](m2-verification.md)
-- Milestone 3 Gmail write gate: [`m3-verification.md`](m3-verification.md)
+- Architecture OAuth model: [`architecture/data-and-sync.md`](architecture/data-and-sync.md)
+- Gmail OAuth and write release checks: [`gmail-release-verification.md`](gmail-release-verification.md)

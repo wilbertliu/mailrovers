@@ -31,7 +31,7 @@ function insertConversation(
 }
 afterEach(() => db?.close())
 
-describe('SQLite M1 store', () => {
+describe('SQLite initial schema store', () => {
   it('uses WAL, foreign keys, and the chronology index', async () => {
     const database = setup()
     for (let i = 0; i < 51; i += 1)

@@ -1,6 +1,6 @@
 import type { SqliteDatabase } from '@mailrovers/mail-store-sqlite'
 
-export const FIXTURE_VERSION = 'm1-100k-v1'
+export const FIXTURE_VERSION = 'benchmark-100k-v1'
 export const FIXTURE_MESSAGE_COUNT = 100_000
 export const FIXTURE_WORKSPACE = 'workspace-personal'
 export const FIXTURE_MAILBOX = 'mailbox-fixture'

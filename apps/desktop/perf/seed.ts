@@ -5,7 +5,7 @@ import { writeRedactedJsonLine } from '@mailrovers/platform-electron'
 import { seedMailboxFixture } from '@mailrovers/test-support'
 const dir = join(process.cwd(), 'artifacts')
 mkdirSync(dir, { recursive: true })
-const path = join(dir, 'm1-fixture.sqlite')
+const path = join(dir, 'benchmark-fixture.sqlite')
 const db = openDatabase(path)
 migrate(db)
 writeRedactedJsonLine({ path, ...seedMailboxFixture(db) })

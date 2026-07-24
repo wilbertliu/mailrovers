@@ -240,28 +240,29 @@ MailRovers is designed so that:
 
 ## Project status
 
-Milestones 1 through 4 are implemented. The next milestone is a public macOS release
-with signing, notarization, and automatic updates.
+Core mail and AI workflows are implemented. Public macOS distribution still requires
+signing, notarization, automatic updates, and the release checks below.
 
 Before that release:
 
-- Gmail write workflows must pass the controlled-account gate in
-  [`docs/m3-verification.md`](docs/m3-verification.md).
+- Gmail OAuth and write workflows must pass the controlled-account checks in
+  [`docs/gmail-release-verification.md`](docs/gmail-release-verification.md).
 - AI providers must pass the compatibility and security checks in
-  [`docs/m4-verification.md`](docs/m4-verification.md).
+  [`docs/ai-provider-verification.md`](docs/ai-provider-verification.md).
 
 ## Documentation
 
-| Document                                                 | Use it for                                         |
-| -------------------------------------------------------- | -------------------------------------------------- |
-| [`docs/storybook.md`](docs/storybook.md)                 | UI scenarios and renderer development              |
-| [`docs/gmail-oauth-setup.md`](docs/gmail-oauth-setup.md) | Gmail development and production OAuth             |
-| [`docs/architecture.md`](docs/architecture.md)           | System design, security, and engineering decisions |
-| [`docs/m3-verification.md`](docs/m3-verification.md)     | Mail workflows and performance verification        |
-| [`docs/m4-verification.md`](docs/m4-verification.md)     | AI behavior and provider verification              |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md)                     | Setup, checks, and pull-request expectations       |
-| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)               | Community standards and reporting                  |
-| [`SECURITY.md`](SECURITY.md)                             | Supported versions and vulnerability reporting     |
+| Document                                                                   | Use it for                                        |
+| -------------------------------------------------------------------------- | ------------------------------------------------- |
+| [`docs/storybook.md`](docs/storybook.md)                                   | UI scenarios and renderer development             |
+| [`docs/gmail-oauth-setup.md`](docs/gmail-oauth-setup.md)                   | Gmail development and production OAuth            |
+| [`docs/architecture.md`](docs/architecture.md)                             | System design and focused architecture references |
+| [`docs/performance-verification.md`](docs/performance-verification.md)     | Packaged performance measurements                 |
+| [`docs/gmail-release-verification.md`](docs/gmail-release-verification.md) | Gmail release checks                              |
+| [`docs/ai-provider-verification.md`](docs/ai-provider-verification.md)     | AI provider checks                                |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                                       | Setup, checks, and pull-request expectations      |
+| [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)                                 | Community standards and reporting                 |
+| [`SECURITY.md`](SECURITY.md)                                               | Supported versions and vulnerability reporting    |
 
 ## License
 

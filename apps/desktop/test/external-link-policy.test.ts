@@ -10,7 +10,7 @@ const attackUrls = [
   'not a url',
 ]
 
-describe('M3 external link policy', () => {
+describe('external link policy', () => {
   it.each(attackUrls)('rejects %s', (value) => {
     expect(allowedExternalUrl(value)).toBeUndefined()
   })

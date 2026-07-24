@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { migrate, openDatabase, SqliteMailStore } from '../src/index.js'
-import { migration0001 } from '../src/migrations/0001-m1.js'
+import { migration0001 } from '../src/migrations/0001-initial-schema.js'
 import { acquireTestSyncFence } from './sync-fence.js'
 
 let db: ReturnType<typeof openDatabase> | undefined
@@ -43,19 +43,19 @@ const checkpoint: SyncCheckpoint = {
 }
 
 function setup(): SqliteMailStore {
-  db = openDatabase(join(mkdtempSync(join(tmpdir(), 'mailrovers-m2-')), 'mail.sqlite'))
+  db = openDatabase(join(mkdtempSync(join(tmpdir(), 'mailrovers-upgrade-')), 'mail.sqlite'))
   migrate(db)
   return new SqliteMailStore(db)
 }
 
 function normalizedMessage(): NormalizedMessage {
   return {
-    id: messageId('gmail:account-1:message:m1'),
+    id: messageId('gmail:account-1:message:one'),
     workspaceId: mailbox.workspaceId,
     mailboxId: mailbox.id,
     conversationId: conversationId('gmail:account-1:conversation:t1'),
     providerThreadId: 't1',
-    providerMessageId: 'm1',
+    providerMessageId: 'message-one',
     providerHistoryId: '101',
     sender: { address: 'sender@example.test', name: 'Sender' },
     recipients: { to: [{ address: mailbox.emailAddress }], cc: [], bcc: [] },
@@ -68,8 +68,8 @@ function normalizedMessage(): NormalizedMessage {
     providerLabelIds: ['INBOX', 'UNREAD'],
     attachments: [
       {
-        id: attachmentId('gmail:account-1:message:m1:part:1'),
-        messageId: messageId('gmail:account-1:message:m1'),
+        id: attachmentId('gmail:account-1:message:one:part:1'),
+        messageId: messageId('gmail:account-1:message:one'),
         providerAttachmentId: 'a1',
         filename: 'file.txt',
         mediaType: 'text/plain',
@@ -87,8 +87,11 @@ afterEach(() => {
 })
 
 describe('SQLite mail store', () => {
-  it('backs up and migrates an existing M1 database through the M3 schema', () => {
-    const databasePath = join(mkdtempSync(join(tmpdir(), 'mailrovers-m1-upgrade-')), 'mail.sqlite')
+  it('backs up and migrates an existing database through the mail-workflows schema', () => {
+    const databasePath = join(
+      mkdtempSync(join(tmpdir(), 'mailrovers-schema-upgrade-')),
+      'mail.sqlite',
+    )
     db = openDatabase(databasePath)
     db.exec(migration0001)
     db.prepare('INSERT INTO schema_migrations(version,applied_at) VALUES(1,?)').run(now)
